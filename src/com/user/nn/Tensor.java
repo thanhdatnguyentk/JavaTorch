@@ -33,6 +33,55 @@ public class Tensor {
 
     public Tensor clone() { return new Tensor(this.data, this.shape); }
 
+    // Indexing helpers (row-major)
+    public float get(int... idx) {
+        return data[offset(idx)];
+    }
+
+    public void set(float value, int... idx) {
+        data[offset(idx)] = value;
+    }
+
+    private int offset(int... idx) {
+        if (idx.length != shape.length) throw new IllegalArgumentException("index rank mismatch");
+        int off = 0;
+        for (int i = 0; i < shape.length; i++) {
+            if (idx[i] < 0 || idx[i] >= shape[i]) throw new IndexOutOfBoundsException("index out of range");
+            off = off * shape[i] + idx[i];
+        }
+        return off;
+    }
+
+    // Elementwise operations returning new Tensor
+    public Tensor add(float scalar) { Tensor out = new Tensor(shape); for (int i=0;i<data.length;i++) out.data[i] = data[i] + scalar; return out; }
+    public Tensor mul(float scalar) { Tensor out = new Tensor(shape); for (int i=0;i<data.length;i++) out.data[i] = data[i] * scalar; return out; }
+
+    // In-place ops
+    public void add_ (float scalar) { for (int i=0;i<data.length;i++) data[i] += scalar; }
+    public void mul_ (float scalar) { for (int i=0;i<data.length;i++) data[i] *= scalar; }
+
+    // shape utilities
+    public int[] shape() { return shape.clone(); }
+
+    public Tensor flatten() {
+        return new Tensor(data.clone(), numel());
+    }
+
+    public Tensor squeeze() {
+        // remove dimensions of size 1
+        int cnt = 0; for (int s: shape) if (s!=1) cnt++;
+        if (cnt == shape.length) return this; // nothing to squeeze
+        int[] ns = new int[cnt]; int p=0; for (int s: shape) if (s!=1) ns[p++]=s;
+        return new Tensor(this.data, ns);
+    }
+
+    public Tensor unsqueeze(int dim) {
+        if (dim < 0) dim += shape.length+1;
+        int[] ns = new int[shape.length+1]; for (int i=0;i<ns.length;i++) ns[i]= (i==dim)?1:0;
+        int pi=0; for (int i=0;i<ns.length;i++) if (ns[i]==0) ns[i]=shape[pi++];
+        return new Tensor(this.data, ns);
+    }
+
     public String toString() {
         StringBuilder sb = new StringBuilder();
         sb.append("Tensor(shape="+Arrays.toString(shape)+", data=");

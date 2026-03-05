@@ -65,3 +65,55 @@ python tests/linear_relu_ref.py tests/tmp/input.csv tests/tmp/weight.csv tests/t
 ```
 
 
+
+---
+
+**Implemented Classes (status)**
+
+- `Module`: implemented — base class for layers and containers.
+- `Parameter`: implemented — simple wrapper for weight/bias `Mat`.
+- `Sequential`: implemented — ordered container applying child modules.
+- `ModuleList`: implemented — list-style container.
+- `ModuleDict`: implemented — name->module mapping.
+- `Linear`: implemented — dense layer (forward implemented, bias optional).
+- `ReLU`: implemented — activation.
+- `Sigmoid`: implemented — activation.
+- `Tanh`: implemented — activation.
+- `LeakyReLU`: implemented — activation.
+- `Softplus`: implemented — activation.
+- `Dropout`: implemented — stateless mask generation (seeded).
+- `BatchNorm1d`: implemented — running mean/var and affine option.
+- `Conv2d`: implemented — naive im2col per-sample implementation + convenience constructors.
+- `MaxPool2d`: implemented — naive pooling.
+- `AvgPool2d`: implemented — naive pooling.
+- `ZeroPad2d`: implemented — padding utility.
+- `Tensor`: implemented — basic tensor container (`shape`, `data`, `reshape/view`, indexing, scalar ops, inplace ops).
+- `Torch`: implemented — helper utilities (tensor creation, rand/randn, matmul, elementwise ops, simple broadcasting, reductions, conversions to/from `Mat`).
+
+Implemented `Torch` / `Tensor` functions (selected list)
+
+- Tensor creation: `tensor` (overloads), `zeros`, `ones`, `empty`, `full`, `arange`, `linspace`, `logspace`, `eye`
+- Random: `rand`, `randn`, `randint`, `bernoulli`, `multinomial`, `manual_seed`
+- Shape / indexing: `reshape`/`view`, `squeeze`, `unsqueeze`, `flatten`, `cat`, `stack`, `split`, `chunk`, `permute`
+- Elementwise & math: `add`, `sub`, `mul`, `div`, `pow`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `exp`, `log`, `log10`, `log2`, `ceil`, `floor`, `round`, `trunc`
+- Comparisons: `eq`, `ne`, `gt`, `lt`, `ge`, `le`, `where`
+- Broadcasting-aware ops: `binaryOp` / public wrappers (`add`,`mul`,...)
+- Reductions: `sum`, `mean`, `prod`, `max`, `min`, `argmax`, `argmin`, `var`, `std`, `norm`
+- Linear algebra: `matmul`/`mm`/`bmm`, `dot`, `inverse`, `det`
+- IO & utils: `save`, `load`, `is_tensor`, `is_floating_point`, `set_default_dtype`, `get_default_dtype`, `set_printoptions`, `no_grad`/`enable_grad`/`is_grad_enabled`
+
+Note: Many functions are basic/naive implementations (focus on clarity and correctness over performance). Advanced features (full advanced indexing, full linalg suite, complex dtypes, and autograd) remain TODO.
+
+**Tests & Examples**
+
+- Java test runners in `tests/java/com/user/nn/` — implemented and kept (MatOps, Containers, Functional, Linear+ReLU, Activations, LossesAndNorms, ConvPool).
+- Python NumPy reference scripts in `tests/` — implemented (`linear_relu_ref.py`, `conv_ref.py`) and used by Java tests.
+- `TrainIris.java` example — implemented and runnable (trained small network, reported final accuracy).
+
+**Continuous README updates**
+
+Last updated: 2026-03-05.
+
+This repository's `README.md` will be updated continuously as work progresses. The "Implemented Classes" list above is the canonical, incrementally maintained status report. I'll update this section (and the top-level progress summary) whenever I implement or change classes, utilities, tests, or examples.
+
+
