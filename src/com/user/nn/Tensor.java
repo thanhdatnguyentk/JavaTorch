@@ -5,33 +5,99 @@ import java.util.Arrays;
 public class Tensor {
     public int[] shape;
     public float[] data;
+    // autograd fields
+    public boolean requires_grad = false;
+    public Tensor grad = null;
+    public GradFn grad_fn = null;
 
     public Tensor(int... shape) {
         this.shape = shape.clone();
-        int n = 1; for (int s: shape) n *= s;
+        int n = 1;
+        for (int s : shape)
+            n *= s;
         this.data = new float[n];
     }
 
     public Tensor(float[] data, int... shape) {
-        int n = 1; for (int s: shape) n *= s;
-        if (data.length != n) throw new IllegalArgumentException("data length does not match shape");
+        int n = 1;
+        for (int s : shape)
+            n *= s;
+        if (data.length != n)
+            throw new IllegalArgumentException("data length does not match shape");
         this.shape = shape.clone();
         this.data = data.clone();
     }
 
-    public int dim() { return shape.length; }
-
-    public int numel() { int n=1; for (int s:shape) n*=s; return n; }
-
-    public Tensor reshape(int... newShape) {
-        int n = 1; for (int s: newShape) n*=s;
-        if (n != numel()) throw new IllegalArgumentException("reshape: incompatible shape");
-        return new Tensor(this.data, newShape);
+    public int dim() {
+        return shape.length;
     }
 
-    public Tensor view(int... newShape) { return reshape(newShape); }
+    public int numel() {
+        int n = 1;
+        for (int s : shape)
+            n *= s;
+        return n;
+    }
 
-    public Tensor clone() { return new Tensor(this.data, this.shape); }
+    public Tensor reshape(int... newShape) {
+        int n = 1;
+        for (int s : newShape)
+            n *= s;
+        if (n != numel())
+            throw new IllegalArgumentException("reshape: incompatible shape");
+        Tensor result = new Tensor(this.data, newShape);
+        if (Torch.is_grad_enabled() && this.requires_grad) {
+            result.requires_grad = true;
+            result.grad_fn = new GradFn() {
+                public void apply(Tensor gradOutput) {
+                    backwardStep(gradOutput.reshape(shape));
+                }
+            };
+        }
+        return result;
+    }
+
+    public Tensor view(int... newShape) {
+        return reshape(newShape);
+    }
+
+    public Tensor clone() {
+        return new Tensor(this.data, this.shape);
+    }
+
+    // Autograd support
+    public static abstract class GradFn {
+        public abstract void apply(Tensor gradOutput);
+    }
+
+    // accumulate gradient (elementwise add)
+    public void accumulateGrad(Tensor g) {
+        if (this.grad == null)
+            this.grad = g.clone();
+        else {
+            if (this.grad.data.length != g.data.length)
+                throw new IllegalArgumentException("grad size mismatch");
+            for (int i = 0; i < this.grad.data.length; i++)
+                this.grad.data[i] += g.data[i];
+        }
+    }
+
+    // backward entry point (assumes this is a scalar or user provided)
+    public void backward() {
+        if (!this.requires_grad)
+            throw new IllegalStateException("backward() called on tensor that does not require grad");
+        Tensor gradInit = new Tensor(this.shape);
+        for (int i = 0; i < gradInit.data.length; i++)
+            gradInit.data[i] = 1f;
+        backwardStep(gradInit);
+    }
+
+    // package-visible for GradFn callbacks
+    public void backwardStep(Tensor gradOutput) {
+        accumulateGrad(gradOutput);
+        if (this.grad_fn != null)
+            this.grad_fn.apply(gradOutput);
+    }
 
     // Indexing helpers (row-major)
     public float get(int... idx) {
@@ -43,56 +109,94 @@ public class Tensor {
     }
 
     private int offset(int... idx) {
-        if (idx.length != shape.length) throw new IllegalArgumentException("index rank mismatch");
+        if (idx.length != shape.length)
+            throw new IllegalArgumentException("index rank mismatch");
         int off = 0;
         for (int i = 0; i < shape.length; i++) {
-            if (idx[i] < 0 || idx[i] >= shape[i]) throw new IndexOutOfBoundsException("index out of range");
+            if (idx[i] < 0 || idx[i] >= shape[i])
+                throw new IndexOutOfBoundsException("index out of range");
             off = off * shape[i] + idx[i];
         }
         return off;
     }
 
     // Elementwise operations returning new Tensor
-    public Tensor add(float scalar) { Tensor out = new Tensor(shape); for (int i=0;i<data.length;i++) out.data[i] = data[i] + scalar; return out; }
-    public Tensor mul(float scalar) { Tensor out = new Tensor(shape); for (int i=0;i<data.length;i++) out.data[i] = data[i] * scalar; return out; }
+    public Tensor add(float scalar) {
+        Tensor out = new Tensor(shape);
+        for (int i = 0; i < data.length; i++)
+            out.data[i] = data[i] + scalar;
+        return out;
+    }
+
+    public Tensor mul(float scalar) {
+        Tensor out = new Tensor(shape);
+        for (int i = 0; i < data.length; i++)
+            out.data[i] = data[i] * scalar;
+        return out;
+    }
 
     // In-place ops
-    public void add_ (float scalar) { for (int i=0;i<data.length;i++) data[i] += scalar; }
-    public void mul_ (float scalar) { for (int i=0;i<data.length;i++) data[i] *= scalar; }
+    public void add_(float scalar) {
+        for (int i = 0; i < data.length; i++)
+            data[i] += scalar;
+    }
+
+    public void mul_(float scalar) {
+        for (int i = 0; i < data.length; i++)
+            data[i] *= scalar;
+    }
 
     // shape utilities
-    public int[] shape() { return shape.clone(); }
+    public int[] shape() {
+        return shape.clone();
+    }
 
     public Tensor flatten() {
-        return new Tensor(data.clone(), numel());
+        return reshape(numel());
     }
 
     public Tensor squeeze() {
         // remove dimensions of size 1
-        int cnt = 0; for (int s: shape) if (s!=1) cnt++;
-        if (cnt == shape.length) return this; // nothing to squeeze
-        int[] ns = new int[cnt]; int p=0; for (int s: shape) if (s!=1) ns[p++]=s;
-        return new Tensor(this.data, ns);
+        int cnt = 0;
+        for (int s : shape)
+            if (s != 1)
+                cnt++;
+        if (cnt == shape.length)
+            return this; // nothing to squeeze
+        int[] ns = new int[cnt];
+        int p = 0;
+        for (int s : shape)
+            if (s != 1)
+                ns[p++] = s;
+        return reshape(ns);
     }
 
     public Tensor unsqueeze(int dim) {
-        if (dim < 0) dim += shape.length+1;
-        int[] ns = new int[shape.length+1]; for (int i=0;i<ns.length;i++) ns[i]= (i==dim)?1:0;
-        int pi=0; for (int i=0;i<ns.length;i++) if (ns[i]==0) ns[i]=shape[pi++];
-        return new Tensor(this.data, ns);
+        if (dim < 0)
+            dim += shape.length + 1;
+        int[] ns = new int[shape.length + 1];
+        for (int i = 0; i < ns.length; i++)
+            ns[i] = (i == dim) ? 1 : 0;
+        int pi = 0;
+        for (int i = 0; i < ns.length; i++)
+            if (ns[i] == 0)
+                ns[i] = shape[pi++];
+        return reshape(ns);
     }
 
     public String toString() {
         StringBuilder sb = new StringBuilder();
-        sb.append("Tensor(shape="+Arrays.toString(shape)+", data=");
+        sb.append("Tensor(shape=" + Arrays.toString(shape) + ", data=");
         int limit = Math.min(data.length, 20);
         sb.append("[");
         String fmt = "%." + Torch.printOptions.precision + "f";
-        for (int i=0;i<limit;i++){
-            if (i>0) sb.append(", ");
+        for (int i = 0; i < limit; i++) {
+            if (i > 0)
+                sb.append(", ");
             sb.append(String.format(fmt, data[i]));
         }
-        if (data.length>limit) sb.append(", ... "+data.length+" elements");
+        if (data.length > limit)
+            sb.append(", ... " + data.length + " elements");
         sb.append("])");
         return sb.toString();
     }

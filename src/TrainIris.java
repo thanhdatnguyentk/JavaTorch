@@ -1,4 +1,6 @@
 import com.user.nn.nn;
+import com.user.nn.Tensor;
+import com.user.nn.Torch;
 import java.io.*;
 import java.net.URL;
 import java.util.*;
@@ -75,45 +77,69 @@ public class TrainIris {
         lib.mat_rand_seed(W1, 123L, -0.5f, 0.5f);
         lib.mat_rand_seed(W2, 124L, -0.5f, 0.5f);
 
-        float lr = 0.1f;
-        int epochs = 2000;
+        // Create tensor views for autograd on the second layer (W2). We'll use
+        // autograd for the final layer and keep first-layer updates manual
+        // (sigmoid non-autograd currently) to keep behavior stable.
+        Tensor tw1 = Torch.fromMat(W1); // used for forward (no grad)
+        Tensor tw2 = Torch.fromMat(W2); tw2.requires_grad = true; // track grads for W2
 
-        nn.Mat hiddenMat = lib.mat_alloc(trainN, hidden);
-        nn.Mat logits = lib.mat_alloc(trainN, classes);
+        Tensor XtrainT = Torch.fromMat(Xtrain);
+
+        float lr = 0.1f;
+        int epochs = 20000;
 
         for (int e = 0; e < epochs; e++) {
-            // forward
-            lib.mat_dot(hiddenMat, Xtrain, W1); // (trainN x hidden)
-            applySigmoid(hiddenMat);
-            lib.mat_dot(logits, hiddenMat, W2); // (trainN x classes)
-            float loss = softmaxAndLoss(logits, Ytrain, null); // logits becomes probs
+            // forward (tensor for final layer)
+            Tensor hiddenT = Torch.matmul(XtrainT, tw1); // (trainN x hidden)
+            // apply sigmoid in-place on a detached tensor for hidden activations
+            Tensor hiddenSig = hiddenT.clone();
+            for (int i=0;i<hiddenSig.data.length;i++) hiddenSig.data[i] = 1.0f / (1.0f + (float)Math.exp(-hiddenSig.data[i]));
 
-            // compute gradient at output: delta = probs - y_onehot
-            nn.Mat delta = lib.mat_alloc(trainN, classes);
-            for (int i=0;i<trainN;i++){
-                for (int c=0;c<classes;c++){
-                    float p = logits.es[i*classes + c];
-                    float y = (Ytrain[i]==c)?1f:0f;
-                    delta.es[i*classes + c] = p - y;
-                }
+            Tensor logitsT = Torch.matmul(hiddenSig, tw2); // (trainN x classes)
+            Tensor lossT = nn.F.cross_entropy_tensor(logitsT, Ytrain);
+
+            // Backprop for final layer via autograd
+            if (lossT.requires_grad) {
+                lossT.backward();
             }
 
-            // grad W2 = hidden^T * delta / trainN
-            nn.Mat hidden_t = transpose(lib, hiddenMat);
-            nn.Mat gradW2 = lib.mat_alloc(hidden_t.rows, delta.cols);
-            lib.mat_dot(gradW2, hidden_t, delta);
-            for (int i=0;i<gradW2.es.length;i++) gradW2.es[i] /= trainN;
+            // If tw2.grad populated, update W2 (and sync tensor values)
+            if (tw2.grad != null) {
+                for (int i=0;i<W2.es.length;i++) W2.es[i] -= lr * tw2.grad.data[i];
+                // sync tensor data with updated Mat
+                for (int i=0;i<tw2.data.length;i++) tw2.data[i] = W2.es[i];
+                // zero gradients
+                tw2.grad = null;
+            }
 
-            // update W2
-            for (int i=0;i<W2.es.length;i++) W2.es[i] -= lr * gradW2.es[i];
+            // Manual backward for first layer (same as original): compute delta, gradW1 and update W1
+            // compute softmax probs from logitsT into a plain array
+            float[] probs = new float[trainN * classes];
+            for (int i=0;i<trainN;i++){
+                int base = i*classes; float max = Float.NEGATIVE_INFINITY; for (int j=0;j<classes;j++) if (logitsT.data[base+j] > max) max = logitsT.data[base+j];
+                double sum = 0.0; for (int j=0;j<classes;j++){ double ex = Math.exp(logitsT.data[base+j] - max); probs[base+j] = (float)ex; sum += ex; }
+                for (int j=0;j<classes;j++) probs[base+j] = (float)(probs[base+j]/sum);
+            }
 
-            // backprop to hidden: delta_hidden = delta * W2^T .* sigmoid'(hidden)
+            // delta = probs - y_onehot
+            float[] delta = new float[trainN * classes];
+            for (int i=0;i<trainN;i++) for (int c=0;c<classes;c++) delta[i*classes + c] = probs[i*classes + c] - ((Ytrain[i]==c)?1f:0f);
+
+            // grad W2 computed via autograd above; compute grad for W1 manually
+            // delta_hidden = delta * W2^T .* sigmoid'(hidden)
+            // compute W2^T
             nn.Mat W2_t = transpose(lib, W2);
-            nn.Mat delta_hidden = lib.mat_alloc(delta.rows, W2_t.cols);
-            lib.mat_dot(delta_hidden, delta, W2_t);
+            nn.Mat delta_hidden = lib.mat_alloc(trainN, W2_t.cols);
+            // delta * W2^T
+            for (int i=0;i<trainN;i++){
+                for (int j=0;j<W2_t.cols;j++){
+                    double s=0.0; for (int k=0;k<classes;k++) s += delta[i*classes + k] * W2_t.es[k * W2_t.cols + j];
+                    delta_hidden.es[i*W2_t.cols + j] = (float)s;
+                }
+            }
             // multiply by sigmoid derivative
             for (int i=0;i<delta_hidden.es.length;i++){
-                float h = hiddenMat.es[i]; delta_hidden.es[i] = delta_hidden.es[i] * h * (1 - h);
+                float h = hiddenSig.data[i]; delta_hidden.es[i] = delta_hidden.es[i] * h * (1 - h);
             }
 
             // grad W1 = Xtrain^T * delta_hidden / trainN
@@ -126,6 +152,7 @@ public class TrainIris {
             for (int i=0;i<W1.es.length;i++) W1.es[i] -= lr * gradW1.es[i];
 
             if (e % 100 == 0) {
+                float loss = lossT.data[0];
                 float acc = evaluate(lib, Xtest, Ytest, W1, W2);
                 System.out.println(String.format("Epoch %d loss=%.6f test_acc=%.4f", e, loss, acc));
             }

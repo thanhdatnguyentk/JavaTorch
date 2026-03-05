@@ -35,9 +35,10 @@ Recent activity (latest)
 
 Next recommended steps
 
-- Continue migrating public APIs from `Mat` to `Tensor` (incrementally replace inputs/outputs in layers and examples).
-- Implement prioritized Tensor ops: indexing/slicing, broadcasting arithmetic, reductions, and additional linear algebra (e.g., `svd`, `solve`) as needed.
-- Add JUnit-based test harness and a `run-tests` script to automate builds and test runs.
+- Migrate public APIs from `Mat` to `Tensor`: `nn.Module` layer components should purely use `Tensor`.
+- Expand autograd: Add `.backward()` capability for reductions, linear algebra (matmul), shape modifications, and activations.
+- Build a full `TestAutogradMLP.java` to test end-to-end backpropagation.
+- Continue to strictly enforce unit tests per new feature added in autograd.
 
 
 Running tests (quick)
@@ -103,6 +104,14 @@ Implemented `Torch` / `Tensor` functions (selected list)
 - IO & utils: `save`, `load`, `is_tensor`, `is_floating_point`, `set_default_dtype`, `get_default_dtype`, `set_printoptions`, `no_grad`/`enable_grad`/`is_grad_enabled`
 
 Note: Many functions are basic/naive implementations (focus on clarity and correctness over performance). Advanced features (full advanced indexing, full linalg suite, complex dtypes, and autograd) remain TODO.
+
+Recent updates (autograd + tests)
+
+- Added a minimal autograd scaffold in `Tensor` supporting `requires_grad`, `grad`, `grad_fn`, and `backward()`.
+- Implemented backward for selected ops: elementwise `mul`, `matmul`, and an autograd-aware scalar `sumTensor`.
+- Added unit tests: `TestTorchExtras`, `TestTensor`, `TestGatherScatterExtras`, and `TestAutogradSimple` under `tests/java/com/user/nn/` and integrated them into `tests/run-tests.ps1`.
+- Created `todo.md` at project root summarizing next-priority work (autograd expansion, advanced indexing, linalg, CI).
+- All Java tests (including autograd simple tests) pass locally via `tests/run-tests.ps1`.
 
 **Tests & Examples**
 

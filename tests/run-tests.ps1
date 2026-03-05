@@ -30,8 +30,15 @@ $tests = @(
     'com.user.nn.TestLossesAndNorms',
     'com.user.nn.TestConvPool',
     'com.user.nn.TestTorchCoverage',
-    'com.user.nn.TestTorchExtras'
-    , 'com.user.nn.TestTensor'
+    'com.user.nn.TestTorchExtras',
+    'com.user.nn.TestTensor',
+    'com.user.nn.TestGatherScatterExtras'
+    , 'com.user.nn.TestAutogradSimple'
+    , 'com.user.nn.TestAutogradLinear'
+    , 'com.user.nn.TestAutogradShapeOps'
+    , 'com.user.nn.TestAutogradReductions'
+    , 'com.user.nn.TestAutogradMatmul'
+    , 'com.user.nn.TestAutogradActivations'
 )
 
 $failures = @()
