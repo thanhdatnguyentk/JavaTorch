@@ -58,8 +58,8 @@ public class TestLinearReLU {
             nn.Mat wpy = lib.readMatCSV(wPath);
             nn.Mat bpy = lib.readMatCSV(bPath);
             // override random init
-            linear.weight.data = wpy;
-            linear.bias.data = bpy;
+            linear.weight = new nn.Parameter(wpy);
+            linear.bias = new nn.Parameter(bpy);
         } catch (IOException e) {
             e.printStackTrace();
             System.exit(5);
@@ -80,7 +80,8 @@ public class TestLinearReLU {
 
         // compare
         if (pyMat.rows != jOutRelu.rows || pyMat.cols != jOutRelu.cols) {
-            System.err.println("Shape mismatch: py=" + pyMat.rows + "x" + pyMat.cols + " java=" + jOutRelu.rows + "x" + jOutRelu.cols);
+            System.err.println("Shape mismatch: py=" + pyMat.rows + "x" + pyMat.cols + " java=" + jOutRelu.rows + "x"
+                    + jOutRelu.cols);
             System.exit(7);
         }
 

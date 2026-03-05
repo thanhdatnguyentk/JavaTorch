@@ -3,39 +3,46 @@
 Last updated: 2026-03-05
 
 ## Current progress (completed)
-- Core Module/Parameter system and containers
-- `Tensor` class (shape, data, reshape/view, indexing, inplace ops)
-- `Torch` helpers: creation ops, rand/randn/randint, bernoulli, multinomial
-- Broadcasting-aware elementwise ops and binary helpers
-- Shape ops: `cat`, `stack`, `split`, `chunk`, `permute`, `reshape`, `squeeze`, `unsqueeze`, `flatten`
-- Math/trig/log functions: `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `exp`, `log`, `log10`, `log2`, `ceil`, `floor`, `round`, `trunc`
-- Comparisons and `where`
-- Reductions: `sum`, `mean`, `prod`, `max`, `min`, `argmax`, `argmin`, `var`, `std`, `norm`
-- Linear algebra: `matmul`/`mm`/`bmm`, `dot`, `inverse`, `det`
-- IO: `save` / `load`
-- Grad-mode stubs: `no_grad` / `enable_grad` / `is_grad_enabled`
-- Comprehensive Java test runners and automated `tests/run-tests.ps1` (all tests passing)
-
-## Next-priority tasks
-1. Expand Autograd Support
-   - `backward` for basic shape operations (`reshape`, `view`, `squeeze`, `unsqueeze`, `flatten`, `permute`)
-   - `backward` for reductions (`sum`, `mean`)
-   - `backward` for matrix ops (`matmul`)
-   - Explicitly add unit tests in `TestAutogradSimple` (or new classes) per method. Add them to `run-tests.ps1`.
-2. Migrate `nn` framework to `Tensor` API
-   - `Parameter` class to fully wrap `Tensor`
-   - `Linear`, `ReLU`, `Sigmoid`, etc. to act natively on `Tensor`
-   - `Sequential` and `Module` to pass `Tensor` between layers
-3. Advanced indexing & broadcasting improvements
-   - Full `gather`/`scatter` semantics, `take`, `index_select`
-4. Full linear algebra suite
-   - `solve`, `cholesky`, `svd`, `eigen` (use native Java libs if needed)
-5. Testing & CI
-   - Write integration test: Tensor-based MLP with end-to-end backprop
-   - Add a GitHub Actions workflow to run `javac` + tests
-
-## Immediate recommended step
-- Start Phase 2: Expand Autograd Support by setting up hooks for shape ops, reduction ops, and matrix operations, strictly paired with tests.
+- Core `nn` Module/Parameter system and containers (`Sequential`, `ModuleDict`, etc).
+- `Tensor` class with comprehensive API and native backpropagation support.
+- Mathematical operations, reductions, broadcasting, and matrix multiplication.
+- **Autograd Engine**: Fully functional `requires_grad`, `backward()`, tracking chain.
+- **Dense Layers**: `Linear`, `ReLU`, `Sigmoid`, `Tanh`, `LeakyReLU`, `Softplus`, `Dropout` built natively on Tensors.
+- **CNN Layers**: `Conv2d`, `MaxPool2d`, `AvgPool2d`, `ZeroPad2d`, `ConvTranspose2d` fully supporting backward pass.
+- **Optimizers**: `SGD` (with momentum) and `Adam` (`optim.java`).
+- **Loss Functions**: `cross_entropy_tensor`, `nll_loss`, `mse_loss_tensor`, `huber_loss` (in `nn.F`).
+- **Normalization**: `BatchNorm1d`, `LayerNorm`, `InstanceNorm`.
+- **System Optimizations**:
+  - `DataLoader` with Multi-worker threading (Producer-Consumer logic).
+  - Java Vector API (SIMD) integration for AVX2/AVX-512 acceleration.
+- **Sequential Models**:
+  - `RNNCell`, `LSTMCell`, `RNN`, `LSTM` with full BPTT support.
+- **Examples**:
+  - `TrainIris.java` (Simple Multi-class classification)
+  - `TrainFashionMNIST.java` (using `DataLoader`)
+  - `TrainCifar10.java` (using `DataLoader`)
+- Comprehensive test suite (24 tests) including `TestRNN`.
 
 ---
-If you confirm, I'll begin Phase 2: Expanding autograd.
+
+## Roadmap: Next Priorities
+
+### Nhóm 1: Mở rộng Kiến trúc (Architectural Expansion)
+1. **RNN & LSTM (HOÀN THÀNH ✅)**
+   - Triển khai `RNNCell`, `LSTMCell`, `RNN`, `LSTM`.
+   - Hỗ trợ BPTT tự động qua Autograd.
+2. **Transformer Blocks (PHẦN TIẾP THEO 🔲)**
+   - Triển khai `MultiheadAttention` (Linear Q,K,V + Scaled Dot Product).
+   - Nâng cấp `Softmax` hỗ trợ `dim` tùy chọn.
+   - Xây dựng module `TransformerEncoderLayer`.
+
+### Nhóm 2: Tối ưu hóa Hệ thống (System Optimization) (HOÀN THÀNH ✅)
+1. **DataLoader & Dataset API (HOÀN THÀNH ✅)**
+   - Interface `Dataset` và `DataLoader` đa luồng.
+2. **Vectorization (SIMD) (HOÀN THÀNH ✅)**
+   - Tích hợp **Java Vector API**.
+   - Matmul tối ưu vượt trội so với for-loop truyền thống.
+
+---
+**Steps to Begin:**
+- Chuyển sang phần **Transformer**: Cập nhật Softmax-dim và MultiheadAttention.

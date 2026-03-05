@@ -427,6 +427,96 @@ public class nn {
             }
             return out;
         }
+
+        /**
+         * Negative log-likelihood loss. Input should be log-probabilities [batch,
+         * classes].
+         */
+        public static Tensor nll_loss(Tensor logProbs, int[] targets) {
+            int batch = logProbs.shape[0];
+            int classes = logProbs.shape[1];
+            Tensor out = new Tensor(1);
+            float total = 0f;
+            for (int i = 0; i < batch; i++) {
+                total += -logProbs.data[i * classes + targets[i]];
+            }
+            out.data[0] = total / batch;
+            if (logProbs.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn() {
+                    public void apply(Tensor outGrad) {
+                        float scale = outGrad.data[0] / batch;
+                        Tensor g = new Tensor(logProbs.shape);
+                        for (int i = 0; i < batch; i++) {
+                            g.data[i * classes + targets[i]] = -scale;
+                        }
+                        logProbs.backwardStep(g);
+                    }
+                };
+            }
+            return out;
+        }
+
+        /** Autograd-aware MSE loss returning scalar Tensor. */
+        public static Tensor mse_loss_tensor(Tensor pred, Tensor target) {
+            int n = pred.data.length;
+            Tensor out = new Tensor(1);
+            float sum = 0f;
+            for (int i = 0; i < n; i++) {
+                float d = pred.data[i] - target.data[i];
+                sum += d * d;
+            }
+            out.data[0] = sum / n;
+            if (pred.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn() {
+                    public void apply(Tensor outGrad) {
+                        Tensor g = new Tensor(pred.shape);
+                        float scale = 2f * outGrad.data[0] / n;
+                        for (int i = 0; i < n; i++) {
+                            g.data[i] = (pred.data[i] - target.data[i]) * scale;
+                        }
+                        pred.backwardStep(g);
+                    }
+                };
+            }
+            return out;
+        }
+
+        /** Huber loss (smooth L1). Quadratic for |error|<delta, linear otherwise. */
+        public static Tensor huber_loss(Tensor pred, Tensor target, float delta) {
+            int n = pred.data.length;
+            Tensor out = new Tensor(1);
+            float sum = 0f;
+            for (int i = 0; i < n; i++) {
+                float d = pred.data[i] - target.data[i];
+                if (Math.abs(d) <= delta) {
+                    sum += 0.5f * d * d;
+                } else {
+                    sum += delta * (Math.abs(d) - 0.5f * delta);
+                }
+            }
+            out.data[0] = sum / n;
+            if (pred.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn() {
+                    public void apply(Tensor outGrad) {
+                        Tensor g = new Tensor(pred.shape);
+                        float scale = outGrad.data[0] / n;
+                        for (int i = 0; i < n; i++) {
+                            float d = pred.data[i] - target.data[i];
+                            if (Math.abs(d) <= delta) {
+                                g.data[i] = d * scale;
+                            } else {
+                                g.data[i] = delta * Math.signum(d) * scale;
+                            }
+                        }
+                        pred.backwardStep(g);
+                    }
+                };
+            }
+            return out;
+        }
     }
 
     // --- More activations ---
@@ -452,15 +542,23 @@ public class nn {
         }
 
         @Override
-        public Mat forward(Mat x) {
-            Mat out = new Mat();
-            out.rows = x.rows;
-            out.cols = x.cols;
-            out.es = new float[out.rows * out.cols];
-            int n = out.es.length;
-            for (int i = 0; i < n; i++) {
-                float v = x.es[i];
-                out.es[i] = v > 0 ? v : negativeSlope * v;
+        public Tensor forward(Tensor x) {
+            Tensor out = new Tensor(x.shape);
+            for (int i = 0; i < x.data.length; i++) {
+                float v = x.data[i];
+                out.data[i] = v > 0 ? v : negativeSlope * v;
+            }
+            if (Torch.is_grad_enabled() && x.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn() {
+                    public void apply(Tensor outGrad) {
+                        Tensor gx = new Tensor(x.shape);
+                        for (int i = 0; i < gx.data.length; i++) {
+                            gx.data[i] = (x.data[i] > 0 ? 1f : negativeSlope) * outGrad.data[i];
+                        }
+                        x.backwardStep(gx);
+                    }
+                };
             }
             return out;
         }
@@ -468,14 +566,24 @@ public class nn {
 
     public static class Softplus extends Module {
         @Override
-        public Mat forward(Mat x) {
-            Mat out = new Mat();
-            out.rows = x.rows;
-            out.cols = x.cols;
-            out.es = new float[out.rows * out.cols];
-            int n = out.es.length;
-            for (int i = 0; i < n; i++)
-                out.es[i] = (float) Math.log(1.0 + Math.exp(x.es[i]));
+        public Tensor forward(Tensor x) {
+            Tensor out = new Tensor(x.shape);
+            for (int i = 0; i < x.data.length; i++) {
+                out.data[i] = (float) Math.log(1.0 + Math.exp(x.data[i]));
+            }
+            if (Torch.is_grad_enabled() && x.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn() {
+                    public void apply(Tensor outGrad) {
+                        Tensor gx = new Tensor(x.shape);
+                        for (int i = 0; i < gx.data.length; i++) {
+                            float expX = (float) Math.exp(x.data[i]);
+                            gx.data[i] = (expX / (1.0f + expX)) * outGrad.data[i];
+                        }
+                        x.backwardStep(gx);
+                    }
+                };
+            }
             return out;
         }
     }
@@ -491,19 +599,30 @@ public class nn {
         }
 
         @Override
-        public Mat forward(Mat x) {
+        public Tensor forward(Tensor x) {
             if (p <= 0f)
                 return x;
-            Mat out = new Mat();
-            out.rows = x.rows;
-            out.cols = x.cols;
-            out.es = new float[out.rows * out.cols];
+            Tensor out = new Tensor(x.shape);
             java.util.Random r = new java.util.Random(seed);
             float scale = 1.0f / (1.0f - p);
-            int n = out.es.length;
-            for (int i = 0; i < n; i++) {
+            boolean[] mask = new boolean[x.data.length];
+            for (int i = 0; i < x.data.length; i++) {
                 boolean keep = r.nextFloat() >= p;
-                out.es[i] = keep ? x.es[i] * scale : 0f;
+                mask[i] = keep;
+                out.data[i] = keep ? x.data[i] * scale : 0f;
+            }
+
+            if (Torch.is_grad_enabled() && x.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn() {
+                    public void apply(Tensor outGrad) {
+                        Tensor gx = new Tensor(x.shape);
+                        for (int i = 0; i < gx.data.length; i++) {
+                            gx.data[i] = mask[i] ? outGrad.data[i] * scale : 0f;
+                        }
+                        x.backwardStep(gx);
+                    }
+                };
             }
             return out;
         }
@@ -625,18 +744,21 @@ public class nn {
         }
 
         @Override
-        public Mat forward(Mat x) {
-            // x: rows=batch, cols=inChannels*inH*inW
-            int batch = x.rows;
+        public Tensor forward(Tensor x) {
+            // x: shape [batch, inChannels*inH*inW] (flattened spatial)
+            int batch = x.shape[0];
             int outH = (inH + 2 * padH - kernelH) / strideH + 1;
             int outW = (inW + 2 * padW - kernelW) / strideW + 1;
-            Mat out = new Mat();
-            out.rows = batch;
-            out.cols = outChannels * outH * outW;
-            out.es = new float[out.rows * out.cols];
             int ksz = inChannels * kernelH * kernelW;
+            int inSize = inChannels * inH * inW;
+            int outSize = outChannels * outH * outW;
+
+            Tensor wt = this.weight.getTensor(); // [ksz, outC]
+            Tensor bt = this.bias != null ? this.bias.getTensor() : null; // [1, outC] or [outC]
+
+            // im2col for all batches: colAll[b] is [outH*outW, ksz]
+            float[][] colAll = new float[batch][];
             for (int b = 0; b < batch; b++) {
-                // im2col per output location
                 float[] col = new float[outH * outW * ksz];
                 int colIdx = 0;
                 for (int oh = 0; oh < outH; oh++) {
@@ -648,8 +770,7 @@ public class nn {
                                     int iw = ow * strideW - padW + kw;
                                     float val = 0f;
                                     if (ih >= 0 && ih < inH && iw >= 0 && iw < inW) {
-                                        int idx = b * x.cols + (ic * inH * inW + ih * inW + iw);
-                                        val = x.es[idx];
+                                        val = x.data[b * inSize + (ic * inH * inW + ih * inW + iw)];
                                     }
                                     col[colIdx++] = val;
                                 }
@@ -657,19 +778,97 @@ public class nn {
                         }
                     }
                 }
-                // multiply col (outH*outW x ksz) with weight (ksz x outC) to get (outH*outW x
-                // outC)
+                colAll[b] = col;
+            }
+
+            // output: [batch, outC * outH * outW]
+            Tensor out = new Tensor(batch, outSize);
+            for (int b = 0; b < batch; b++) {
+                float[] col = colAll[b];
+                // col: [outH*outW, ksz] * wt: [ksz, outC] => [outH*outW, outC]
                 for (int pos = 0; pos < outH * outW; pos++) {
                     for (int oc = 0; oc < outChannels; oc++) {
                         float sum = 0f;
                         int base = pos * ksz;
                         for (int k = 0; k < ksz; k++) {
-                            sum += col[base + k] * weight.data.es[k * weight.data.cols + oc];
+                            sum += col[base + k] * wt.data[k * outChannels + oc];
                         }
-                        int outPos = b * out.cols + (oc * outH * outW + pos);
-                        out.es[outPos] = sum + (bias != null ? bias.data.es[oc] : 0f);
+                        // output layout: [b, oc * outH * outW + pos]
+                        out.data[b * outSize + (oc * outH * outW + pos)] = sum + (bt != null ? bt.data[oc] : 0f);
                     }
                 }
+            }
+
+            // Autograd backward
+            if (Torch.is_grad_enabled() && (x.requires_grad || wt.requires_grad || (bt != null && bt.requires_grad))) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn() {
+                    public void apply(Tensor outGrad) {
+                        // outGrad: [batch, outC * outH * outW]
+                        // Gradient w.r.t. weight: sum_b col[b]^T * dOut[b]
+                        if (wt.requires_grad) {
+                            Tensor gw = new Tensor(wt.shape);
+                            for (int b = 0; b < batch; b++) {
+                                float[] col = colAll[b];
+                                // For each (k, oc): gw[k][oc] += sum_pos col[pos*ksz+k] * dOut[b,
+                                // oc*outH*outW+pos]
+                                for (int pos = 0; pos < outH * outW; pos++) {
+                                    for (int oc = 0; oc < outChannels; oc++) {
+                                        float dVal = outGrad.data[b * outSize + (oc * outH * outW + pos)];
+                                        int colBase = pos * ksz;
+                                        for (int k = 0; k < ksz; k++) {
+                                            gw.data[k * outChannels + oc] += col[colBase + k] * dVal;
+                                        }
+                                    }
+                                }
+                            }
+                            wt.backwardStep(gw);
+                        }
+
+                        // Gradient w.r.t. bias: sum over batch and spatial
+                        if (bt != null && bt.requires_grad) {
+                            Tensor gb = new Tensor(bt.shape);
+                            for (int b = 0; b < batch; b++) {
+                                for (int oc = 0; oc < outChannels; oc++) {
+                                    for (int pos = 0; pos < outH * outW; pos++) {
+                                        gb.data[oc] += outGrad.data[b * outSize + (oc * outH * outW + pos)];
+                                    }
+                                }
+                            }
+                            bt.backwardStep(gb);
+                        }
+
+                        // Gradient w.r.t. input: col2im
+                        if (x.requires_grad) {
+                            Tensor gx = new Tensor(x.shape);
+                            for (int b = 0; b < batch; b++) {
+                                // dCol[pos*ksz+k] = sum_oc dOut[b, oc*outH*outW+pos] * wt[k, oc]
+                                for (int pos = 0; pos < outH * outW; pos++) {
+                                    int oh = pos / outW;
+                                    int ow = pos % outW;
+                                    for (int ic = 0; ic < inChannels; ic++) {
+                                        for (int kh = 0; kh < kernelH; kh++) {
+                                            for (int kw = 0; kw < kernelW; kw++) {
+                                                int ih = oh * strideH - padH + kh;
+                                                int iw2 = ow * strideW - padW + kw;
+                                                if (ih >= 0 && ih < inH && iw2 >= 0 && iw2 < inW) {
+                                                    int kIdx = ic * kernelH * kernelW + kh * kernelW + kw;
+                                                    float dColVal = 0f;
+                                                    for (int oc = 0; oc < outChannels; oc++) {
+                                                        dColVal += outGrad.data[b * outSize + (oc * outH * outW + pos)]
+                                                                * wt.data[kIdx * outChannels + oc];
+                                                    }
+                                                    gx.data[b * inSize + (ic * inH * inW + ih * inW + iw2)] += dColVal;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            x.backwardStep(gx);
+                        }
+                    }
+                };
             }
             return out;
         }
@@ -701,6 +900,144 @@ public class nn {
         }
     }
 
+    // --- ConvTranspose2d (transposed / fractionally-strided convolution) ---
+    public static class ConvTranspose2d extends Module {
+        public int inChannels, outChannels, kernelH, kernelW;
+        public int inH, inW;
+        public int strideH = 1, strideW = 1;
+        public int padH = 0, padW = 0;
+        public int outputPadH = 0, outputPadW = 0;
+        public Parameter weight; // shape: [inC, outC*kH*kW]
+        public Parameter bias; // [outC]
+
+        public ConvTranspose2d(nn outer, int inChannels, int outChannels, int kernelH, int kernelW,
+                int inH, int inW, int stride, int padding, int outputPadding, boolean biasFlag) {
+            this.inChannels = inChannels;
+            this.outChannels = outChannels;
+            this.kernelH = kernelH;
+            this.kernelW = kernelW;
+            this.inH = inH;
+            this.inW = inW;
+            this.strideH = stride;
+            this.strideW = stride;
+            this.padH = padding;
+            this.padW = padding;
+            this.outputPadH = outputPadding;
+            this.outputPadW = outputPadding;
+            Mat w = outer.mat_alloc(inChannels, outChannels * kernelH * kernelW);
+            outer.mat_rand(w, -0.08f, 0.08f);
+            this.weight = new Parameter(w);
+            addParameter("weight", this.weight);
+            if (biasFlag) {
+                Mat b = outer.mat_alloc(1, outChannels);
+                outer.mat_fill(b, 0f);
+                this.bias = new Parameter(b);
+                addParameter("bias", this.bias);
+            }
+        }
+
+        @Override
+        public Tensor forward(Tensor x) {
+            int batch = x.shape[0];
+            int inSize = inChannels * inH * inW;
+            int outH = (inH - 1) * strideH - 2 * padH + kernelH + outputPadH;
+            int outW = (inW - 1) * strideW - 2 * padW + kernelW + outputPadW;
+            int outSize = outChannels * outH * outW;
+            Tensor wt = this.weight.getTensor();
+            Tensor bt = this.bias != null ? this.bias.getTensor() : null;
+            Tensor out = new Tensor(batch, outSize);
+            for (int b = 0; b < batch; b++) {
+                for (int ic = 0; ic < inChannels; ic++) {
+                    for (int ih = 0; ih < inH; ih++) {
+                        for (int iw = 0; iw < inW; iw++) {
+                            float xVal = x.data[b * inSize + ic * inH * inW + ih * inW + iw];
+                            for (int oc = 0; oc < outChannels; oc++) {
+                                for (int kh = 0; kh < kernelH; kh++) {
+                                    for (int kw = 0; kw < kernelW; kw++) {
+                                        int oh = ih * strideH - padH + kh;
+                                        int ow = iw * strideW - padW + kw;
+                                        if (oh >= 0 && oh < outH && ow >= 0 && ow < outW) {
+                                            int wIdx = ic * (outChannels * kernelH * kernelW) + oc * kernelH * kernelW
+                                                    + kh * kernelW + kw;
+                                            out.data[b * outSize + oc * outH * outW + oh * outW + ow] += xVal
+                                                    * wt.data[wIdx];
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if (bt != null) {
+                    for (int oc = 0; oc < outChannels; oc++)
+                        for (int pos = 0; pos < outH * outW; pos++)
+                            out.data[b * outSize + oc * outH * outW + pos] += bt.data[oc];
+                }
+            }
+            if (Torch.is_grad_enabled() && (x.requires_grad || wt.requires_grad || (bt != null && bt.requires_grad))) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn() {
+                    public void apply(Tensor outGrad) {
+                        if (x.requires_grad) {
+                            Tensor gx = new Tensor(x.shape);
+                            for (int b = 0; b < batch; b++)
+                                for (int ic = 0; ic < inChannels; ic++)
+                                    for (int ih = 0; ih < inH; ih++)
+                                        for (int iw = 0; iw < inW; iw++) {
+                                            float sum = 0f;
+                                            for (int oc = 0; oc < outChannels; oc++)
+                                                for (int kh = 0; kh < kernelH; kh++)
+                                                    for (int kw = 0; kw < kernelW; kw++) {
+                                                        int oh = ih * strideH - padH + kh;
+                                                        int ow = iw * strideW - padW + kw;
+                                                        if (oh >= 0 && oh < outH && ow >= 0 && ow < outW) {
+                                                            int wIdx = ic * (outChannels * kernelH * kernelW)
+                                                                    + oc * kernelH * kernelW + kh * kernelW + kw;
+                                                            sum += outGrad.data[b * outSize + oc * outH * outW
+                                                                    + oh * outW + ow] * wt.data[wIdx];
+                                                        }
+                                                    }
+                                            gx.data[b * inSize + ic * inH * inW + ih * inW + iw] = sum;
+                                        }
+                            x.backwardStep(gx);
+                        }
+                        if (wt.requires_grad) {
+                            Tensor gw = new Tensor(wt.shape);
+                            for (int b = 0; b < batch; b++)
+                                for (int ic = 0; ic < inChannels; ic++)
+                                    for (int ih = 0; ih < inH; ih++)
+                                        for (int iw = 0; iw < inW; iw++) {
+                                            float xVal = x.data[b * inSize + ic * inH * inW + ih * inW + iw];
+                                            for (int oc = 0; oc < outChannels; oc++)
+                                                for (int kh = 0; kh < kernelH; kh++)
+                                                    for (int kw = 0; kw < kernelW; kw++) {
+                                                        int oh = ih * strideH - padH + kh;
+                                                        int ow = iw * strideW - padW + kw;
+                                                        if (oh >= 0 && oh < outH && ow >= 0 && ow < outW) {
+                                                            int wIdx = ic * (outChannels * kernelH * kernelW)
+                                                                    + oc * kernelH * kernelW + kh * kernelW + kw;
+                                                            gw.data[wIdx] += xVal * outGrad.data[b * outSize
+                                                                    + oc * outH * outW + oh * outW + ow];
+                                                        }
+                                                    }
+                                        }
+                            wt.backwardStep(gw);
+                        }
+                        if (bt != null && bt.requires_grad) {
+                            Tensor gb = new Tensor(bt.shape);
+                            for (int b = 0; b < batch; b++)
+                                for (int oc = 0; oc < outChannels; oc++)
+                                    for (int pos = 0; pos < outH * outW; pos++)
+                                        gb.data[oc] += outGrad.data[b * outSize + oc * outH * outW + pos];
+                            bt.backwardStep(gb);
+                        }
+                    }
+                };
+            }
+            return out;
+        }
+    }
+
     // --- MaxPool2d and AvgPool2d (naive) ---
     public static class MaxPool2d extends Module {
         public int kernelH, kernelW, strideH, strideW, padH, padW;
@@ -720,36 +1057,55 @@ public class nn {
         }
 
         @Override
-        public Mat forward(Mat x) {
-            int batch = x.rows;
+        public Tensor forward(Tensor x) {
+            int batch = x.shape[0];
+            int inSize = inC * inH * inW;
             int outH = (inH + 2 * padH - kernelH) / strideH + 1;
             int outW = (inW + 2 * padW - kernelW) / strideW + 1;
-            Mat out = new Mat();
-            out.rows = batch;
-            out.cols = inC * outH * outW;
-            out.es = new float[out.rows * out.cols];
+            int outSize = inC * outH * outW;
+            Tensor out = new Tensor(batch, outSize);
+            // Track argmax indices for backward
+            int[] maxIndices = new int[batch * outSize];
             for (int b = 0; b < batch; b++) {
                 for (int c = 0; c < inC; c++) {
                     for (int oh = 0; oh < outH; oh++) {
                         for (int ow = 0; ow < outW; ow++) {
                             float maxv = Float.NEGATIVE_INFINITY;
+                            int maxIdx = -1;
                             for (int kh = 0; kh < kernelH; kh++) {
                                 for (int kw = 0; kw < kernelW; kw++) {
                                     int ih = oh * strideH - padH + kh;
-                                    int iw = ow * strideW - padW + kw;
-                                    if (ih >= 0 && ih < inH && iw >= 0 && iw < inW) {
-                                        int idx = b * x.cols + (c * inH * inW + ih * inW + iw);
-                                        float v = x.es[idx];
-                                        if (v > maxv)
+                                    int iw2 = ow * strideW - padW + kw;
+                                    if (ih >= 0 && ih < inH && iw2 >= 0 && iw2 < inW) {
+                                        int idx = b * inSize + (c * inH * inW + ih * inW + iw2);
+                                        float v = x.data[idx];
+                                        if (v > maxv) {
                                             maxv = v;
+                                            maxIdx = idx;
+                                        }
                                     }
                                 }
                             }
-                            int outIdx = b * out.cols + (c * outH * outW + oh * outW + ow);
-                            out.es[outIdx] = maxv;
+                            int outIdx = b * outSize + (c * outH * outW + oh * outW + ow);
+                            out.data[outIdx] = maxv;
+                            maxIndices[outIdx] = maxIdx;
                         }
                     }
                 }
+            }
+            if (Torch.is_grad_enabled() && x.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn() {
+                    public void apply(Tensor outGrad) {
+                        Tensor gx = new Tensor(x.shape);
+                        for (int i = 0; i < outGrad.data.length; i++) {
+                            if (maxIndices[i] >= 0) {
+                                gx.data[maxIndices[i]] += outGrad.data[i];
+                            }
+                        }
+                        x.backwardStep(gx);
+                    }
+                };
             }
             return out;
         }
@@ -773,14 +1129,15 @@ public class nn {
         }
 
         @Override
-        public Mat forward(Mat x) {
-            int batch = x.rows;
+        public Tensor forward(Tensor x) {
+            int batch = x.shape[0];
+            int inSize = inC * inH * inW;
             int outH = (inH + 2 * padH - kernelH) / strideH + 1;
             int outW = (inW + 2 * padW - kernelW) / strideW + 1;
-            Mat out = new Mat();
-            out.rows = batch;
-            out.cols = inC * outH * outW;
-            out.es = new float[out.rows * out.cols];
+            int outSize = inC * outH * outW;
+            Tensor out = new Tensor(batch, outSize);
+            // Track counts for backward
+            int[] counts = new int[batch * outSize];
             for (int b = 0; b < batch; b++) {
                 for (int c = 0; c < inC; c++) {
                     for (int oh = 0; oh < outH; oh++) {
@@ -790,19 +1147,50 @@ public class nn {
                             for (int kh = 0; kh < kernelH; kh++) {
                                 for (int kw = 0; kw < kernelW; kw++) {
                                     int ih = oh * strideH - padH + kh;
-                                    int iw = ow * strideW - padW + kw;
-                                    if (ih >= 0 && ih < inH && iw >= 0 && iw < inW) {
-                                        int idx = b * x.cols + (c * inH * inW + ih * inW + iw);
-                                        sumv += x.es[idx];
+                                    int iw2 = ow * strideW - padW + kw;
+                                    if (ih >= 0 && ih < inH && iw2 >= 0 && iw2 < inW) {
+                                        sumv += x.data[b * inSize + (c * inH * inW + ih * inW + iw2)];
                                         cnt++;
                                     }
                                 }
                             }
-                            int outIdx = b * out.cols + (c * outH * outW + oh * outW + ow);
-                            out.es[outIdx] = cnt > 0 ? sumv / cnt : 0f;
+                            int outIdx = b * outSize + (c * outH * outW + oh * outW + ow);
+                            out.data[outIdx] = cnt > 0 ? sumv / cnt : 0f;
+                            counts[outIdx] = cnt;
                         }
                     }
                 }
+            }
+            if (Torch.is_grad_enabled() && x.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn() {
+                    public void apply(Tensor outGrad) {
+                        Tensor gx = new Tensor(x.shape);
+                        for (int b = 0; b < batch; b++) {
+                            for (int c = 0; c < inC; c++) {
+                                for (int oh = 0; oh < outH; oh++) {
+                                    for (int ow = 0; ow < outW; ow++) {
+                                        int outIdx = b * outSize + (c * outH * outW + oh * outW + ow);
+                                        int cnt = counts[outIdx];
+                                        if (cnt == 0)
+                                            continue;
+                                        float grad = outGrad.data[outIdx] / cnt;
+                                        for (int kh = 0; kh < kernelH; kh++) {
+                                            for (int kw = 0; kw < kernelW; kw++) {
+                                                int ih = oh * strideH - padH + kh;
+                                                int iw2 = ow * strideW - padW + kw;
+                                                if (ih >= 0 && ih < inH && iw2 >= 0 && iw2 < inW) {
+                                                    gx.data[b * inSize + (c * inH * inW + ih * inW + iw2)] += grad;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        x.backwardStep(gx);
+                    }
+                };
             }
             return out;
         }
@@ -821,25 +1209,442 @@ public class nn {
         }
 
         @Override
-        public Mat forward(Mat x) {
+        public Tensor forward(Tensor x) {
+            int batch = x.shape[0];
+            int inSize = inC * inH * inW;
             int outH = inH + 2 * padH;
             int outW = inW + 2 * padW;
-            Mat out = new Mat();
-            out.rows = x.rows;
-            out.cols = inC * outH * outW;
-            out.es = new float[out.rows * out.cols];
-            for (int b = 0; b < x.rows; b++) {
+            int outSize = inC * outH * outW;
+            Tensor out = new Tensor(batch, outSize);
+            for (int b = 0; b < batch; b++) {
                 for (int c = 0; c < inC; c++) {
                     for (int h = 0; h < inH; h++) {
                         for (int w = 0; w < inW; w++) {
-                            float v = x.es[b * x.cols + (c * inH * inW + h * inW + w)];
-                            int outIdx = b * out.cols + (c * outH * outW + (h + padH) * outW + (w + padW));
-                            out.es[outIdx] = v;
+                            float v = x.data[b * inSize + (c * inH * inW + h * inW + w)];
+                            int outIdx = b * outSize + (c * outH * outW + (h + padH) * outW + (w + padW));
+                            out.data[outIdx] = v;
                         }
                     }
                 }
             }
+            if (Torch.is_grad_enabled() && x.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn() {
+                    public void apply(Tensor outGrad) {
+                        Tensor gx = new Tensor(x.shape);
+                        for (int b = 0; b < batch; b++) {
+                            for (int c = 0; c < inC; c++) {
+                                for (int h = 0; h < inH; h++) {
+                                    for (int w = 0; w < inW; w++) {
+                                        int outIdx = b * outSize + (c * outH * outW + (h + padH) * outW + (w + padW));
+                                        gx.data[b * inSize + (c * inH * inW + h * inW + w)] += outGrad.data[outIdx];
+                                    }
+                                }
+                            }
+                        }
+                        x.backwardStep(gx);
+                    }
+                };
+            }
             return out;
+        }
+    }
+
+    // --- LayerNorm ---
+    public static class LayerNorm extends Module {
+        public int normalizedSize;
+        public float eps;
+        public Parameter weight; // gamma
+        public Parameter bias; // beta
+
+        public LayerNorm(nn outer, int normalizedSize) {
+            this(outer, normalizedSize, 1e-5f);
+        }
+
+        public LayerNorm(nn outer, int normalizedSize, float eps) {
+            this.normalizedSize = normalizedSize;
+            this.eps = eps;
+            Mat w = outer.mat_alloc(1, normalizedSize);
+            outer.mat_fill(w, 1f); // gamma=1
+            this.weight = new Parameter(w);
+            addParameter("weight", this.weight);
+            Mat b = outer.mat_alloc(1, normalizedSize);
+            outer.mat_fill(b, 0f); // beta=0
+            this.bias = new Parameter(b);
+            addParameter("bias", this.bias);
+        }
+
+        @Override
+        public Tensor forward(Tensor x) {
+            // x: [batch, normalizedSize]
+            int batch = x.shape[0];
+            int D = normalizedSize;
+            Tensor gamma = this.weight.getTensor();
+            Tensor beta = this.bias.getTensor();
+
+            float[] means = new float[batch];
+            float[] vars = new float[batch];
+            Tensor out = new Tensor(batch, D);
+
+            for (int b = 0; b < batch; b++) {
+                float sum = 0f;
+                for (int d = 0; d < D; d++)
+                    sum += x.data[b * D + d];
+                means[b] = sum / D;
+                float vsum = 0f;
+                for (int d = 0; d < D; d++) {
+                    float diff = x.data[b * D + d] - means[b];
+                    vsum += diff * diff;
+                }
+                vars[b] = vsum / D;
+                float invStd = 1f / (float) Math.sqrt(vars[b] + eps);
+                for (int d = 0; d < D; d++) {
+                    float norm = (x.data[b * D + d] - means[b]) * invStd;
+                    out.data[b * D + d] = gamma.data[d] * norm + beta.data[d];
+                }
+            }
+
+            if (Torch.is_grad_enabled() && (x.requires_grad || gamma.requires_grad || beta.requires_grad)) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn() {
+                    public void apply(Tensor outGrad) {
+                        if (beta.requires_grad) {
+                            Tensor gb = new Tensor(beta.shape);
+                            for (int b = 0; b < batch; b++)
+                                for (int d = 0; d < D; d++)
+                                    gb.data[d] += outGrad.data[b * D + d];
+                            beta.backwardStep(gb);
+                        }
+                        if (gamma.requires_grad) {
+                            Tensor gg = new Tensor(gamma.shape);
+                            for (int b = 0; b < batch; b++) {
+                                float invStd = 1f / (float) Math.sqrt(vars[b] + eps);
+                                for (int d = 0; d < D; d++) {
+                                    float norm = (x.data[b * D + d] - means[b]) * invStd;
+                                    gg.data[d] += outGrad.data[b * D + d] * norm;
+                                }
+                            }
+                            gamma.backwardStep(gg);
+                        }
+                        if (x.requires_grad) {
+                            Tensor gx = new Tensor(x.shape);
+                            for (int b = 0; b < batch; b++) {
+                                float invStd = 1f / (float) Math.sqrt(vars[b] + eps);
+                                // dxhat = outGrad * gamma
+                                float[] dxhat = new float[D];
+                                for (int d = 0; d < D; d++)
+                                    dxhat[d] = outGrad.data[b * D + d] * gamma.data[d];
+                                // compute sum(dxhat) and sum(dxhat * xhat)
+                                float sumDxhat = 0f, sumDxhatXhat = 0f;
+                                for (int d = 0; d < D; d++) {
+                                    float xhat = (x.data[b * D + d] - means[b]) * invStd;
+                                    sumDxhat += dxhat[d];
+                                    sumDxhatXhat += dxhat[d] * xhat;
+                                }
+                                for (int d = 0; d < D; d++) {
+                                    float xhat = (x.data[b * D + d] - means[b]) * invStd;
+                                    gx.data[b * D + d] = invStd / D * (D * dxhat[d] - sumDxhat - xhat * sumDxhatXhat);
+                                }
+                            }
+                            x.backwardStep(gx);
+                        }
+                    }
+                };
+            }
+            return out;
+        }
+    }
+
+    // --- InstanceNorm ---
+    public static class InstanceNorm extends Module {
+        public int numChannels;
+        public int spatialH, spatialW;
+        public float eps;
+
+        public InstanceNorm(int numChannels, int spatialH, int spatialW) {
+            this(numChannels, spatialH, spatialW, 1e-5f);
+        }
+
+        public InstanceNorm(int numChannels, int spatialH, int spatialW, float eps) {
+            this.numChannels = numChannels;
+            this.spatialH = spatialH;
+            this.spatialW = spatialW;
+            this.eps = eps;
+        }
+
+        @Override
+        public Tensor forward(Tensor x) {
+            // x: [batch, C*H*W]
+            int batch = x.shape[0];
+            int C = numChannels;
+            int HW = spatialH * spatialW;
+            int total = C * HW;
+            Tensor out = new Tensor(batch, total);
+
+            float[][] means = new float[batch][C];
+            float[][] vars = new float[batch][C];
+
+            for (int b = 0; b < batch; b++) {
+                for (int c = 0; c < C; c++) {
+                    float sum = 0f;
+                    for (int hw = 0; hw < HW; hw++)
+                        sum += x.data[b * total + c * HW + hw];
+                    means[b][c] = sum / HW;
+                    float vsum = 0f;
+                    for (int hw = 0; hw < HW; hw++) {
+                        float diff = x.data[b * total + c * HW + hw] - means[b][c];
+                        vsum += diff * diff;
+                    }
+                    vars[b][c] = vsum / HW;
+                    float invStd = 1f / (float) Math.sqrt(vars[b][c] + eps);
+                    for (int hw = 0; hw < HW; hw++) {
+                        out.data[b * total + c * HW + hw] = (x.data[b * total + c * HW + hw] - means[b][c]) * invStd;
+                    }
+                }
+            }
+
+            if (Torch.is_grad_enabled() && x.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn() {
+                    public void apply(Tensor outGrad) {
+                        Tensor gx = new Tensor(x.shape);
+                        for (int b = 0; b < batch; b++) {
+                            for (int c = 0; c < C; c++) {
+                                float invStd = 1f / (float) Math.sqrt(vars[b][c] + eps);
+                                float sumDy = 0f, sumDyXhat = 0f;
+                                for (int hw = 0; hw < HW; hw++) {
+                                    float dy = outGrad.data[b * total + c * HW + hw];
+                                    float xhat = (x.data[b * total + c * HW + hw] - means[b][c]) * invStd;
+                                    sumDy += dy;
+                                    sumDyXhat += dy * xhat;
+                                }
+                                for (int hw = 0; hw < HW; hw++) {
+                                    float dy = outGrad.data[b * total + c * HW + hw];
+                                    float xhat = (x.data[b * total + c * HW + hw] - means[b][c]) * invStd;
+                                    gx.data[b * total + c * HW + hw] = invStd / HW
+                                            * (HW * dy - sumDy - xhat * sumDyXhat);
+                                }
+                            }
+                        }
+                        x.backwardStep(gx);
+                    }
+                };
+            }
+            return out;
+        }
+    }
+
+    // --- RNNCell ---
+    public static class RNNCell extends Module {
+        public int inputSize;
+        public int hiddenSize;
+        public Parameter weight_ih;
+        public Parameter weight_hh;
+        public Parameter bias_ih;
+        public Parameter bias_hh;
+
+        public RNNCell(nn outer, int inputSize, int hiddenSize, boolean bias) {
+            this.inputSize = inputSize;
+            this.hiddenSize = hiddenSize;
+
+            // He init
+            float k = (float) Math.sqrt(1.0 / hiddenSize);
+            Mat w_ih = outer.mat_alloc(inputSize, hiddenSize);
+            outer.mat_rand(w_ih, -k, k);
+            this.weight_ih = new Parameter(w_ih);
+            addParameter("weight_ih", this.weight_ih);
+
+            Mat w_hh = outer.mat_alloc(hiddenSize, hiddenSize);
+            outer.mat_rand(w_hh, -k, k);
+            this.weight_hh = new Parameter(w_hh);
+            addParameter("weight_hh", this.weight_hh);
+
+            if (bias) {
+                Mat b_ih = outer.mat_alloc(1, hiddenSize);
+                outer.mat_fill(b_ih, 0f);
+                this.bias_ih = new Parameter(b_ih);
+                addParameter("bias_ih", this.bias_ih);
+
+                Mat b_hh = outer.mat_alloc(1, hiddenSize);
+                outer.mat_fill(b_hh, 0f);
+                this.bias_hh = new Parameter(b_hh);
+                addParameter("bias_hh", this.bias_hh);
+            }
+        }
+
+        @Override
+        public Tensor forward(Tensor x) {
+            // Forward pass for one time step
+            // x: [batch, inputSize]
+            // Need hidden state as argument? PyTorch RNNCell takes (input, hidden)
+            // But Module.forward only takes one argument.
+            // We can define a custom forward or call it directly.
+            throw new UnsupportedOperationException("RNNCell requires (input, hidden). Use forward(x, h).");
+        }
+
+        public Tensor forward(Tensor x, Tensor h) {
+            // h_next = tanh(x*W_ih + b_ih + h*W_hh + b_hh)
+            Tensor x_w = Torch.matmul(x, weight_ih.getTensor());
+            if (bias_ih != null)
+                x_w = Torch.add(x_w, bias_ih.getTensor());
+
+            Tensor h_w = Torch.matmul(h, weight_hh.getTensor());
+            if (bias_hh != null)
+                h_w = Torch.add(h_w, bias_hh.getTensor());
+
+            return Torch.tanh(Torch.add(x_w, h_w));
+        }
+    }
+
+    // --- LSTMCell ---
+    public static class LSTMCell extends Module {
+        public int inputSize;
+        public int hiddenSize;
+        public Parameter weight_ih;
+        public Parameter weight_hh;
+        public Parameter bias_ih;
+        public Parameter bias_hh;
+
+        public LSTMCell(nn outer, int inputSize, int hiddenSize, boolean bias) {
+            this.inputSize = inputSize;
+            this.hiddenSize = hiddenSize;
+
+            float k = (float) Math.sqrt(1.0 / hiddenSize);
+            // Packed weight for i, f, g, o gates
+            Mat w_ih = outer.mat_alloc(inputSize, 4 * hiddenSize);
+            outer.mat_rand(w_ih, -k, k);
+            this.weight_ih = new Parameter(w_ih);
+            addParameter("weight_ih", this.weight_ih);
+
+            Mat w_hh = outer.mat_alloc(hiddenSize, 4 * hiddenSize);
+            outer.mat_rand(w_hh, -k, k);
+            this.weight_hh = new Parameter(w_hh);
+            addParameter("weight_hh", this.weight_hh);
+
+            if (bias) {
+                Mat b_ih = outer.mat_alloc(1, 4 * hiddenSize);
+                outer.mat_fill(b_ih, 0f);
+                this.bias_ih = new Parameter(b_ih);
+                addParameter("bias_ih", this.bias_ih);
+
+                Mat b_hh = outer.mat_alloc(1, 4 * hiddenSize);
+                outer.mat_fill(b_hh, 0f);
+                this.bias_hh = new Parameter(b_hh);
+                addParameter("bias_hh", this.bias_hh);
+            }
+        }
+
+        @Override
+        public Tensor forward(Tensor x) {
+            throw new UnsupportedOperationException("LSTMCell requires (input, hidden, cell). Use forward(x, h, c).");
+        }
+
+        public Tensor[] forward(Tensor x, Tensor h, Tensor c) {
+            // Gates calculation
+            Tensor x_w = Torch.matmul(x, weight_ih.getTensor());
+            if (bias_ih != null)
+                x_w = Torch.add(x_w, bias_ih.getTensor());
+
+            Tensor h_w = Torch.matmul(h, weight_hh.getTensor());
+            if (bias_hh != null)
+                h_w = Torch.add(h_w, bias_hh.getTensor());
+
+            Tensor gates = Torch.add(x_w, h_w);
+
+            // Split gates: [batch, 4*hiddenSize] -> 4 * [batch, hiddenSize]
+            java.util.List<Tensor> splitGates = Torch.chunk(gates, 4, 1);
+            Tensor i_t = Torch.sigmoid(splitGates.get(0));
+            Tensor f_t = Torch.sigmoid(splitGates.get(1));
+            Tensor g_t = Torch.tanh(splitGates.get(2));
+            Tensor o_t = Torch.sigmoid(splitGates.get(3));
+
+            // c_next = f_t * c + i_t * g_t
+            Tensor c_next = Torch.add(Torch.mul(f_t, c), Torch.mul(i_t, g_t));
+            // h_next = o_t * tanh(c_next)
+            Tensor h_next = Torch.mul(o_t, Torch.tanh(c_next));
+
+            return new Tensor[] { h_next, c_next };
+        }
+    }
+
+    // --- RNN ---
+    public static class RNN extends Module {
+        public RNNCell cell;
+        public boolean batchFirst;
+
+        public RNN(nn outer, int inputSize, int hiddenSize, boolean bias, boolean batchFirst) {
+            this.cell = new RNNCell(outer, inputSize, hiddenSize, bias);
+            this.batchFirst = batchFirst;
+            addModule("cell", this.cell);
+        }
+
+        @Override
+        public Tensor forward(Tensor x) {
+            // Default forward: input [seq_len, batch, input_size] or [batch, seq_len,
+            // input_size]
+            // We assume batch_first can be toggled
+            int seqLen = batchFirst ? x.shape[1] : x.shape[0];
+            int batch = batchFirst ? x.shape[0] : x.shape[1];
+            int inputSize = x.shape[2];
+            int hiddenSize = cell.hiddenSize;
+
+            Tensor h = Torch.zeros(batch, hiddenSize);
+
+            // Collect outputs
+            java.util.List<Tensor> outputs = new java.util.ArrayList<>();
+            for (int t = 0; t < seqLen; t++) {
+                Tensor xt;
+                if (batchFirst) {
+                    // Extract [batch, 1, input_size] -> [batch, input_size]
+                    xt = Torch.reshape(Torch.narrow(x, 1, t, 1), batch, inputSize);
+                } else {
+                    xt = Torch.reshape(Torch.narrow(x, 0, t, 1), batch, inputSize);
+                }
+                h = cell.forward(xt, h);
+                outputs.add(h);
+            }
+
+            // Stack outputs along dim 0 or 1
+            return Torch.stack(outputs, batchFirst ? 1 : 0);
+        }
+    }
+
+    // --- LSTM ---
+    public static class LSTM extends Module {
+        public LSTMCell cell;
+        public boolean batchFirst;
+
+        public LSTM(nn outer, int inputSize, int hiddenSize, boolean bias, boolean batchFirst) {
+            this.cell = new LSTMCell(outer, inputSize, hiddenSize, bias);
+            this.batchFirst = batchFirst;
+            addModule("cell", this.cell);
+        }
+
+        @Override
+        public Tensor forward(Tensor x) {
+            int seqLen = batchFirst ? x.shape[1] : x.shape[0];
+            int batch = batchFirst ? x.shape[0] : x.shape[1];
+            int inputSize = x.shape[2];
+            int hiddenSize = cell.hiddenSize;
+
+            Tensor h = Torch.zeros(batch, hiddenSize);
+            Tensor c = Torch.zeros(batch, hiddenSize);
+
+            java.util.List<Tensor> outputs = new java.util.ArrayList<>();
+            for (int t = 0; t < seqLen; t++) {
+                Tensor xt;
+                if (batchFirst) {
+                    xt = Torch.reshape(Torch.narrow(x, 1, t, 1), batch, inputSize);
+                } else {
+                    xt = Torch.reshape(Torch.narrow(x, 0, t, 1), batch, inputSize);
+                }
+                Tensor[] nc = cell.forward(xt, h, c);
+                h = nc[0];
+                c = nc[1];
+                outputs.add(h);
+            }
+
+            return Torch.stack(outputs, batchFirst ? 1 : 0);
         }
     }
 

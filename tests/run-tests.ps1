@@ -13,11 +13,11 @@ Write-Host "Project root: $($pwd)"
 if (!(Test-Path bin)) { New-Item -ItemType Directory -Path bin | Out-Null }
 
 Write-Host "Compiling library sources..."
-javac -d bin src\com\user\nn\*.java src\*.java
+javac --add-modules jdk.incubator.vector -d bin src\com\user\nn\*.java src\*.java
 if ($LASTEXITCODE -ne 0) { Write-Error "Compilation of sources failed."; exit 1 }
 
 Write-Host "Compiling test runners..."
-javac -d bin -cp bin tests\java\com\user\nn\*.java
+javac --add-modules jdk.incubator.vector -d bin -cp bin tests\java\com\user\nn\*.java
 if ($LASTEXITCODE -ne 0) { Write-Error "Compilation of tests failed."; exit 1 }
 
 $tests = @(
@@ -39,13 +39,18 @@ $tests = @(
     , 'com.user.nn.TestAutogradReductions'
     , 'com.user.nn.TestAutogradMatmul'
     , 'com.user.nn.TestAutogradActivations'
+    , 'com.user.nn.TestAutogradMLP'
+    , 'com.user.nn.TestAutogradConv'
+    , 'com.user.nn.TestOptimizers'
+    , 'com.user.nn.TestLossFunctions'
+    , 'com.user.nn.TestNormLayers'
 )
 
 $failures = @()
 
 foreach ($t in $tests) {
     Write-Host "\n=== Running $t ==="
-    java -cp bin $t
+    java --add-modules jdk.incubator.vector -cp bin $t
     $code = $LASTEXITCODE
     if ($code -eq 0) {
         Write-Host "PASS: $t" -ForegroundColor Green

@@ -3,6 +3,8 @@ package com.user.nn;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import jdk.incubator.vector.FloatVector;
+import jdk.incubator.vector.VectorSpecies;
 
 public class Torch {
     public static String defaultDtype = "float32";
@@ -538,13 +540,33 @@ public class Torch {
         if (k != b.shape[0])
             throw new IllegalArgumentException("matmul shape mismatch");
         Tensor out = new Tensor(m, n);
-        for (int i = 0; i < m; i++)
+
+        // We optimize matmul by transposing B once, so memory access is contiguous
+        Tensor bt = transpose(b);
+        int upperBound = SPECIES.loopBound(k);
+
+        for (int i = 0; i < m; i++) {
             for (int j = 0; j < n; j++) {
-                float s = 0f;
-                for (int kk = 0; kk < k; kk++)
-                    s += a.data[i * k + kk] * b.data[kk * n + j];
-                out.data[i * n + j] = s;
+                float sum = 0f;
+                FloatVector sumVector = FloatVector.zero(SPECIES);
+                int kk = 0;
+
+                // SIMD loop
+                for (; kk < upperBound; kk += SPECIES.length()) {
+                    FloatVector va = FloatVector.fromArray(SPECIES, a.data, i * k + kk);
+                    FloatVector vb = FloatVector.fromArray(SPECIES, bt.data, j * k + kk);
+                    sumVector = sumVector.add(va.mul(vb));
+                }
+
+                sum += sumVector.reduceLanes(jdk.incubator.vector.VectorOperators.ADD);
+
+                // Tail loop
+                for (; kk < k; kk++) {
+                    sum += a.data[i * k + kk] * bt.data[j * k + kk];
+                }
+                out.data[i * n + j] = sum;
             }
+        }
         // autograd for matmul: dOut/dA = outGrad.matmul(B^T); dOut/dB =
         // A^T.matmul(outGrad)
         if (a.requires_grad || b.requires_grad) {
@@ -552,7 +574,6 @@ public class Torch {
             out.grad_fn = new Tensor.GradFn() {
                 public void apply(Tensor outGrad) {
                     if (a.requires_grad) {
-                        Tensor bt = transpose(b);
                         Tensor ga = matmul(outGrad, bt);
                         a.backwardStep(ga);
                     }
@@ -567,45 +588,6 @@ public class Torch {
         return out;
     }
 
-    public static Tensor cat(List<Tensor> tensors, int dim) {
-        if (tensors.size() == 0)
-            throw new IllegalArgumentException("no tensors to cat");
-        int nd = tensors.get(0).shape.length;
-        if (dim < 0)
-            dim += nd;
-        for (Tensor t : tensors)
-            if (t.shape.length != nd)
-                throw new IllegalArgumentException("all tensors must have same rank");
-        // compute output shape
-        int[] out = tensors.get(0).shape.clone();
-        out[dim] = 0;
-        for (Tensor t : tensors) {
-            for (int i = 0; i < nd; i++) {
-                if (i == dim)
-                    continue;
-                if (t.shape[i] != out[i])
-                    throw new IllegalArgumentException("incompatible shapes for cat");
-            }
-            out[dim] += t.shape[dim];
-        }
-        Tensor res = new Tensor(out);
-        int offset = 0;
-        int inner = 1;
-        for (int i = dim + 1; i < nd; i++)
-            inner *= out[i];
-        int outer = 1;
-        for (int i = 0; i < dim; i++)
-            outer *= out[i];
-        int step = out[dim] * inner;
-        // naive copy using nested indices for dim
-        int pos = 0;
-        for (Tensor t : tensors) {
-            System.arraycopy(t.data, 0, res.data, pos, t.data.length);
-            pos += t.data.length;
-        }
-        return res;
-    }
-
     // stack: insert a new dimension at `dim` and concatenate
     public static Tensor stack(List<Tensor> tensors, int dim) {
         if (tensors.size() == 0)
@@ -617,45 +599,18 @@ public class Torch {
         return cat(ups, dim);
     }
 
-    // split by sizes along dim (supports 1D and 2D tensors, dim 0 or 1)
+    // split by sizes along dim
     public static List<Tensor> split(Tensor a, int[] sizes, int dim) {
         ArrayList<Tensor> out = new ArrayList<>();
         if (dim < 0)
             dim += a.shape.length;
-        if (a.shape.length == 1 || (a.shape.length == 2 && dim == 0)) {
-            int offset = 0;
-            for (int s : sizes) {
-                if (a.shape.length == 1) {
-                    Tensor t = new Tensor(s);
-                    System.arraycopy(a.data, offset, t.data, 0, s);
-                    out.add(t);
-                } else {
-                    // dim 0: split rows
-                    int cols = a.shape[1];
-                    Tensor t = new Tensor(s, cols);
-                    for (int i = 0; i < s; i++)
-                        System.arraycopy(a.data, (offset + i) * cols, t.data, i * cols, cols);
-                    out.add(t);
-                }
-                offset += s;
-            }
-            return out;
+
+        int offset = 0;
+        for (int s : sizes) {
+            out.add(narrow(a, dim, offset, s));
+            offset += s;
         }
-        if (a.shape.length == 2 && dim == 1) {
-            // split columns
-            int rows = a.shape[0];
-            int offset = 0;
-            for (int s : sizes) {
-                Tensor t = new Tensor(rows, s);
-                for (int i = 0; i < rows; i++)
-                    for (int j = 0; j < s; j++)
-                        t.data[i * s + j] = a.data[i * a.shape[1] + (offset + j)];
-                out.add(t);
-                offset += s;
-            }
-            return out;
-        }
-        throw new UnsupportedOperationException("split not implemented for this shape/dim");
+        return out;
     }
 
     // chunk into `chunks` parts along dim (last part may be smaller)
@@ -1324,13 +1279,33 @@ public class Torch {
         return permute(t, dims);
     }
 
+    // Vector Species for SIMD optimizations
+    private static final VectorSpecies<Float> SPECIES = FloatVector.SPECIES_PREFERRED;
+
     public static float dot(Tensor a, Tensor b) {
         if (a.numel() != b.numel())
             throw new IllegalArgumentException("dot size mismatch");
-        float s = 0f;
-        for (int i = 0; i < a.data.length; i++)
-            s += a.data[i] * b.data[i];
-        return s;
+
+        int length = a.data.length;
+        int i = 0;
+        float sum = 0f;
+        int upperBound = SPECIES.loopBound(length);
+        FloatVector sumVector = FloatVector.zero(SPECIES);
+
+        for (; i < upperBound; i += SPECIES.length()) {
+            FloatVector va = FloatVector.fromArray(SPECIES, a.data, i);
+            FloatVector vb = FloatVector.fromArray(SPECIES, b.data, i);
+            sumVector = sumVector.add(va.mul(vb));
+        }
+
+        // Sum values across the vector lanes
+        sum += sumVector.reduceLanes(jdk.incubator.vector.VectorOperators.ADD);
+
+        // Tail loop for remaining elements
+        for (; i < length; i++) {
+            sum += a.data[i] * b.data[i];
+        }
+        return sum;
     }
 
     // matrix inverse (Gauss-Jordan) for 2D square tensors
@@ -1492,8 +1467,138 @@ public class Torch {
         gradEnabled = true;
     }
 
+    public static void set_grad_enabled(boolean enabled) {
+        gradEnabled = enabled;
+    }
+
     public static boolean is_grad_enabled() {
         return gradEnabled;
+    }
+
+    // cat(tensors, dim): Concatenates the given sequence of tensors in the given
+    // dimension.
+    public static Tensor cat(java.util.List<Tensor> tensors, int dim) {
+        if (tensors.isEmpty())
+            throw new IllegalArgumentException("cat requires at least one tensor");
+        if (dim < 0)
+            dim += tensors.get(0).shape.length;
+
+        // Validate shapes
+        int[] baseShape = tensors.get(0).shape;
+        for (int i = 0; i < baseShape.length; i++) {
+            if (i == dim)
+                continue;
+            for (int j = 1; j < tensors.size(); j++) {
+                if (tensors.get(j).shape[i] != baseShape[i])
+                    throw new IllegalArgumentException("cat: Tensors must have same shape except in the cat dimension");
+            }
+        }
+
+        int totalDimSize = 0;
+        for (Tensor t : tensors) {
+            totalDimSize += t.shape[dim];
+        }
+
+        int[] newShape = baseShape.clone();
+        newShape[dim] = totalDimSize;
+        Tensor res = new Tensor(newShape);
+
+        int outerSize = 1;
+        for (int i = 0; i < dim; i++)
+            outerSize *= baseShape[i];
+        int innerSize = 1;
+        for (int i = dim + 1; i < baseShape.length; i++)
+            innerSize *= baseShape[i];
+
+        int currentOffset = 0;
+        for (Tensor t : tensors) {
+            int tDimSize = t.shape[dim];
+            for (int i = 0; i < outerSize; i++) {
+                System.arraycopy(
+                        t.data, i * tDimSize * innerSize,
+                        res.data, (i * totalDimSize + currentOffset) * innerSize,
+                        tDimSize * innerSize);
+            }
+            currentOffset += tDimSize;
+        }
+
+        if (is_grad_enabled()) {
+            boolean anyGrad = false;
+            for (Tensor t : tensors)
+                if (t.requires_grad) {
+                    anyGrad = true;
+                    break;
+                }
+            if (anyGrad) {
+                final int finalDim = dim;
+                res.requires_grad = true;
+                res.grad_fn = new Tensor.GradFn() {
+                    public void apply(Tensor outGrad) {
+                        int p = 0;
+                        for (Tensor t : tensors) {
+                            int tDimSize = t.shape[finalDim];
+                            if (t.requires_grad) {
+                                Tensor grad = narrow(outGrad, finalDim, p, tDimSize);
+                                t.backwardStep(grad);
+                            }
+                            p += tDimSize;
+                        }
+                    }
+                };
+            }
+        }
+        return res;
+    }
+
+    // narrow(input, dim, start, length): Returns a new tensor that is a narrowed
+    // version of input tensor.
+    public static Tensor narrow(Tensor input, int dim, int start, int length) {
+        if (dim < 0)
+            dim += input.shape.length;
+        int[] newShape = input.shape.clone();
+        newShape[dim] = length;
+        Tensor out = new Tensor(newShape);
+
+        int outerSize = 1;
+        for (int i = 0; i < dim; i++)
+            outerSize *= input.shape[i];
+        int innerSize = 1;
+        for (int i = dim + 1; i < input.shape.length; i++)
+            innerSize *= input.shape[i];
+
+        int oldDimSize = input.shape[dim];
+
+        final int finalDim = dim;
+        final int finalStart = start;
+        final int finalLength = length;
+        final int finalInnerSize = innerSize;
+        final int finalOuterSize = outerSize;
+        final int finalOldDimSize = input.shape[dim];
+
+        for (int i = 0; i < outerSize; i++) {
+            // Copy a block for each outer index
+            System.arraycopy(
+                    input.data, (i * finalOldDimSize + finalStart) * finalInnerSize,
+                    out.data, (i * finalLength) * finalInnerSize,
+                    finalLength * finalInnerSize);
+        }
+
+        if (is_grad_enabled() && input.requires_grad) {
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn() {
+                public void apply(Tensor outGrad) {
+                    Tensor grad = new Tensor(input.shape);
+                    for (int i = 0; i < finalOuterSize; i++) {
+                        System.arraycopy(
+                                outGrad.data, (i * finalLength) * finalInnerSize,
+                                grad.data, (i * finalOldDimSize + finalStart) * finalInnerSize,
+                                finalLength * finalInnerSize);
+                    }
+                    input.backwardStep(grad);
+                }
+            };
+        }
+        return out;
     }
 
 }
