@@ -20,64 +20,70 @@ A minimal re-implementation of core PyTorch concepts in pure Java for learning a
 | **SIMD Support** | ✅ Java Vector API (AVX2/AVX-512) for `matmul`, `dot` |
 | **NLP Support** | ✅ `Embedding`, `Vocabulary`, `BasicTokenizer`, `SentimentModel` |
 | **Autograd Optimized** | ✅ **Topological Sort** for $O(N)$ backprop (No more recursive $O(2^N)$ hangs) |
-| **Test Suite** | ✅ 24 automated tests via `run-tests.ps1` |
+| **Test Suite** | ✅ 31 automated tests via `run-tests.ps1` |
 
 ## Quick Start
 
 ```bash
-# Compile (Note: --add-modules required for SIMD Vector API)
-javac --add-modules jdk.incubator.vector -d bin src/com/user/nn/*.java
+# Compile core framework (Note: --add-modules required for SIMD Vector API)
+javac --add-modules jdk.incubator.vector -d bin src/com/user/nn/core/*.java src/com/user/nn/optim/*.java src/com/user/nn/dataloaders/*.java src/com/user/nn/models/*.java
 
-# Run all tests (24 tests)
+# Run all tests (31 tests)
 powershell -File tests/run-tests.ps1
 
 # Examples:
 # Compile & run Iris example
-javac --add-modules jdk.incubator.vector -d bin -cp bin src/TrainIris.java
-java --add-modules jdk.incubator.vector -cp bin TrainIris
+javac --add-modules jdk.incubator.vector -d bin -cp bin src/com/user/nn/examples/TrainIris.java
+java --add-modules jdk.incubator.vector -cp bin com.user.nn.examples.TrainIris
 
 # Compile & run Fashion-MNIST CNN (Using Multi-threaded DataLoader)
-javac --add-modules jdk.incubator.vector -d bin -cp bin src/TrainFashionMNIST.java
-java --add-modules jdk.incubator.vector -cp bin TrainFashionMNIST
+javac --add-modules jdk.incubator.vector -d bin -cp bin src/com/user/nn/examples/TrainFashionMNIST.java
+java --add-modules jdk.incubator.vector -cp bin com.user.nn.examples.TrainFashionMNIST
 
 # Compile & run CIFAR-10 CNN (Using Multi-threaded DataLoader)
-javac --add-modules jdk.incubator.vector -d bin -cp bin src/TrainCifar10.java
-java --add-modules jdk.incubator.vector -cp bin TrainCifar10
+javac --add-modules jdk.incubator.vector -d bin -cp bin src/com/user/nn/examples/TrainCifar10.java
+java --add-modules jdk.incubator.vector -cp bin com.user.nn.examples.TrainCifar10
 
 # Compile & run Sentiment Analysis (Real Movie Comments Dataset)
-javac --add-modules jdk.incubator.vector -d bin -cp bin src/SentimentModel.java src/TrainSentiment.java
-java --add-modules jdk.incubator.vector -cp bin TrainSentiment
+javac --add-modules jdk.incubator.vector -d bin -cp bin src/com/user/nn/examples/TrainSentiment.java
+java --add-modules jdk.incubator.vector -cp bin com.user.nn.examples.TrainSentiment
 ```
 
 ## Project Structure
 
 ```
 src/
-├── com/user/nn/
-│   ├── nn.java          # Module, Parameter, layers, F (loss functions), RNN/LSTM, **Embedding**
-│   ├── Tensor.java      # Core Tensor class with **Topological Sort Autograd**
-│   ├── Torch.java       # Tensor utilities (creation, ops, broadcasting, SIMD)
-│   ├── data.java        # Dataset, DataLoader, **Vocabulary**, **BasicTokenizer**
-│   ├── optim.java       # Optimizers (SGD, Adam)
-│   ├── MnistLoader.java # Download/Parse Fashion-MNIST
-│   ├── Cifar10Loader.java # Download/Parse CIFAR-10
-│   └── MovieCommentLoader.java # *NEW* Download/Parse Movie Polarity Dataset
-├── SentimentModel.java  # *NEW* Embedding -> LSTM -> Linear Model
-├── TrainSentiment.java  # *NEW* Sentiment Analysis Training on Real Data
-├── TrainIris.java       # Simple MLP for Iris classification
-├── TrainFashionMNIST.java # MLP with DataLoader for Fashion-MNIST
-├── TrainCifar10.java    # CNN with DataLoader on CIFAR-10
-├── TestVectorBenchmark.java # SIMD vs Scalar Matmul Benchmark
+└── com/user/nn/
+    ├── core/
+    │   ├── NN.java          # Module, Parameter, layers, F (loss functions), RNN/LSTM, **Embedding**
+    │   ├── Tensor.java      # Core Tensor class with **Topological Sort Autograd**
+    │   └── Torch.java       # Tensor utilities (creation, ops, broadcasting, SIMD)
+    ├── optim/
+    │   └── Optim.java       # Optimizers (SGD, Adam)
+    ├── dataloaders/
+    │   ├── Data.java        # Dataset, DataLoader, **Vocabulary**, **BasicTokenizer**
+    │   ├── MnistLoader.java # Download/Parse Fashion-MNIST
+    │   ├── Cifar10Loader.java # Download/Parse CIFAR-10
+    │   └── MovieCommentLoader.java # Download/Parse Movie Polarity Dataset
+    ├── models/
+    │   └── SentimentModel.java  # Embedding -> LSTM -> Linear Model
+    └── examples/
+        ├── App.java
+        ├── TrainSentiment.java  # Sentiment Analysis Training on Real Data
+        ├── TrainIris.java       # Simple MLP for Iris classification
+        ├── TrainFashionMNIST.java # MLP with DataLoader for Fashion-MNIST
+        ├── TrainCifar10.java    # CNN with DataLoader on CIFAR-10
+        └── TestVectorBenchmark.java # SIMD vs Scalar Matmul Benchmark
 tests/
-├── run-tests.ps1        # Automated test runner (24 tests)
-├── java/com/user/nn/    # Unit test files (including TestRNN)
+├── run-tests.ps1        # Automated test runner (31 tests)
+├── java/com/user/nn/    # Unit test files (including TestRNN, TestBatch*)
 └── *.py                 # NumPy reference scripts
 ```
 
 ## Roadmap
 
 ### ✅ Phase 1–8: Core & Ecosystem (Complete)
-- Tensor API, Autograd engine, nn.Module migration
+- Tensor API, Autograd engine, NN.Module migration
 - CNN Autograd Migration (`Conv2d`, `MaxPool2d`, `AvgPool2d`, `ZeroPad2d`, `ConvTranspose2d`)
 - `optim.SGD`, `optim.Adam`
 - Loss Functions (`nll_loss`, `mse_loss_tensor`, `huber_loss`)
@@ -102,7 +108,7 @@ tests/
 ### ✅ Polish & Real Datasets (Complete)
 - Added `TrainFashionMNIST.java` (87% Test Accuracy in 5 epochs)
 - Added `TrainCifar10.java` (45% Test Accuracy in 2 epochs, pure Java CNN)
-- Full suite of 24 tests fully operational
+- Full suite of 31 tests fully operational
 
 ### 🔲 Future Work
 - Conv1d/Conv3d, BatchNorm2d/3d, GroupNorm
@@ -110,7 +116,7 @@ tests/
 - JUnit integration
 - Data loading utilities (Dataset & DataLoader abstractions)
 
-## Test Suite (23 tests)
+## Test Suite (31 tests)
 
 | Test | Coverage |
 |------|----------|
