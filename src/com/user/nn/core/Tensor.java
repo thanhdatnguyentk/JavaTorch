@@ -31,10 +31,15 @@ public class Tensor implements AutoCloseable {
 
     public Tensor(int... shape) {
         this.shape = shape.clone();
-        int n = 1;
+        int size = 1;
         for (int s : shape)
-            n *= s;
-        this.data = new float[n];
+            size *= s;
+        this.data = new float[size];
+        
+        MemoryScope scope = MemoryScope.current();
+        if (scope != null) {
+            scope.track(this);
+        }
     }
 
     public Tensor(float[] data, int... shape) {

@@ -14,11 +14,26 @@ import static jcuda.jcudnn.cudnnNanPropagation.*;
 import jcuda.jcublas.cublasHandle;
 import static jcuda.jcublas.JCublas2.*;
 import static jcuda.jcublas.cublasOperation.*;
+import static jcuda.jcublas.cublasOperation.*;
 import static jcuda.runtime.JCuda.*;
+import static jcuda.runtime.cudaMemcpyKind.*;
+import jcuda.driver.CUfunction;
+import jcuda.driver.CUmodule;
+import jcuda.driver.JCudaDriver;
+import static jcuda.driver.JCudaDriver.*;
 
 public class CUDAOps {
     private static cublasHandle cublasHandle;
     private static cudnnHandle cudnnHandle;
+    
+    // Custom PTX Kernels
+    private static CUmodule module;
+    private static CUfunction addFunction;
+    private static CUfunction subFunction;
+    private static CUfunction mulFunction;
+    private static CUfunction addScalarFunction;
+    private static CUfunction mulScalarFunction;
+    
     private static boolean initialized = false;
 
     public static synchronized void init() {
@@ -31,8 +46,109 @@ public class CUDAOps {
             if (status != CUDNN_STATUS_SUCCESS) {
                 System.err.println("Warning: cuDNN initialization failed: " + jcuda.jcudnn.cudnnStatus.stringFor(status));
             }
+            
+            // Initialize Driver API for custom kernels
+            JCudaDriver.setExceptionsEnabled(true);
+            cuInit(0);
+            
+            try {
+                module = new CUmodule();
+                cuModuleLoad(module, "bin/kernels.ptx");
+                
+                addFunction = new CUfunction();
+                cuModuleGetFunction(addFunction, module, "add_tensors");
+                
+                subFunction = new CUfunction();
+                cuModuleGetFunction(subFunction, module, "sub_tensors");
+                
+                mulFunction = new CUfunction();
+                cuModuleGetFunction(mulFunction, module, "mul_tensors");
+                
+                addScalarFunction = new CUfunction();
+                cuModuleGetFunction(addScalarFunction, module, "add_scalar");
+                
+                mulScalarFunction = new CUfunction();
+                cuModuleGetFunction(mulScalarFunction, module, "mul_scalar");
+            } catch (Exception e) {
+                System.err.println("Warning: Could not load custom PTX kernels. GPU element-wise operations may fail.");
+                e.printStackTrace();
+            }
+            
             initialized = true;
         }
+    }
+
+    private static void launchElementwiseKernel(CUfunction function, Tensor a, Tensor b, Tensor out) {
+        int n = a.numel();
+        Pointer pa = Pointer.to(a.getDevicePointer());
+        Pointer pb = Pointer.to(b.getDevicePointer());
+        Pointer pout = Pointer.to(out.getDevicePointer());
+        Pointer pn = Pointer.to(new int[]{n});
+        
+        Pointer kernelParameters = Pointer.to(pa, pb, pout, pn);
+        
+        int blockSizeX = 256;
+        int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
+        
+        cuLaunchKernel(function,
+            gridSizeX,  1, 1,
+            blockSizeX, 1, 1,
+            0, null,
+            kernelParameters, null);
+            
+        out.markDirtyOnGPU();
+    }
+    
+    private static void launchScalarKernel(CUfunction function, Tensor x, float scalar, Tensor out) {
+        int n = x.numel();
+        Pointer px = Pointer.to(x.getDevicePointer());
+        Pointer ps = Pointer.to(new float[]{scalar});
+        Pointer pn = Pointer.to(new int[]{n});
+        
+        Pointer kernelParameters = Pointer.to(px, ps, pn);
+        
+        int blockSizeX = 256;
+        int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
+        
+        cuLaunchKernel(function,
+            gridSizeX,  1, 1,
+            blockSizeX, 1, 1,
+            0, null,
+            kernelParameters, null);
+            
+        out.markDirtyOnGPU();
+    }
+
+    public static void add(Tensor a, Tensor b, Tensor out) {
+        init();
+        launchElementwiseKernel(addFunction, a, b, out);
+    }
+    
+    public static void sub(Tensor a, Tensor b, Tensor out) {
+        init();
+        launchElementwiseKernel(subFunction, a, b, out);
+    }
+    
+    public static void mul(Tensor a, Tensor b, Tensor out) {
+        init();
+        launchElementwiseKernel(mulFunction, a, b, out);
+    }
+    
+    public static void add(Tensor x, float scalar, Tensor out) {
+        init();
+        // The scalar kernel updates in-place, we should copy if x != out
+        if (x != out) {
+            cudaMemcpy(out.getDevicePointer(), x.getDevicePointer(), (long) x.numel() * jcuda.Sizeof.FLOAT, cudaMemcpyDeviceToDevice);
+        }
+        launchScalarKernel(addScalarFunction, out, scalar, out);
+    }
+    
+    public static void mul(Tensor x, float scalar, Tensor out) {
+        init();
+        if (x != out) {
+            cudaMemcpy(out.getDevicePointer(), x.getDevicePointer(), (long) x.numel() * jcuda.Sizeof.FLOAT, cudaMemcpyDeviceToDevice);
+        }
+        launchScalarKernel(mulScalarFunction, out, scalar, out);
     }
 
     /**

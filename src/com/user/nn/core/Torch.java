@@ -196,7 +196,7 @@ public class Torch {
 
     // Basic math (elementwise) - assumes same shape
     public static Tensor sub(Tensor a, Tensor b) {
-        Tensor out = binaryOp(a, b, (x, y) -> x - y);
+        Tensor out = binaryOp(a, b, (x, y) -> x - y, BinaryOpType.SUB);
         if (is_grad_enabled() && (a.requires_grad || b.requires_grad)) {
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(a, b) {
@@ -217,19 +217,19 @@ public class Torch {
     }
 
     public static Tensor mul(Tensor a, Tensor b) {
-        Tensor out = binaryOp(a, b, (x, y) -> x * y);
+        Tensor out = binaryOp(a, b, (x, y) -> x * y, BinaryOpType.MUL);
         // autograd for mul: dOut/dA = B * outGrad ; dOut/dB = A * outGrad
         if (is_grad_enabled() && (a.requires_grad || b.requires_grad)) {
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(a, b) {
                 public void apply(Tensor outGrad) {
                     if (a.requires_grad) {
-                        Tensor ga = binaryOp(outGrad, b, (x, y) -> x * y); // outGrad * b
+                        Tensor ga = binaryOp(outGrad, b, (x, y) -> x * y, BinaryOpType.MUL); // outGrad * b
                         ga = reduceSumToShape(ga, a.shape);
                         a.backwardStep(ga);
                     }
                     if (b.requires_grad) {
-                        Tensor gb = binaryOp(outGrad, a, (x, y) -> x * y);
+                        Tensor gb = binaryOp(outGrad, a, (x, y) -> x * y, BinaryOpType.MUL);
                         gb = reduceSumToShape(gb, b.shape);
                         b.backwardStep(gb);
                     }
@@ -241,7 +241,7 @@ public class Torch {
 
     // attach autograd for add
     public static Tensor addWithGrad(Tensor a, Tensor b) {
-        Tensor out = binaryOp(a, b, (x, y) -> x + y);
+        Tensor out = binaryOp(a, b, (x, y) -> x + y, BinaryOpType.ADD);
         if (is_grad_enabled() && (a.requires_grad || b.requires_grad)) {
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(a, b) {
@@ -261,7 +261,7 @@ public class Torch {
     }
 
     public static Tensor div(Tensor a, Tensor b) {
-        return binaryOp(a, b, (x, y) -> x / y);
+        return binaryOp(a, b, (x, y) -> x / y, BinaryOpType.DIV);
     }
 
     // scalar variants
@@ -332,7 +332,27 @@ public class Torch {
     // scalar add/mul autograd not implemented (user can use elementwise ops with
     // tensors)
 
+    public enum BinaryOpType { ADD, SUB, MUL, DIV, OTHER }
+
     private static Tensor binaryOp(Tensor a, Tensor b, FloatBinaryOp op) {
+        return binaryOp(a, b, op, BinaryOpType.OTHER);
+    }
+
+    private static Tensor binaryOp(Tensor a, Tensor b, FloatBinaryOp op, BinaryOpType type) {
+        // Fast path for exact shape match on GPU without broadcasting
+        if (type != BinaryOpType.OTHER && type != BinaryOpType.DIV 
+                && a.isGPU() && b.isGPU() && java.util.Arrays.equals(a.shape, b.shape)) {
+            Tensor out = new Tensor(a.shape).toGPU();
+            if (type == BinaryOpType.ADD) {
+                CUDAOps.add(a, b, out);
+            } else if (type == BinaryOpType.SUB) {
+                CUDAOps.sub(a, b, out);
+            } else if (type == BinaryOpType.MUL) {
+                CUDAOps.mul(a, b, out);
+            }
+            return out;
+        }
+
         a.toCPU();
         b.toCPU();
         // full broadcasting support for shapes with compatible dims
@@ -1490,6 +1510,8 @@ public class Torch {
 
     public static Tensor lt(Tensor a, Tensor b) {
         return binaryOp(a, b, (x, y) -> x < y ? 1f : 0f);
+    }
+    
     // --- Batch 1 Activations & Softmax ---
 
     public static Tensor softmax(Tensor a, int dim) {

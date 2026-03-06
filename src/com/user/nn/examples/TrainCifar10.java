@@ -93,31 +93,32 @@ public class TrainCifar10 {
             model.train();
 
             for (Tensor[] batch : loader) {
-                Tensor xBatch = batch[0];
-                xBatch.toGPU();
-                int bs = xBatch.shape[0];
+                try (MemoryScope scope = new MemoryScope()) {
+                    Tensor xBatch = batch[0];
+                    scope.track(xBatch);
+                    scope.track(batch[1]);
+                    
+                    xBatch.toGPU();
+                    int bs = xBatch.shape[0];
 
-                int[] batchLabels = new int[bs];
-                for (int i = 0; i < bs; i++) batchLabels[i] = (int) batch[1].data[i];
+                    int[] batchLabels = new int[bs];
+                    for (int i = 0; i < bs; i++) batchLabels[i] = (int) batch[1].data[i];
 
-                optimizer.zero_grad();
-                Tensor logits = model.forward(xBatch);
-                Tensor loss = NN.F.cross_entropy_tensor(logits, batchLabels);
-                loss.backward();
-                optimizer.step();
+                    optimizer.zero_grad();
+                    Tensor logits = model.forward(xBatch);
+                    Tensor loss = NN.F.cross_entropy_tensor(logits, batchLabels);
+                    loss.backward();
+                    optimizer.step();
 
-                epochLoss += loss.data[0];
-                numBatches++;
-                accMetric.update(logits, batchLabels);
+                    epochLoss += loss.data[0];
+                    numBatches++;
+                    accMetric.update(logits, batchLabels);
 
-                if (numBatches % 20 == 0) {
-                    System.out.printf("  Epoch %d batch %d/%d  loss=%.4f%n",
-                            epoch + 1, numBatches, N / batchSize, loss.data[0]);
+                    if (numBatches % 20 == 0) {
+                        System.out.printf("  Epoch %d batch %d/%d  loss=%.4f%n",
+                                epoch + 1, numBatches, N / batchSize, loss.data[0]);
+                    }
                 }
-                
-                xBatch.close();
-                logits.close();
-                loss.close();
             }
 
             float trainAcc = accMetric.compute();
@@ -136,26 +137,25 @@ public class TrainCifar10 {
         int evalBatch = 256;
 
         for (int start = 0; start < N; start += evalBatch) {
-            int bs = Math.min(evalBatch, N - start);
-            float[] data = new float[bs * dim];
-            for (int i = 0; i < bs; i++)
-                System.arraycopy(images[start + i], 0, data, i * dim, dim);
+            try (MemoryScope scope = new MemoryScope()) {
+                int bs = Math.min(evalBatch, N - start);
+                float[] data = new float[bs * dim];
+                for (int i = 0; i < bs; i++)
+                    System.arraycopy(images[start + i], 0, data, i * dim, dim);
 
-            Tensor x = Torch.tensor(data, bs, dim);
-            x.toGPU();
+                Tensor x = Torch.tensor(data, bs, dim);
+                x.toGPU();
 
-            model.eval();
-            Torch.set_grad_enabled(false);
-            Tensor out = model.forward(x);
-            Torch.set_grad_enabled(true);
-            model.train();
+                model.eval();
+                Torch.set_grad_enabled(false);
+                Tensor out = model.forward(x);
+                Torch.set_grad_enabled(true);
+                model.train();
 
-            int[] batchLabels = new int[bs];
-            for (int i = 0; i < bs; i++) batchLabels[i] = labels[start + i];
-            metric.update(out, batchLabels);
-            
-            x.close();
-            out.close();
+                int[] batchLabels = new int[bs];
+                for (int i = 0; i < bs; i++) batchLabels[i] = labels[start + i];
+                metric.update(out, batchLabels);
+            }
         }
         return metric.compute();
     }
