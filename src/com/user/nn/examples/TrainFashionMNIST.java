@@ -64,6 +64,9 @@ public class TrainFashionMNIST {
         int epochs = 50;
         Optim.SGD optimizer = new Optim.SGD(model.parameters(), lr, 0.9f); // momentum 0.9
 
+        // Initialize GPU Memory Pool based on model size
+        GpuMemoryPool.autoInit(model);
+
         // Move model to GPU
         model.toGPU();
 
@@ -88,9 +91,6 @@ public class TrainFashionMNIST {
         };
 
         Data.DataLoader trainLoader = new Data.DataLoader(trainDataset, batchSize, true, 4);
-
-        // Initialize GPU Memory Pool (Arena Allocator) - auto-detect free VRAM
-        GpuMemoryPool.autoInit();
 
         System.out.println("Starting training for " + epochs + " epochs...");
         int totalBatches = N / batchSize;

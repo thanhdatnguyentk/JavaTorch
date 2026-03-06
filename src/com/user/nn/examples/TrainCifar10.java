@@ -15,8 +15,6 @@ import jcuda.runtime.JCuda;
 public class TrainCifar10 {
 
     public static void main(String[] args) throws Exception {
-        // Initialize GPU Memory Pool (Arena Allocator) - auto-detect free VRAM
-        GpuMemoryPool.autoInit();
 
         System.out.println("Preparing CIFAR-10 data...");
         Cifar10Loader.prepareData();
@@ -68,6 +66,9 @@ public class TrainCifar10 {
         int epochs = 100; 
         int batchSize = 128;
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), lr);
+
+        // Initialize GPU Memory Pool based on model size
+        GpuMemoryPool.autoInit(model);
 
         // Move to GPU
         System.out.println("Moving model to GPU...");

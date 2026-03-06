@@ -289,11 +289,19 @@ public class Tensor implements AutoCloseable {
         if (device == Device.GPU && onDevice && !onHost)
             return this;
         if (deviceData == null) {
-            // Try Arena Allocator first for fast allocation
-            Pointer poolSlice = GpuMemoryPool.allocate(numel());
-            if (poolSlice != null) {
-                deviceData = poolSlice;
-                poolManaged = true;
+            // Only use Arena Pool for short-lived tensors (inside a MemoryScope).
+            // Model parameters (allocated outside any scope) use regular cudaMalloc
+            // so they won't be overwritten when the pool resets.
+            if (MemoryScope.current() != null) {
+                Pointer poolSlice = GpuMemoryPool.allocate(numel());
+                if (poolSlice != null) {
+                    deviceData = poolSlice;
+                    poolManaged = true;
+                } else {
+                    deviceData = new Pointer();
+                    cudaMalloc(deviceData, (long) numel() * Sizeof.FLOAT);
+                    poolManaged = false;
+                }
             } else {
                 deviceData = new Pointer();
                 cudaMalloc(deviceData, (long) numel() * Sizeof.FLOAT);

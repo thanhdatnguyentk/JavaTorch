@@ -111,6 +111,9 @@ public class TrainIris {
         float lr = 0.05f;
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), lr);
         
+        // Initialize GPU Memory Pool based on model size
+        GpuMemoryPool.autoInit(model);
+
         // Move model to GPU
         model.toGPU();
 
@@ -165,43 +168,40 @@ public class TrainIris {
             model.train();
 
             for (Tensor[] batch : trainLoader) {
-                Tensor xBatch = batch[0]; // [batch_size, 4]
-                Tensor yBatch = batch[1]; // [batch_size, 1]
-                
-                xBatch.toGPU();
-                // yBatch stays on CPU for label indexing
+                try (MemoryScope scope = new MemoryScope()) {
+                    Tensor xBatch = batch[0]; // [batch_size, 4]
+                    Tensor yBatch = batch[1]; // [batch_size, 1]
+                    
+                    xBatch.toGPU();
+                    // yBatch stays on CPU for label indexing
 
-                int bs = xBatch.shape[0];
+                    int bs = xBatch.shape[0];
 
-                // Convert targets vector to int[] for cross entropy
-                int[] batchLabels = new int[bs];
-                for (int i = 0; i < bs; i++) {
-                    batchLabels[i] = (int) yBatch.data[i];
+                    // Convert targets vector to int[] for cross entropy
+                    int[] batchLabels = new int[bs];
+                    for (int i = 0; i < bs; i++) {
+                        batchLabels[i] = (int) yBatch.data[i];
+                    }
+
+                    optimizer.zero_grad();
+
+                    // Forward pass
+                    Tensor logits = model.forward(xBatch);
+
+                    // Loss
+                    Tensor loss = NN.F.cross_entropy_tensor(logits, batchLabels);
+                    epochLoss += loss.data[0];
+                    batchCount++;
+
+                    // Track accuracy
+                    accMetric.update(logits, batchLabels);
+
+                    // Backward pass using autograd
+                    loss.backward();
+
+                    // Optimizer step (Adam)
+                    optimizer.step();
                 }
-
-                optimizer.zero_grad();
-
-                // Forward pass
-                Tensor logits = model.forward(xBatch);
-
-                // Loss
-                Tensor loss = NN.F.cross_entropy_tensor(logits, batchLabels);
-                epochLoss += loss.data[0];
-                batchCount++;
-
-                // Track accuracy
-                accMetric.update(logits, batchLabels);
-
-                // Backward pass using autograd
-                loss.backward();
-
-                // Optimizer step (Adam)
-                optimizer.step();
-                
-                // Cleanup intermediate tensors on GPU
-                xBatch.close();
-                logits.close();
-                loss.close();
             }
 
             if (e % 100 == 0) {

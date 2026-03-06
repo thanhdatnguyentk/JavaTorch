@@ -56,6 +56,51 @@ public class GpuMemoryPool {
     }
 
     /**
+     * Automatically initialize the memory pool based on the model's parameter count.
+     * Computes the base memory required for parameters, gradients, and optimizer states,
+     * then applies an overhead multiplier to account for forward activations and batch size.
+     */
+    public static synchronized void autoInit(NN.Module model) {
+        autoInit(model, 10.0f); // Default 10x multiplier for activations/workspace
+    }
+
+    /**
+     * Automatically initialize the memory pool based on the model's parameter count.
+     * @param model The neural network model.
+     * @param overheadMultiplier Multiplier applied on base memory for activations (e.g. 5.0 to 15.0).
+     */
+    public static synchronized void autoInit(NN.Module model, float overheadMultiplier) {
+        if (initialized) return;
+        
+        long paramCount = model.countParameters();
+        long paramBytes = paramCount * Sizeof.FLOAT;
+        
+        // Base footprint: Params + Gradients + Optimizer States (Adam has M and V) -> approx 4x param memory
+        long baseBytes = paramBytes * 4; 
+        
+        long allocBytes = (long) (baseBytes * overheadMultiplier);
+        
+        // Minimum safety buffer (e.g. 512 MB)
+        allocBytes = Math.max(allocBytes, 512L * 1024 * 1024);
+        
+        // Cap at 90% of available VRAM to prevent system freeze
+        long[] free = new long[1];
+        long[] total = new long[1];
+        cudaMemGetInfo(free, total);
+        
+        long maxSafeBytes = (long) (free[0] * 0.9);
+        allocBytes = Math.min(allocBytes, maxSafeBytes);
+        
+        // Align to 1 MB boundary
+        allocBytes = (allocBytes / (1024 * 1024)) * (1024 * 1024);
+        
+        System.out.printf("[GpuMemoryPool] Model params: %,d. Base Memory: %d MB. Allocating: %d MB%n",
+            paramCount, baseBytes / (1024 * 1024), allocBytes / (1024 * 1024));
+            
+        init(allocBytes);
+    }
+
+    /**
      * Initialize the memory pool with a fixed size in bytes.
      * Should be called once at the start of training.
      */

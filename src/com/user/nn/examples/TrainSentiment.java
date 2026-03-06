@@ -43,6 +43,9 @@ public class TrainSentiment {
             t.requires_grad = true;
         }
 
+        // Initialize GPU Memory Pool based on model size
+        GpuMemoryPool.autoInit(model);
+
         // Move model to GPU
         model.toGPU();
         
@@ -60,42 +63,40 @@ public class TrainSentiment {
             model.train();
 
             for (int b = 0; b < numBatches; b++) {
-                int start = b * batchSize;
-                int end = Math.min(start + batchSize, trainEntries.size());
-                int currentBs = end - start;
-                
-                float[] xData = new float[currentBs * maxLen];
-                for (int i = 0; i < currentBs; i++) {
-                    MovieCommentLoader.Entry entry = trainEntries.get(start + i);
-                    List<String> tokens = tokenizer.tokenize(entry.text);
-                    for (int j = 0; j < maxLen; j++) {
-                        if (j < tokens.size()) xData[i * maxLen + j] = vocab.getId(tokens.get(j));
-                        else xData[i * maxLen + j] = 0;
+                try (MemoryScope scope = new MemoryScope()) {
+                    int start = b * batchSize;
+                    int end = Math.min(start + batchSize, trainEntries.size());
+                    int currentBs = end - start;
+                    
+                    float[] xData = new float[currentBs * maxLen];
+                    for (int i = 0; i < currentBs; i++) {
+                        MovieCommentLoader.Entry entry = trainEntries.get(start + i);
+                        List<String> tokens = tokenizer.tokenize(entry.text);
+                        for (int j = 0; j < maxLen; j++) {
+                            if (j < tokens.size()) xData[i * maxLen + j] = vocab.getId(tokens.get(j));
+                            else xData[i * maxLen + j] = 0;
+                        }
+                    }
+                    int[] yLabels = new int[currentBs];
+                    for (int i = 0; i < currentBs; i++) yLabels[i] = trainEntries.get(start + i).label;
+
+                    Tensor xBatch = Torch.tensor(xData, currentBs, maxLen);
+                    xBatch.toGPU();
+                    
+                    optimizer.zero_grad();
+                    Tensor logits = model.forward(xBatch);
+                    Tensor loss = NN.F.cross_entropy_tensor(logits, yLabels);
+                    
+                    loss.backward();
+                    optimizer.step();
+                    
+                    totalLoss += loss.data[0];
+                    accMetric.update(logits, yLabels);
+
+                    if ((b + 1) % 100 == 0) {
+                        System.out.printf("  Batch %d/%d - loss: %.4f%n", b + 1, numBatches, loss.data[0]);
                     }
                 }
-                int[] yLabels = new int[currentBs];
-                for (int i = 0; i < currentBs; i++) yLabels[i] = trainEntries.get(start + i).label;
-
-                Tensor xBatch = Torch.tensor(xData, currentBs, maxLen);
-                xBatch.toGPU();
-                
-                optimizer.zero_grad();
-                Tensor logits = model.forward(xBatch);
-                Tensor loss = NN.F.cross_entropy_tensor(logits, yLabels);
-                
-                loss.backward();
-                optimizer.step();
-                
-                totalLoss += loss.data[0];
-                accMetric.update(logits, yLabels);
-
-                if ((b + 1) % 100 == 0) {
-                    System.out.printf("  Batch %d/%d - loss: %.4f%n", b + 1, numBatches, loss.data[0]);
-                }
-
-                xBatch.close();
-                logits.close();
-                loss.close();
             }
             
             float avgLoss = totalLoss / numBatches;
@@ -114,25 +115,25 @@ public class TrainSentiment {
         model.eval();
         Torch.set_grad_enabled(false);
         for (int i = 0; i < data.size(); i += testBatchSize) {
-            int end = Math.min(i + testBatchSize, data.size());
-            int bs = end - i;
-            float[] xData = new float[bs * maxLen];
-            int[] yLabels = new int[bs];
-            for (int j = 0; j < bs; j++) {
-                MovieCommentLoader.Entry e = data.get(i + j);
-                List<String> tokens = tokenizer.tokenize(e.text);
-                for (int k = 0; k < maxLen; k++) {
-                   if (k < tokens.size()) xData[j * maxLen + k] = vocab.getId(tokens.get(k));
-                   else xData[j * maxLen + k] = 0;
+            try (MemoryScope scope = new MemoryScope()) {
+                int end = Math.min(i + testBatchSize, data.size());
+                int bs = end - i;
+                float[] xData = new float[bs * maxLen];
+                int[] yLabels = new int[bs];
+                for (int j = 0; j < bs; j++) {
+                    MovieCommentLoader.Entry e = data.get(i + j);
+                    List<String> tokens = tokenizer.tokenize(e.text);
+                    for (int k = 0; k < maxLen; k++) {
+                       if (k < tokens.size()) xData[j * maxLen + k] = vocab.getId(tokens.get(k));
+                       else xData[j * maxLen + k] = 0;
+                    }
+                    yLabels[j] = e.label;
                 }
-                yLabels[j] = e.label;
+                Tensor xBatch = Torch.tensor(xData, bs, maxLen);
+                xBatch.toGPU();
+                Tensor out = model.forward(xBatch);
+                metric.update(out, yLabels);
             }
-            Tensor xBatch = Torch.tensor(xData, bs, maxLen);
-            xBatch.toGPU();
-            Tensor out = model.forward(xBatch);
-            metric.update(out, yLabels);
-            xBatch.close();
-            out.close();
         }
         Torch.set_grad_enabled(true);
         model.train();

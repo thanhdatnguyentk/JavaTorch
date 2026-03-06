@@ -243,6 +243,14 @@ public class NN {
             return out;
         }
 
+        public long countParameters() {
+            long total = 0;
+            for (Parameter p : parameters()) {
+                total += p.getTensor().numel();
+            }
+            return total;
+        }
+
         public List<Module> modules() {
             List<Module> out = new ArrayList<>();
             out.addAll(children.values());
