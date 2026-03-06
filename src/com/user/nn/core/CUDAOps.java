@@ -15,6 +15,10 @@ import jcuda.jcublas.cublasHandle;
 import static jcuda.jcublas.JCublas2.*;
 import static jcuda.jcublas.cublasOperation.*;
 import static jcuda.jcublas.cublasOperation.*;
+import static jcuda.jcublas.cublasComputeType.*;
+import static jcuda.jcublas.cublasGemmAlgo.*;
+import static jcuda.cudaDataType.*;
+import static jcuda.jcudnn.cudnnMathType.*;
 import static jcuda.runtime.JCuda.*;
 import static jcuda.runtime.cudaMemcpyKind.*;
 import jcuda.driver.CUfunction;
@@ -235,13 +239,20 @@ public class CUDAOps {
 
         // Row-major A(m,k) * B(k,n) = C(m,n) is equivalent to
         // Column-major B'(n,k) * A'(k,m) = C'(n,m)
-        // cublasSgemm(handle, transa, transb, m, n, k, ...) 
-        // Using CM: Sgemm(handle, N, N, n, m, k, alpha, B, n, A, k, beta, C, n)
-        cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, 
-                    n, m, k, 
-                    pAlpha, pB, n, 
-                    pA, k, 
-                    pBeta, pC, n);
+        if (MixedPrecision.isEnabled()) {
+            cublasGemmEx(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, 
+                        n, m, k, 
+                        pAlpha, pB, CUDA_R_32F, n, 
+                        pA, CUDA_R_32F, k, 
+                        pBeta, pC, CUDA_R_32F, n,
+                        CUBLAS_COMPUTE_32F_FAST_16F, CUBLAS_GEMM_DEFAULT_TENSOR_OP);
+        } else {
+            cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, 
+                        n, m, k, 
+                        pAlpha, pB, n, 
+                        pA, k, 
+                        pBeta, pC, n);
+        }
         
         out.markDirtyOnGPU();
     }
@@ -277,6 +288,10 @@ public class CUDAOps {
 
         cudnnCreateConvolutionDescriptor(convDesc);
         cudnnSetConvolution2dDescriptor(convDesc, padH, padW, strideH, strideW, 1, 1, CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT);
+        
+        if (MixedPrecision.isEnabled()) {
+            cudnnSetConvolutionMathType(convDesc, CUDNN_TENSOR_OP_MATH_ALLOW_CONVERSION);
+        }
 
         cudnnCreateTensorDescriptor(yDesc);
         cudnnSetTensor4dDescriptor(yDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, outC, outH, outW);
@@ -348,6 +363,10 @@ public class CUDAOps {
 
         cudnnCreateConvolutionDescriptor(convDesc);
         cudnnSetConvolution2dDescriptor(convDesc, padH, padW, strideH, strideW, 1, 1, CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT);
+
+        if (MixedPrecision.isEnabled()) {
+            cudnnSetConvolutionMathType(convDesc, CUDNN_TENSOR_OP_MATH_ALLOW_CONVERSION);
+        }
 
         cudnnCreateTensorDescriptor(yDesc);
         cudnnSetTensor4dDescriptor(yDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, outC, outH, outW);

@@ -9,6 +9,8 @@ import java.util.*;
 
 public class TrainSentiment {
     public static void main(String[] args) throws Exception {
+        MixedPrecision.enable(); // Opt-in to Tensor Cores (FP16)
+        
         NN lib = new NN();
         
         System.out.println("Loading Movie Review dataset...");

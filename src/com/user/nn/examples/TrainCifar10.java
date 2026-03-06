@@ -15,6 +15,8 @@ import jcuda.runtime.JCuda;
 public class TrainCifar10 {
 
     public static void main(String[] args) throws Exception {
+        MixedPrecision.enable(); // Opt-in to Tensor Cores (FP16)
+
 
         System.out.println("Preparing CIFAR-10 data...");
         Cifar10Loader.prepareData();
