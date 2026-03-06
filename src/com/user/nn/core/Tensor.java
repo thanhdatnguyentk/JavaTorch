@@ -9,6 +9,10 @@ import static jcuda.runtime.cudaMemcpyKind.*;
 public class Tensor implements AutoCloseable {
     public enum Device { CPU, GPU }
     public Device device = Device.CPU;
+    
+    public boolean isGPU() {
+        return device == Device.GPU;
+    }
 
     public int[] shape;
     public float[] data;
@@ -77,6 +81,7 @@ public class Tensor implements AutoCloseable {
     }
 
     public Tensor clone() {
+        this.toCPU(); // Ensure data is up-to-date
         return new Tensor(this.data, this.shape);
     }
 
@@ -93,13 +98,17 @@ public class Tensor implements AutoCloseable {
 
     // accumulate gradient (elementwise add)
     public void accumulateGrad(Tensor g) {
-        if (this.grad == null)
+        if (this.grad == null) {
             this.grad = g.clone();
-        else {
+            this.grad.toCPU();
+        } else {
+            this.grad.toCPU();
+            g.toCPU();
             if (this.grad.data.length != g.data.length)
                 throw new IllegalArgumentException("grad size mismatch");
             for (int i = 0; i < this.grad.data.length; i++)
                 this.grad.data[i] += g.data[i];
+            this.grad.markDirtyOnCPU();
         }
     }
 
@@ -255,31 +264,39 @@ public class Tensor implements AutoCloseable {
 
     // --- JCuda Sync Methods ---
 
-    public void toGPU() {
-        if (onDevice && !onHost) return; // Already on device and host is not newer
+    public Tensor toGPU() {
+        if (device == Device.GPU && onDevice && !onHost)
+            return this;
         if (deviceData == null) {
             deviceData = new Pointer();
             cudaMalloc(deviceData, (long) numel() * Sizeof.FLOAT);
         }
         cudaMemcpy(deviceData, Pointer.to(data), (long) numel() * Sizeof.FLOAT, cudaMemcpyHostToDevice);
         onDevice = true;
+        onHost = false; // Mark host as potentially stale
         device = Device.GPU;
+        return this;
     }
 
-    public void toCPU() {
-        if (onHost && !onDevice) return; // Already on host and device is not newer
+    public Tensor toCPU() {
+        if (device == Device.CPU && onHost && !onDevice)
+            return this;
         if (deviceData == null) {
             onHost = true;
+            onDevice = false;
             device = Device.CPU;
-            return;
+            return this;
         }
         cudaMemcpy(Pointer.to(data), deviceData, (long) numel() * Sizeof.FLOAT, cudaMemcpyDeviceToHost);
         onHost = true;
+        onDevice = false; // Mark device as potentially stale
         device = Device.CPU;
+        return this;
     }
 
     public Pointer getDevicePointer() {
-        if (!onDevice) toGPU();
+        if (!onDevice || device != Device.GPU)
+            toGPU();
         return deviceData;
     }
 

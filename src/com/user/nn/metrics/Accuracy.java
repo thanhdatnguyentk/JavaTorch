@@ -11,8 +11,8 @@ public class Accuracy implements Metric {
 
     @Override
     public void update(Tensor preds, Tensor targets) {
-        // Assume targets are shaped [N, 1] or [N] containing integer labels
-        // Assume preds are shaped [N, C] containing logits
+        preds.toCPU();
+        targets.toCPU();
         int bs = preds.shape[0];
         int numClasses = preds.data.length / bs;
 
@@ -39,6 +39,7 @@ public class Accuracy implements Metric {
      * Special update for cases where targets are provided as an int array.
      */
     public void update(Tensor preds, int[] targets) {
+        preds.toCPU();
         int bs = preds.shape[0];
         int numClasses = preds.data.length / bs;
 

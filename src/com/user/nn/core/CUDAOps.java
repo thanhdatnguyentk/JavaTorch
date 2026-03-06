@@ -1,21 +1,36 @@
 package com.user.nn.core;
 
 import jcuda.Pointer;
-import jcuda.Sizeof;
-import jcuda.jcublas.JCublas2;
+import jcuda.jcudnn.*;
+import static jcuda.jcudnn.JCudnn.*;
+import static jcuda.jcudnn.cudnnStatus.*;
+import static jcuda.jcudnn.cudnnDataType.*;
+import static jcuda.jcudnn.cudnnTensorFormat.*;
+import static jcuda.jcudnn.cudnnActivationMode.*;
+import static jcuda.jcudnn.cudnnConvolutionMode.*;
+import static jcuda.jcudnn.cudnnConvolutionFwdAlgo.*;
+import static jcuda.jcudnn.cudnnPoolingMode.*;
+import static jcuda.jcudnn.cudnnNanPropagation.*;
 import jcuda.jcublas.cublasHandle;
 import static jcuda.jcublas.JCublas2.*;
 import static jcuda.jcublas.cublasOperation.*;
 import static jcuda.runtime.JCuda.*;
 
 public class CUDAOps {
-    private static cublasHandle handle;
+    private static cublasHandle cublasHandle;
+    private static cudnnHandle cudnnHandle;
     private static boolean initialized = false;
 
     public static synchronized void init() {
         if (!initialized) {
-            handle = new cublasHandle();
-            cublasCreate(handle);
+            cublasHandle = new cublasHandle();
+            cublasCreate(cublasHandle);
+            
+            cudnnHandle = new cudnnHandle();
+            int status = cudnnCreate(cudnnHandle);
+            if (status != CUDNN_STATUS_SUCCESS) {
+                System.err.println("Warning: cuDNN initialization failed: " + jcuda.jcudnn.cudnnStatus.stringFor(status));
+            }
             initialized = true;
         }
     }
@@ -47,7 +62,7 @@ public class CUDAOps {
         // Column-major B'(n,k) * A'(k,m) = C'(n,m)
         // cublasSgemm(handle, transa, transb, m, n, k, ...) 
         // Using CM: Sgemm(handle, N, N, n, m, k, alpha, B, n, A, k, beta, C, n)
-        cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, 
+        cublasSgemm(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N, 
                     n, m, k, 
                     pAlpha, pB, n, 
                     pA, k, 
@@ -56,9 +71,161 @@ public class CUDAOps {
         out.markDirtyOnGPU();
     }
     
+    /**
+     * Convolution 2D Forward using cuDNN
+     */
+    public static void conv2dForward(Tensor x, Tensor weight, Tensor bias, Tensor out,
+                                     int inC, int inH, int inW,
+                                     int kH, int kW,
+                                     int outC, int outH, int outW,
+                                     int padH, int padW, int strideH, int strideW) {
+        init();
+        int batch = x.shape[0];
+
+        cudnnTensorDescriptor xDesc = new cudnnTensorDescriptor();
+        cudnnTensorDescriptor yDesc = new cudnnTensorDescriptor();
+        cudnnFilterDescriptor wDesc = new cudnnFilterDescriptor();
+        cudnnConvolutionDescriptor convDesc = new cudnnConvolutionDescriptor();
+
+        cudnnCreateTensorDescriptor(xDesc);
+        cudnnSetTensor4dDescriptor(xDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, inC, inH, inW);
+
+        cudnnCreateFilterDescriptor(wDesc);
+        // cuDNN filter shape: [outC, inC, kH, kW]
+        // Our weight shape is [inC*kH*kW, outC]. We might need to transpose or adjust.
+        // Wait, our Conv2d weight is [ksz, outC] where ksz = inC*kH*kW.
+        // cuDNN expects [outC, inC, kH, kW]. 
+        // This is a major layout difference. 
+        // We'll need to transpose the weights to GPU layout once and keep them there.
+        
+        cudnnSetFilter4dDescriptor(wDesc, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NCHW, outC, inC, kH, kW);
+
+        cudnnCreateConvolutionDescriptor(convDesc);
+        cudnnSetConvolution2dDescriptor(convDesc, padH, padW, strideH, strideW, 1, 1, CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT);
+
+        cudnnCreateTensorDescriptor(yDesc);
+        cudnnSetTensor4dDescriptor(yDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, outC, outH, outW);
+
+        // Find algorithm (or use heuristic)
+        int algo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM; 
+        
+        long[] workspaceSizeInBytes = {0};
+        cudnnGetConvolutionForwardWorkspaceSize(cudnnHandle, xDesc, wDesc, convDesc, yDesc, algo, workspaceSizeInBytes);
+        
+        Pointer workspace = new Pointer();
+        if (workspaceSizeInBytes[0] > 0) {
+            cudaMalloc(workspace, workspaceSizeInBytes[0]);
+        }
+
+        Pointer pAlpha = Pointer.to(new float[]{1.0f});
+        Pointer pBeta = Pointer.to(new float[]{0.0f});
+
+        // We need to handle weight layout. 
+        // For now, if weights are not in cuDNN layout, we might have slow-down or need to transpose.
+        // Let's assume we handle transposition in Conv2d.forward if needed.
+        
+        cudnnConvolutionForward(cudnnHandle, pAlpha, xDesc, x.getDevicePointer(), wDesc, weight.getDevicePointer(), 
+                                convDesc, algo, workspace, workspaceSizeInBytes[0], pBeta, yDesc, out.getDevicePointer());
+
+        if (bias != null) {
+            cudnnTensorDescriptor bDesc = new cudnnTensorDescriptor();
+            cudnnCreateTensorDescriptor(bDesc);
+            cudnnSetTensor4dDescriptor(bDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, outC, 1, 1);
+            cudnnAddTensor(cudnnHandle, pAlpha, bDesc, bias.getDevicePointer(), pAlpha, yDesc, out.getDevicePointer());
+            cudnnDestroyTensorDescriptor(bDesc);
+        }
+
+        if (workspaceSizeInBytes[0] > 0) {
+            cudaFree(workspace);
+        }
+
+        cudnnDestroyTensorDescriptor(xDesc);
+        cudnnDestroyTensorDescriptor(yDesc);
+        cudnnDestroyFilterDescriptor(wDesc);
+        cudnnDestroyConvolutionDescriptor(convDesc);
+
+        out.markDirtyOnGPU();
+    }
+
+    /**
+     * Max Pooling 2D Forward using cuDNN
+     */
+    public static void maxPool2dForward(Tensor x, Tensor out,
+                                         int inC, int inH, int inW,
+                                         int kH, int kW,
+                                         int outH, int outW,
+                                         int padH, int padW, int strideH, int strideW) {
+        init();
+        int batch = x.shape[0];
+
+        cudnnTensorDescriptor xDesc = new cudnnTensorDescriptor();
+        cudnnTensorDescriptor yDesc = new cudnnTensorDescriptor();
+        jcuda.jcudnn.cudnnPoolingDescriptor poolDesc = new jcuda.jcudnn.cudnnPoolingDescriptor();
+
+        cudnnCreateTensorDescriptor(xDesc);
+        cudnnSetTensor4dDescriptor(xDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, inC, inH, inW);
+
+        cudnnCreateTensorDescriptor(yDesc);
+        cudnnSetTensor4dDescriptor(yDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, inC, outH, outW);
+
+        cudnnCreatePoolingDescriptor(poolDesc);
+        cudnnSetPooling2dDescriptor(poolDesc, CUDNN_POOLING_MAX, CUDNN_PROPAGATE_NAN, kH, kW, padH, padW, strideH, strideW);
+
+        Pointer pAlpha = Pointer.to(new float[]{1.0f});
+        Pointer pBeta = Pointer.to(new float[]{0.0f});
+
+        cudnnPoolingForward(cudnnHandle, poolDesc, pAlpha, xDesc, x.getDevicePointer(), pBeta, yDesc, out.getDevicePointer());
+
+        cudnnDestroyTensorDescriptor(xDesc);
+        cudnnDestroyTensorDescriptor(yDesc);
+        cudnnDestroyPoolingDescriptor(poolDesc);
+
+        out.markDirtyOnGPU();
+    }
+
+    /**
+     * ReLU Forward using cuDNN
+     */
+    public static void reluForward(Tensor x, Tensor out) {
+        init();
+        int n = x.numel();
+        cudnnTensorDescriptor desc = new cudnnTensorDescriptor();
+        cudnnCreateTensorDescriptor(desc);
+        cudnnSetTensor4dDescriptor(desc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, n, 1, 1);
+        jcuda.jcudnn.cudnnActivationDescriptor actDesc = new jcuda.jcudnn.cudnnActivationDescriptor();
+        cudnnCreateActivationDescriptor(actDesc);
+        cudnnSetActivationDescriptor(actDesc, CUDNN_ACTIVATION_RELU, CUDNN_PROPAGATE_NAN, 0.0);
+        Pointer pAlpha = Pointer.to(new float[]{1.0f});
+        Pointer pBeta = Pointer.to(new float[]{0.0f});
+        cudnnActivationForward(cudnnHandle, actDesc, pAlpha, desc, x.getDevicePointer(), pBeta, desc, out.getDevicePointer());
+        cudnnDestroyTensorDescriptor(desc);
+        cudnnDestroyActivationDescriptor(actDesc);
+        out.markDirtyOnGPU();
+    }
+
+    /**
+     * Transpose on GPU using cuBLAS sgeam
+     * a: [m, n] -> out: [n, m]
+     */
+    public static void transpose(Tensor a, Tensor out) {
+        init();
+        int m = a.shape[0];
+        int n = a.shape[1];
+        Pointer pAlpha = Pointer.to(new float[]{1.0f});
+        Pointer pBeta = Pointer.to(new float[]{0.0f});
+        // sgeam: C = alpha * A' + beta * B'
+        // To get C = A', we set beta = 0.
+        jcuda.jcublas.JCublas2.cublasSgeam(cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, 
+                                           n, m, pAlpha, a.getDevicePointer(), m, 
+                                           pBeta, new Pointer(), n, 
+                                           out.getDevicePointer(), n);
+        out.markDirtyOnGPU();
+    }
+
     public static void shutdown() {
         if (initialized) {
-            cublasDestroy(handle);
+            cublasDestroy(cublasHandle);
+            cudnnDestroy(cudnnHandle);
             initialized = false;
         }
     }

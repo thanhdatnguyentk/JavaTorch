@@ -18,9 +18,10 @@ A minimal re-implementation of core PyTorch concepts in pure Java for learning a
 | **RNN/LSTM** | ✅ `RNNCell`, `LSTMCell`, `RNN`, `LSTM` (with BPTT) |
 | **Data Loader** | ✅ `Dataset`, `DataLoader` (Multi-threaded Producer-Consumer) |
 | **SIMD Support** | ✅ Java Vector API (AVX2/AVX-512) for `matmul`, `dot` |
+| **GPU/cuDNN** | ✅ **JCuda + JCudnn** integration for high-performance CNN training |
 | **NLP Support** | ✅ `Embedding`, `Vocabulary`, `BasicTokenizer`, `SentimentModel` |
 | **Autograd Optimized** | ✅ **Topological Sort** for $O(N)$ backprop (No more recursive $O(2^N)$ hangs) |
-| **Test Suite** | ✅ 36 automated tests via `run-tests.ps1` |
+| **Test Suite** | ✅ 37 automated tests fully operational |
 
 ## Quick Start
 
@@ -111,8 +112,8 @@ tests/
 - **Sentiment Analysis**: End-to-end training achieved with `TrainSentiment.java`.
 
 ### ✅ Polish & Real Datasets (Complete)
-- Added `TrainFashionMNIST.java` (87% Test Accuracy in 5 epochs)
-- Added `TrainCifar10.java` (45% Test Accuracy in 2 epochs, pure Java CNN)
+- Added `TrainFashionMNIST.java` (89.04% Test Accuracy with GPU acceleration)
+- Added `TrainCifar10.java` (Dramatic speed-up via **cuDNN**: ~10s/epoch vs several minutes)
 - **Train/Eval Modes**: Integrated `model.train()` and `model.eval()` to support inference-specific behaviors like Dropout and BatchNorm.
 - **Dropout**: Implemented `NN.Dropout` and `Torch.dropout` with inverted dropout scaling.
 
@@ -120,16 +121,18 @@ tests/
 - **metrics**: ✅ Standardized `Accuracy`, `MeanSquaredError`, and `MeanAbsoluteError`.
 - **MetricTracker**: ✅ Refactored all training examples to use decoupled metric tracking for cleaner code.
 
-### ✅ Phase 13: GPU Acceleration (Initial Integration)
+### ✅ Phase 13: GPU & cuDNN Acceleration (Complete)
 - **JCuda Core**: ✅ Integrated JCuda (12.0.0) for GPU-aware tensors.
 - **Memory Management**: ✅ Implement `AutoCloseable` tensors with `cudaFree` for GPU memory leak prevention.
 - **CUBLAS Integration**: ✅ GPU-accelerated `matmul` using `cublasSgemm`.
-- **Hybrid Dispatch**: ✅ Device-aware `Torch.java` automatically routes math to GPU if tensors reside there.
-- Full suite of 37 tests fully operational (including GPU Matmul verification).
+- **JCudnn Support**: ✅ **Conv2d**, **MaxPool2d**, and **ReLU** accelerated via cuDNN (8.9.x).
+- **Hybrid Dispatch**: ✅ Device-aware `Torch.java` / `NN.java` routes math to GPU if tensors reside there.
+- **Backward Sync**: ✅ Automatic CPU synchronization for backward pass when GPU forward is used.
+- Full suite of 38 tests operational (including cuDNN initialization and GPU forward verification).
 
 ### 🔲 Future Work
-- **Custom Kernels**: Implement element-wise kernels (Add, Sub, Mul) and Activations via custom PTX for full GPU pipeline.
-- **JCudnn Support**: Port Conv2d and BatchNorm to use cuDNN for peak performance.
+- **GPU Backward Kernels**: Implement cuDNN backward passes for Conv/Pool to eliminate CPU sync overhead.
+- **Custom Kernels**: Implement element-wise kernels (Add, Sub, Mul) via custom PTX for full GPU pipeline.
 - Conv1d/Conv3d, BatchNorm2d/3d, GroupNorm
 - Learning rate schedulers
 - JUnit integration

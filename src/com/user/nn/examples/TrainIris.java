@@ -110,6 +110,9 @@ public class TrainIris {
         // Let's use Adam
         float lr = 0.05f;
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), lr);
+        
+        // Move model to GPU
+        model.toGPU();
 
         // Optional: Manual Train/Test split mechanism (80/20)
         int numSamples = N; // Use N from loaded data
@@ -164,6 +167,9 @@ public class TrainIris {
             for (Tensor[] batch : trainLoader) {
                 Tensor xBatch = batch[0]; // [batch_size, 4]
                 Tensor yBatch = batch[1]; // [batch_size, 1]
+                
+                xBatch.toGPU();
+                // yBatch stays on CPU for label indexing
 
                 int bs = xBatch.shape[0];
 
@@ -191,6 +197,11 @@ public class TrainIris {
 
                 // Optimizer step (Adam)
                 optimizer.step();
+                
+                // Cleanup intermediate tensors on GPU
+                xBatch.close();
+                logits.close();
+                loss.close();
             }
 
             if (e % 100 == 0) {

@@ -64,18 +64,24 @@ public class Optim {
                 if (t.grad == null)
                     continue;
 
+                t.toCPU();
+                t.grad.toCPU();
+
                 if (momentum > 0) {
                     Tensor vel = v.get(p);
-                    // v = momentum * v + grad
+                    vel.toCPU();
                     for (int i = 0; i < vel.data.length; i++) {
                         vel.data[i] = momentum * vel.data[i] + t.grad.data[i];
                         t.data[i] -= lr * vel.data[i];
                     }
+                    vel.markDirtyOnCPU();
                 } else {
                     for (int i = 0; i < t.data.length; i++) {
                         t.data[i] -= lr * t.grad.data[i];
                     }
                 }
+
+                t.markDirtyOnCPU();
             }
         }
     }
@@ -122,6 +128,10 @@ public class Optim {
                 Tensor t = parameters.get(i).getTensor();
                 if (t.grad == null)
                     continue;
+                
+                t.toCPU();
+                t.grad.toCPU();
+
                 float[] mi = this.m[i];
                 float[] vi = this.v[i];
                 for (int j = 0; j < t.data.length; j++) {
@@ -132,6 +142,8 @@ public class Optim {
                     float vHat = vi[j] / bc2;
                     t.data[j] -= lr * mHat / ((float) Math.sqrt(vHat) + eps);
                 }
+
+                t.markDirtyOnCPU();
             }
         }
     }

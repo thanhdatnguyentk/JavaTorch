@@ -327,6 +327,8 @@ public class Torch {
     // tensors)
 
     private static Tensor binaryOp(Tensor a, Tensor b, FloatBinaryOp op) {
+        a.toCPU();
+        b.toCPU();
         // full broadcasting support for shapes with compatible dims
         int[] ash = a.shape.clone();
         int[] bsh = b.shape.clone();
@@ -373,6 +375,7 @@ public class Torch {
     // Reduce outGrad (of shape grad.shape) to targetShape by summing broadcasted
     // dims
     private static Tensor reduceSumToShape(Tensor grad, int[] targetShape) {
+        grad.toCPU();
         // if shapes equal just return grad.clone()
         if (java.util.Arrays.equals(grad.shape, targetShape))
             return grad.clone();
@@ -1128,8 +1131,13 @@ public class Torch {
     // activations
     public static Tensor relu(Tensor a) {
         Tensor out = new Tensor(a.shape);
-        for (int i = 0; i < a.data.length; i++)
-            out.data[i] = a.data[i] > 0 ? a.data[i] : 0f;
+        if (a.isGPU()) {
+            out.toGPU();
+            CUDAOps.reluForward(a, out);
+        } else {
+            for (int i = 0; i < a.data.length; i++)
+                out.data[i] = a.data[i] > 0 ? a.data[i] : 0f;
+        }
 
         if (is_grad_enabled() && a.requires_grad) {
             out.requires_grad = true;

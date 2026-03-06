@@ -15,7 +15,6 @@ public class TrainSentiment {
         List<MovieCommentLoader.Entry> allData = MovieCommentLoader.load();
         System.out.println("Total reviews: " + allData.size());
         
-        // Shuffle and split data
         Collections.shuffle(allData, new Random(42L));
         int total = allData.size();
         int trainSize = (int) (total * 0.8);
@@ -25,30 +24,27 @@ public class TrainSentiment {
         Data.Vocabulary vocab = new Data.Vocabulary();
         Data.BasicTokenizer tokenizer = new Data.BasicTokenizer();
         
-        // Build vocabulary from train data only
         for (MovieCommentLoader.Entry e : trainEntries) {
-            for (String t : tokenizer.tokenize(e.text)) {
-                vocab.addWord(t);
-            }
+            for (String t : tokenizer.tokenize(e.text)) vocab.addWord(t);
         }
         System.out.println("Vocabulary size: " + vocab.size());
         
-        int maxLen = 20; // 20 words per review
+        int maxLen = 20; 
         int batchSize = 16;
         
-        // Train on a larger subset now that Autograd is O(N)
-        // int demoTrainSize = Math.min(trainEntries.size(), 5000); 
-        // trainEntries = trainEntries.subList(0, demoTrainSize);
-        // System.out.println("Using a subset of " + demoTrainSize + " training samples.");
-        
-        // Model params
         int vocabSize = vocab.size();
         int embedDim = 32;
         int hiddenDim = 64;
         int outputDim = 2;
         
         SentimentModel model = new SentimentModel(lib, vocabSize, embedDim, hiddenDim, outputDim);
-        for (NN.Parameter p : model.parameters()) p.getTensor().requires_grad = true;
+        for (NN.Parameter p : model.parameters()) {
+            Tensor t = p.getTensor();
+            t.requires_grad = true;
+        }
+
+        // Move model to GPU
+        model.toGPU();
         
         float lr = 0.001f;
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), lr);
@@ -61,28 +57,27 @@ public class TrainSentiment {
             float totalLoss = 0f;
             int numBatches = (trainEntries.size() + batchSize - 1) / batchSize;
             accMetric.reset();
-            model.train(); // Ensure dropout/batchnorm are in training mode
+            model.train();
 
             for (int b = 0; b < numBatches; b++) {
                 int start = b * batchSize;
                 int end = Math.min(start + batchSize, trainEntries.size());
                 int currentBs = end - start;
                 
-                // Prepare batch
                 float[] xData = new float[currentBs * maxLen];
-                int[] yLabels = new int[currentBs];
-                
                 for (int i = 0; i < currentBs; i++) {
                     MovieCommentLoader.Entry entry = trainEntries.get(start + i);
                     List<String> tokens = tokenizer.tokenize(entry.text);
                     for (int j = 0; j < maxLen; j++) {
                         if (j < tokens.size()) xData[i * maxLen + j] = vocab.getId(tokens.get(j));
-                        else xData[i * maxLen + j] = 0; // <PAD> (ID 0)
+                        else xData[i * maxLen + j] = 0;
                     }
-                    yLabels[i] = entry.label;
                 }
-                
+                int[] yLabels = new int[currentBs];
+                for (int i = 0; i < currentBs; i++) yLabels[i] = trainEntries.get(start + i).label;
+
                 Tensor xBatch = Torch.tensor(xData, currentBs, maxLen);
+                xBatch.toGPU();
                 
                 optimizer.zero_grad();
                 Tensor logits = model.forward(xBatch);
@@ -92,19 +87,19 @@ public class TrainSentiment {
                 optimizer.step();
                 
                 totalLoss += loss.data[0];
-                
-                // Track accuracy
                 accMetric.update(logits, yLabels);
 
-                if ((b + 1) % 1 == 0) {
-                    System.out.printf("  Epoch %d Batch %d/%d - loss: %.4f%n", epoch + 1, b + 1, numBatches, loss.data[0]);
+                if ((b + 1) % 100 == 0) {
+                    System.out.printf("  Batch %d/%d - loss: %.4f%n", b + 1, numBatches, loss.data[0]);
                 }
+
+                xBatch.close();
+                logits.close();
+                loss.close();
             }
             
             float avgLoss = totalLoss / numBatches;
             float trainAcc = accMetric.compute();
-            
-            // Evaluation on test set
             float testAcc = evaluate(model, testEntries, vocab, tokenizer, maxLen, accMetric);
             
             System.out.printf("Epoch %d/%d - loss: %.4f - train_acc: %.2f%% - test_acc: %.2f%%%n",
@@ -116,7 +111,6 @@ public class TrainSentiment {
                                  Data.Vocabulary vocab, Data.BasicTokenizer tokenizer, int maxLen, Accuracy metric) {
         metric.reset();
         int testBatchSize = 64;
-        
         model.eval();
         Torch.set_grad_enabled(false);
         for (int i = 0; i < data.size(); i += testBatchSize) {
@@ -124,7 +118,6 @@ public class TrainSentiment {
             int bs = end - i;
             float[] xData = new float[bs * maxLen];
             int[] yLabels = new int[bs];
-            
             for (int j = 0; j < bs; j++) {
                 MovieCommentLoader.Entry e = data.get(i + j);
                 List<String> tokens = tokenizer.tokenize(e.text);
@@ -135,8 +128,11 @@ public class TrainSentiment {
                 yLabels[j] = e.label;
             }
             Tensor xBatch = Torch.tensor(xData, bs, maxLen);
+            xBatch.toGPU();
             Tensor out = model.forward(xBatch);
             metric.update(out, yLabels);
+            xBatch.close();
+            out.close();
         }
         Torch.set_grad_enabled(true);
         model.train();

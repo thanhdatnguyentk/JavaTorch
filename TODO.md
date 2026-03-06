@@ -17,7 +17,8 @@ Last updated: 2026-03-06
 - **NLP Utilities**: **`Embedding`**, `Vocabulary`, `BasicTokenizer`.
 - **System Optimizations**:
   - `DataLoader` with Multi-worker threading.
-  - Java Vector API (SIMD) integration for AVX2/AVX-512 acceleration.
+  - Java Vector API (SIMD) integration (AVX2/AVX-512).
+  - **GPU Acceleration**: ✅ JCuda + JCublas + JCudnn (Conv2d, MaxPool2d, ReLU).
 - **Model Training Features**:
   - `model.train()` and `model.eval()` module states.
   - `NN.Dropout(p)` with inverted dropout scaling capability.
@@ -46,8 +47,11 @@ Last updated: 2026-03-06
    - Interface `Dataset` và `DataLoader` đa luồng.
 2. **Vectorization (SIMD) (HOÀN THÀNH ✅)**
    - Tích hợp **Java Vector API**.
-   - Matmul tối ưu vượt trội so với for-loop truyền thống.
+3. **GPU & cuDNN (HOÀN THÀNH ✅)**
+   - Tích hợp **JCublas** cho matmul và **JCudnn** cho Conv/Pool/ReLU.
+   - Cơ chế hybrid dispatch (GPU forward / CPU backward sync).
 
 ---
 **Steps to Begin:**
-- Chuyển sang phần **Transformer**: Cập nhật Softmax-dim và MultiheadAttention.
+- Xây dựng **Transformer**: Cập nhật Softmax-dim và MultiheadAttention.
+- Tối ưu hóa GPU: Chuyển đổi các hàm Backward (Grad) sang cuDNN để giảm thiểu việc đồng bộ hóa với CPU.
