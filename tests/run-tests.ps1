@@ -44,6 +44,10 @@ $tests = @(
     , 'com.user.nn.TestOptimizers'
     , 'com.user.nn.TestLossFunctions'
     , 'com.user.nn.TestNormLayers'
+    , 'com.user.nn.TestBatch1'
+    , 'com.user.nn.TestBatch2'
+    , "com.user.nn.TestBatch3",
+    "com.user.nn.TestBatch4"
 )
 
 $failures = @()

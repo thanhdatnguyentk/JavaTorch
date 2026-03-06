@@ -141,7 +141,7 @@ public class Tensor {
         data[offset(idx)] = value;
     }
 
-    private int offset(int... idx) {
+    public int offset(int... idx) {
         if (idx.length != shape.length)
             throw new IllegalArgumentException("index rank mismatch");
         int off = 0;

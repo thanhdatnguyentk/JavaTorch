@@ -160,6 +160,9 @@ public class nn {
             return this.tensorData;
         }
 
+        public Tensor getGrad() {
+            return this.tensorData.grad;
+        }
     }
 
     public static abstract class Module {
@@ -570,6 +573,182 @@ public class nn {
             }
             return out;
         }
+
+        /** L1 Loss (Mean Absolute Error). */
+        public static Tensor l1_loss(Tensor pred, Tensor target) {
+            int n = pred.data.length;
+            Tensor out = new Tensor(1);
+            float sum = 0f;
+            for (int i = 0; i < n; i++) {
+                sum += Math.abs(pred.data[i] - target.data[i]);
+            }
+            out.data[0] = sum / n;
+            if (pred.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn(pred) {
+                    public void apply(Tensor outGrad) {
+                        Tensor g = new Tensor(pred.shape);
+                        float scale = outGrad.data[0] / n;
+                        for (int i = 0; i < n; i++) {
+                            g.data[i] = Math.signum(pred.data[i] - target.data[i]) * scale;
+                        }
+                        pred.backwardStep(g);
+                    }
+                };
+            }
+            return out;
+        }
+
+        /** Binary Cross Entropy Loss. Input (probs) and target should be same shape. */
+        public static Tensor binary_cross_entropy(Tensor input, Tensor target) {
+            int n = input.data.length;
+            Tensor out = new Tensor(1);
+            float total = 0f;
+            for (int i = 0; i < n; i++) {
+                float h = input.data[i];
+                float y = target.data[i];
+                h = Math.max(1e-12f, Math.min(1f - 1e-12f, h));
+                total += -(y * (float) Math.log(h) + (1f - y) * (float) Math.log(1f - h));
+            }
+            out.data[0] = total / n;
+            if (input.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn(input) {
+                    public void apply(Tensor outGrad) {
+                        Tensor g = new Tensor(input.shape);
+                        float scale = outGrad.data[0] / n;
+                        for (int i = 0; i < n; i++) {
+                            float h = Math.max(1e-12f, Math.min(1f - 1e-12f, input.data[i]));
+                            float y = target.data[i];
+                            g.data[i] = ((h - y) / (h * (1f - h) + 1e-12f)) * scale;
+                        }
+                        input.backwardStep(g);
+                    }
+                };
+            }
+            return out;
+        }
+
+        /** BCE With Logits Loss (combined sigmoid + BCELoss for stability). */
+        public static Tensor binary_cross_entropy_with_logits(Tensor input, Tensor target) {
+            int n = input.data.length;
+            Tensor out = new Tensor(1);
+            float total = 0f;
+            for (int i = 0; i < n; i++) {
+                float x = input.data[i];
+                float y = target.data[i];
+                if (x > 0) {
+                    total += x * (1 - y) + (float) Math.log(1 + Math.exp(-x));
+                } else {
+                    total += -x * y + (float) Math.log(1 + Math.exp(x));
+                }
+            }
+            out.data[0] = total / n;
+            if (input.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn(input) {
+                    public void apply(Tensor outGrad) {
+                        Tensor g = new Tensor(input.shape);
+                        float scale = outGrad.data[0] / n;
+                        for (int i = 0; i < n; i++) {
+                            float sig = (float) (1.0 / (1.0 + Math.exp(-input.data[i])));
+                            g.data[i] = (sig - target.data[i]) * scale;
+                        }
+                        input.backwardStep(g);
+                    }
+                };
+            }
+            return out;
+        }
+
+        /** KL Divergence Loss. input is log-probs, target is probs. */
+        public static Tensor kl_div(Tensor input, Tensor target) {
+            int n = input.data.length;
+            Tensor out = new Tensor(1);
+            float total = 0f;
+            for (int i = 0; i < n; i++) {
+                float logP = input.data[i];
+                float Q = target.data[i];
+                if (Q > 0) {
+                    total += Q * ((float) Math.log(Q) - logP);
+                }
+            }
+            out.data[0] = total / n;
+            if (input.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn(input) {
+                    public void apply(Tensor outGrad) {
+                        Tensor g = new Tensor(input.shape);
+                        float scale = outGrad.data[0] / n;
+                        for (int i = 0; i < n; i++) {
+                            g.data[i] = -target.data[i] * scale;
+                        }
+                        input.backwardStep(g);
+                    }
+                };
+            }
+            return out;
+        }
+
+        public static Tensor cosine_similarity(Tensor x1, Tensor x2, int dim, float eps) {
+            return Torch.cosine_similarity(x1, x2, dim, eps);
+        }
+
+        public static Tensor pairwise_distance(Tensor x1, Tensor x2, float p, float eps) {
+            return Torch.pairwise_distance(x1, x2, p, eps);
+        }
+
+        public static Tensor softmax(Tensor x, int dim) {
+            return Torch.softmax(x, dim);
+        }
+
+        public static Tensor log_softmax(Tensor x, int dim) {
+            return Torch.log_softmax(x, dim);
+        }
+
+        public static Tensor gelu(Tensor x) {
+            return Torch.gelu(x);
+        }
+
+        public static Tensor elu(Tensor x, float alpha) {
+            return Torch.elu(x, alpha);
+        }
+
+        public static Tensor silu(Tensor x) {
+            return Torch.silu(x);
+        }
+
+        public static Tensor max_pool1d(Tensor x, int kernel, int stride, int pad) {
+            return Torch.max_pool1d(x, kernel, stride, pad);
+        }
+
+        public static Tensor avg_pool1d(Tensor x, int kernel, int stride, int pad) {
+            return Torch.avg_pool1d(x, kernel, stride, pad);
+        }
+
+        public static Tensor adaptive_avg_pool2d(Tensor x, int outputH, int outputW) {
+            return Torch.adaptive_avg_pool2d(x, new int[] { outputH, outputW });
+        }
+
+        public static Tensor pad(Tensor x, int[] pad, String mode, float value) {
+            return Torch.pad(x, pad, mode, value);
+        }
+
+        public static Tensor conv1d(Tensor x, Tensor weight, Tensor bias, int stride, int padding) {
+            return Torch.conv1d(x, weight, bias, stride, padding);
+        }
+
+        public static Tensor bilinear(Tensor x1, Tensor x2, Tensor weight, Tensor bias) {
+            return Torch.bilinear(x1, x2, weight, bias);
+        }
+
+        public static Tensor one_hot(Tensor indices, int numClasses) {
+            return Torch.one_hot(indices, numClasses);
+        }
+
+        public static Tensor embedding(Tensor weight, Tensor indices) {
+            return Torch.embedding(weight, indices);
+        }
     }
 
     // --- More activations ---
@@ -617,6 +796,63 @@ public class nn {
         }
     }
 
+    public static class GELU extends Module {
+        @Override
+        public Tensor forward(Tensor x) {
+            return Torch.gelu(x);
+        }
+    }
+
+    public static class ELU extends Module {
+        public float alpha;
+
+        public ELU(float alpha) {
+            this.alpha = alpha;
+        }
+
+        public ELU() {
+            this(1.0f);
+        }
+
+        @Override
+        public Tensor forward(Tensor x) {
+            return Torch.elu(x, alpha);
+        }
+    }
+
+    public static class SiLU extends Module {
+        @Override
+        public Tensor forward(Tensor x) {
+            return Torch.silu(x);
+        }
+    }
+
+    public static class Softmax extends Module {
+        public int dim;
+
+        public Softmax(int dim) {
+            this.dim = dim;
+        }
+
+        @Override
+        public Tensor forward(Tensor x) {
+            return Torch.softmax(x, dim);
+        }
+    }
+
+    public static class LogSoftmax extends Module {
+        public int dim;
+
+        public LogSoftmax(int dim) {
+            this.dim = dim;
+        }
+
+        @Override
+        public Tensor forward(Tensor x) {
+            return Torch.log_softmax(x, dim);
+        }
+    }
+
     public static class Softplus extends Module {
         @Override
         public Tensor forward(Tensor x) {
@@ -638,6 +874,74 @@ public class nn {
                 };
             }
             return out;
+        }
+    }
+
+    // --- Loss Modules ---
+    public static class L1Loss extends Module {
+        public Tensor forward(Tensor x, Tensor target) {
+            return F.l1_loss(x, target);
+        }
+    }
+
+    public static class BCELoss extends Module {
+        public Tensor forward(Tensor x, Tensor target) {
+            return F.binary_cross_entropy(x, target);
+        }
+    }
+
+    public static class BCEWithLogitsLoss extends Module {
+        public Tensor forward(Tensor x, Tensor target) {
+            return F.binary_cross_entropy_with_logits(x, target);
+        }
+    }
+
+    public static class KLDivLoss extends Module {
+        public Tensor forward(Tensor x, Tensor target) {
+            return F.kl_div(x, target);
+        }
+    }
+
+    public static class CrossEntropyLoss extends Module {
+        public Tensor forward(Tensor x, int[] targets) {
+            return F.cross_entropy_tensor(x, targets);
+        }
+    }
+
+    // --- Distance Modules ---
+    public static class CosineSimilarity extends Module {
+        public int dim;
+        public float eps;
+
+        public CosineSimilarity(int dim, float eps) {
+            this.dim = dim;
+            this.eps = eps;
+        }
+
+        public CosineSimilarity() {
+            this(1, 1e-8f);
+        }
+
+        public Tensor forward(Tensor x1, Tensor x2) {
+            return F.cosine_similarity(x1, x2, dim, eps);
+        }
+    }
+
+    public static class PairwiseDistance extends Module {
+        public float p;
+        public float eps;
+
+        public PairwiseDistance(float p, float eps) {
+            this.p = p;
+            this.eps = eps;
+        }
+
+        public PairwiseDistance() {
+            this(2.0f, 1e-6f);
+        }
+
+        public Tensor forward(Tensor x1, Tensor x2) {
+            return F.pairwise_distance(x1, x2, p, eps);
         }
     }
 
@@ -1303,6 +1607,257 @@ public class nn {
         }
     }
 
+    // --- Batch 3: MaxPool1d, AvgPool1d, AdaptiveAvgPool2d ---
+
+    public static class MaxPool1d extends Module {
+        public int kernel, stride, pad;
+
+        public MaxPool1d(int kernel, int stride, int pad) {
+            this.kernel = kernel;
+            this.stride = stride;
+            this.pad = pad;
+        }
+
+        @Override
+        public Tensor forward(Tensor x) {
+            return Torch.max_pool1d(x, kernel, stride, pad);
+        }
+    }
+
+    public static class AvgPool1d extends Module {
+        public int kernel, stride, pad;
+
+        public AvgPool1d(int kernel, int stride, int pad) {
+            this.kernel = kernel;
+            this.stride = stride;
+            this.pad = pad;
+        }
+
+        @Override
+        public Tensor forward(Tensor x) {
+            return Torch.avg_pool1d(x, kernel, stride, pad);
+        }
+    }
+
+    public static class AdaptiveAvgPool2d extends Module {
+        public int outputH, outputW;
+
+        public AdaptiveAvgPool2d(int outputH, int outputW) {
+            this.outputH = outputH;
+            this.outputW = outputW;
+        }
+
+        @Override
+        public Tensor forward(Tensor x) {
+            return Torch.adaptive_avg_pool2d(x, new int[] { outputH, outputW });
+        }
+    }
+
+    // --- Batch 4: Conv1d, Bilinear, GroupNorm ---
+
+    public static class Conv1d extends Module {
+        public int inC, outC, kernel, stride, pad;
+        public Parameter weight;
+        public Parameter bias;
+
+        public Conv1d(nn outer, int inC, int outC, int kernel, int stride, int pad, boolean useBias) {
+            this.inC = inC;
+            this.outC = outC;
+            this.kernel = kernel;
+            this.stride = stride;
+            this.pad = pad;
+            Mat w = outer.mat_alloc(outC, inC * kernel);
+            outer.mat_rand(w, -0.1f, 0.1f);
+            this.weight = new Parameter(new Tensor(w.es, outC, inC, kernel)); 
+            addParameter("weight", this.weight);
+            if (useBias) {
+                Mat b = outer.mat_alloc(1, outC);
+                outer.mat_fill(b, 0f);
+                this.bias = new Parameter(b);
+                addParameter("bias", this.bias);
+            }
+        }
+
+        @Override
+        public Tensor forward(Tensor x) {
+            return Torch.conv1d(x, weight.getTensor(), bias != null ? bias.getTensor() : null, stride, pad);
+        }
+    }
+
+    public static class Bilinear extends Module {
+        public int d1, d2, outC;
+        public Parameter weight;
+        public Parameter bias;
+
+        public Bilinear(nn outer, int d1, int d2, int outC, boolean useBias) {
+            this.d1 = d1;
+            this.d2 = d2;
+            this.outC = outC;
+            Mat w = outer.mat_alloc(outC, d1 * d2);
+            outer.mat_rand(w, -0.1f, 0.1f);
+            this.weight = new Parameter(new Tensor(w.es, outC, d1, d2));
+            addParameter("weight", this.weight);
+            if (useBias) {
+                Mat b = outer.mat_alloc(1, outC);
+                outer.mat_fill(b, 0f);
+                this.bias = new Parameter(b);
+                addParameter("bias", this.bias);
+            }
+        }
+
+        public Tensor forward(Tensor x1, Tensor x2) {
+            return Torch.bilinear(x1, x2, weight.getTensor(), bias != null ? bias.getTensor() : null);
+        }
+    }
+
+    public static class GroupNorm extends Module {
+        public int numGroups;
+        public int numChannels;
+        public float eps;
+        public Parameter weight;
+        public Parameter bias;
+
+        public GroupNorm(nn outer, int numGroups, int numChannels, float eps) {
+            this.numGroups = numGroups;
+            this.numChannels = numChannels;
+            this.eps = eps;
+            Mat w = outer.mat_alloc(1, numChannels);
+            outer.mat_fill(w, 1.0f);
+            this.weight = new Parameter(w);
+            addParameter("weight", this.weight);
+            Mat b = outer.mat_alloc(1, numChannels);
+            outer.mat_fill(b, 0.0f);
+            this.bias = new Parameter(b);
+            addParameter("bias", this.bias);
+        }
+
+        public GroupNorm(nn outer, int numGroups, int numChannels) {
+            this(outer, numGroups, numChannels, 1e-5f);
+        }
+
+        @Override
+        public Tensor forward(Tensor x) {
+            // x shape: [N, C, ...]
+            int n = x.shape[0];
+            int c = numChannels;
+            int g = numGroups;
+            if (c % g != 0) throw new IllegalArgumentException("channels must be divisible by groups");
+            int cpG = c / g;
+            
+            // Flatten spatial dims
+            int spatial = 1;
+            for (int i = 2; i < x.shape.length; i++) spatial *= x.shape[i];
+            
+            Tensor out = new Tensor(x.shape);
+            Tensor wt = weight.getTensor();
+            Tensor bt = bias.getTensor();
+            
+            final float[] groupMeans = new float[n * g];
+            final float[] groupVars = new float[n * g];
+
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < g; j++) {
+                    float sum = 0;
+                    for (int k = 0; k < cpG; k++) {
+                        for (int s = 0; s < spatial; s++) {
+                            sum += x.data[i * c * spatial + (j * cpG + k) * spatial + s];
+                        }
+                    }
+                    float mean = sum / (cpG * spatial);
+                    groupMeans[i * g + j] = mean;
+                    
+                    float vsum = 0;
+                    for (int k = 0; k < cpG; k++) {
+                        for (int s = 0; s < spatial; s++) {
+                            float diff = x.data[i * c * spatial + (j * cpG + k) * spatial + s] - mean;
+                            vsum += diff * diff;
+                        }
+                    }
+                    float var = vsum / (cpG * spatial);
+                    groupVars[i * g + j] = var;
+                    
+                    float invStd = 1.0f / (float)Math.sqrt(var + eps);
+                    for (int k = 0; k < cpG; k++) {
+                        int ch = j * cpG + k;
+                        for (int s = 0; s < spatial; s++) {
+                            int idx = i * c * spatial + ch * spatial + s;
+                            float norm = (x.data[idx] - mean) * invStd;
+                            out.data[idx] = norm * wt.data[ch] + bt.data[ch];
+                        }
+                    }
+                }
+            }
+
+            if (Torch.is_grad_enabled() && (x.requires_grad || wt.requires_grad || bt.requires_grad)) {
+                out.requires_grad = true;
+                final int fSpatial = spatial;
+                out.grad_fn = new Tensor.GradFn(x, weight.getTensor(), bias.getTensor()) {
+                    public void apply(Tensor outGrad) {
+                        if (bt.requires_grad) {
+                            Tensor gb = new Tensor(bt.shape);
+                            for (int i = 0; i < n; i++)
+                                for (int ch = 0; ch < c; ch++)
+                                    for (int s = 0; s < fSpatial; s++)
+                                        gb.data[ch] += outGrad.data[i * c * fSpatial + ch * fSpatial + s];
+                            bt.backwardStep(gb);
+                        }
+                        if (wt.requires_grad) {
+                            Tensor gg = new Tensor(wt.shape);
+                            for (int i = 0; i < n; i++) {
+                                for (int j = 0; j < g; j++) {
+                                    float invStd = 1.0f / (float)Math.sqrt(groupVars[i * g + j] + eps);
+                                    for (int k = 0; k < cpG; k++) {
+                                        int ch = j * cpG + k;
+                                        for (int s = 0; s < fSpatial; s++) {
+                                            int idx = i * c * fSpatial + ch * fSpatial + s;
+                                            float norm = (x.data[idx] - groupMeans[i * g + j]) * invStd;
+                                            gg.data[ch] += outGrad.data[idx] * norm;
+                                        }
+                                    }
+                                }
+                            }
+                            wt.backwardStep(gg);
+                        }
+                        if (x.requires_grad) {
+                            Tensor gx = new Tensor(x.shape);
+                            int m = cpG * fSpatial;
+                            for (int i = 0; i < n; i++) {
+                                for (int j = 0; j < g; j++) {
+                                    float var = groupVars[i * g + j];
+                                    float invStd = 1.0f / (float)Math.sqrt(var + eps);
+                                    
+                                    float term1 = 0; // sum(og * gamma)
+                                    float term2 = 0; // sum(og * gamma * norm)
+                                    for (int k = 0; k < cpG; k++) {
+                                        int ch = j * cpG + k;
+                                        for (int s = 0; s < fSpatial; s++) {
+                                            int idx = i * c * fSpatial + ch * fSpatial + s;
+                                            float og = outGrad.data[idx];
+                                            float norm = (x.data[idx] - groupMeans[i * g + j]) * invStd;
+                                            term1 += og * wt.data[ch];
+                                            term2 += og * wt.data[ch] * norm;
+                                        }
+                                    }
+                                    
+                                    for (int k = 0; k < cpG; k++) {
+                                        int ch = j * cpG + k;
+                                        for (int s = 0; s < fSpatial; s++) {
+                                            int idx = i * c * fSpatial + ch * fSpatial + s;
+                                            float norm = (x.data[idx] - groupMeans[i * g + j]) * invStd;
+                                            gx.data[idx] = (wt.data[ch] * outGrad.data[idx] - term1/m - norm * term2/m) * invStd;
+                                        }
+                                    }
+                                }
+                            }
+                            x.backwardStep(gx);
+                        }
+                    }
+                };
+            }
+            return out;
+        }
+    }
+
     // --- LayerNorm ---
     public static class LayerNorm extends Module {
         public int normalizedSize;
@@ -1696,9 +2251,77 @@ public class nn {
                 c = nc[1];
                 outputs.add(h);
             }
-
             return Torch.stack(outputs, batchFirst ? 1 : 0);
         }
     }
 
+    // --- GRUCell ---
+    public static class GRUCell extends Module {
+        public int inputSize, hiddenSize;
+        public Parameter weight_ih, weight_hh, bias_ih, bias_hh;
+
+        public GRUCell(nn outer, int inputSize, int hiddenSize, boolean bias) {
+            this.inputSize = inputSize;
+            this.hiddenSize = hiddenSize;
+            float k = (float) Math.sqrt(1.0 / hiddenSize);
+            Mat w_ih = outer.mat_alloc(inputSize, 3 * hiddenSize);
+            outer.mat_rand(w_ih, -k, k);
+            this.weight_ih = new Parameter(w_ih);
+            addParameter("weight_ih", this.weight_ih);
+            Mat w_hh = outer.mat_alloc(hiddenSize, 3 * hiddenSize);
+            outer.mat_rand(w_hh, -k, k);
+            this.weight_hh = new Parameter(w_hh);
+            addParameter("weight_hh", this.weight_hh);
+            if (bias) {
+                Mat b_ih = outer.mat_alloc(1, 3 * hiddenSize);
+                outer.mat_fill(b_ih, 0f);
+                this.bias_ih = new Parameter(b_ih);
+                addParameter("bias_ih", this.bias_ih);
+                Mat b_hh = outer.mat_alloc(1, 3 * hiddenSize);
+                outer.mat_fill(b_hh, 0f);
+                this.bias_hh = new Parameter(b_hh);
+                addParameter("bias_hh", this.bias_hh);
+            }
+        }
+
+        @Override public Tensor forward(Tensor x) { throw new UnsupportedOperationException("Forward(x, h) required"); }
+
+        public Tensor forward(Tensor x, Tensor h) {
+            Tensor x_w = Torch.matmul(x, weight_ih.getTensor());
+            if (bias_ih != null) x_w = Torch.add(x_w, bias_ih.getTensor());
+            Tensor h_w = Torch.matmul(h, weight_hh.getTensor());
+            if (bias_hh != null) h_w = Torch.add(h_w, bias_hh.getTensor());
+            java.util.List<Tensor> x_g = Torch.chunk(x_w, 3, 1);
+            java.util.List<Tensor> h_g = Torch.chunk(h_w, 3, 1);
+            Tensor r = Torch.sigmoid(Torch.add(x_g.get(0), h_g.get(0)));
+            Tensor z = Torch.sigmoid(Torch.add(x_g.get(1), h_g.get(1)));
+            Tensor n = Torch.tanh(Torch.add(x_g.get(2), Torch.mul(r, h_g.get(2))));
+            return Torch.add(Torch.mul(Torch.sub(1.0f, z), n), Torch.mul(z, h));
+        }
+    }
+
+    // --- GRU ---
+    public static class GRU extends Module {
+        public GRUCell cell;
+        public boolean batchFirst;
+        public GRU(nn outer, int inputSize, int hiddenSize, boolean bias, boolean batchFirst) {
+            this.cell = new GRUCell(outer, inputSize, hiddenSize, bias);
+            this.batchFirst = batchFirst;
+            addModule("cell", this.cell);
+        }
+        @Override public Tensor forward(Tensor x) {
+            int seqLen = batchFirst ? x.shape[1] : x.shape[0];
+            int batch = batchFirst ? x.shape[0] : x.shape[1];
+            int inputSize = x.shape[2];
+            Tensor h = Torch.zeros(batch, cell.hiddenSize);
+            java.util.List<Tensor> outputs = new java.util.ArrayList<>();
+            for (int t = 0; t < seqLen; t++) {
+                Tensor xt = batchFirst ? Torch.reshape(Torch.narrow(x, 1, t, 1), batch, inputSize)
+                                     : Torch.reshape(Torch.narrow(x, 0, t, 1), batch, inputSize);
+                h = cell.forward(xt, h);
+                outputs.add(h);
+            }
+            return Torch.stack(outputs, batchFirst ? 1 : 0);
+        }
+    }
 }

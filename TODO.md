@@ -6,22 +6,24 @@ Last updated: 2026-03-05
 - Core `nn` Module/Parameter system and containers (`Sequential`, `ModuleDict`, etc).
 - `Tensor` class with comprehensive API and native backpropagation support.
 - Mathematical operations, reductions, broadcasting, and matrix multiplication.
-- **Autograd Engine**: Fully functional `requires_grad`, `backward()`, tracking chain.
-- **Dense Layers**: `Linear`, `ReLU`, `Sigmoid`, `Tanh`, `LeakyReLU`, `Softplus`, `Dropout` built natively on Tensors.
-- **CNN Layers**: `Conv2d`, `MaxPool2d`, `AvgPool2d`, `ZeroPad2d`, `ConvTranspose2d` fully supporting backward pass.
-- **Optimizers**: `SGD` (with momentum) and `Adam` (`optim.java`).
-- **Loss Functions**: `cross_entropy_tensor`, `nll_loss`, `mse_loss_tensor`, `huber_loss` (in `nn.F`).
-- **Normalization**: `BatchNorm1d`, `LayerNorm`, `InstanceNorm`.
+- **Autograd Engine**: Fully functional `requires_grad`, `backward()` iterative topological sort, tracking chain.
+- **Dense Layers**: `Linear`, `ReLU`, `Sigmoid`, `Tanh`, `LeakyReLU`, `Softplus`, `Dropout`, and **`Bilinear`**.
+- **CNN Layers**: `Conv1d`, `Conv2d`, `MaxPool1d`, `MaxPool2d`, `AvgPool1d`, `AvgPool2d`, `ZeroPad2d`, `ConvTranspose2d`.
+- **RNN/LSTM**: `RNNCell`, `LSTMCell`, `GRUCell`, `RNN`, `LSTM`, `GRU` with full BPTT support.
+- **Optimizers**: `SGD` (with momentum) and `Adam`.
+- **Loss Functions**: `cross_entropy`, `nll_loss`, `mse_loss`, `huber_loss`, `BCELoss`, `BCEWithLogitsLoss`, `KLDivLoss`, `L1Loss`.
+- **Normalization**: `BatchNorm1d`, `LayerNorm`, `InstanceNorm`, **`GroupNorm`**.
+- **Similarity & Distance**: `CosineSimilarity`, `PairwiseDistance`.
+- **NLP Utilities**: **`Embedding`**, `Vocabulary`, `BasicTokenizer`.
 - **System Optimizations**:
-  - `DataLoader` with Multi-worker threading (Producer-Consumer logic).
+  - `DataLoader` with Multi-worker threading.
   - Java Vector API (SIMD) integration for AVX2/AVX-512 acceleration.
-- **Sequential Models**:
-  - `RNNCell`, `LSTMCell`, `RNN`, `LSTM` with full BPTT support.
 - **Examples**:
-  - `TrainIris.java` (Simple Multi-class classification)
-  - `TrainFashionMNIST.java` (using `DataLoader`)
-  - `TrainCifar10.java` (using `DataLoader`)
-- Comprehensive test suite (24 tests) including `TestRNN`.
+  - `TrainIris.java` (Iris data)
+  - `TrainFashionMNIST.java`
+  - `TrainCifar10.java`
+  - **`TrainSentiment.java`** (Real movie review dataset using LSTM)
+- Comprehensive test suite (31 tests) including `TestBatch4`.
 
 ---
 

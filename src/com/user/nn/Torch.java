@@ -196,13 +196,30 @@ public class Torch {
 
     // Basic math (elementwise) - assumes same shape
     public static Tensor sub(Tensor a, Tensor b) {
-        return binaryOp(a, b, (x, y) -> x - y);
+        Tensor out = binaryOp(a, b, (x, y) -> x - y);
+        if (is_grad_enabled() && (a.requires_grad || b.requires_grad)) {
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(a, b) {
+                public void apply(Tensor outGrad) {
+                    if (a.requires_grad) {
+                        Tensor ga = reduceSumToShape(outGrad, a.shape);
+                        a.backwardStep(ga);
+                    }
+                    if (b.requires_grad) {
+                        Tensor gb = binaryOp(outGrad, full(outGrad.shape, -1.0f), (x, y) -> x * y);
+                        gb = reduceSumToShape(gb, b.shape);
+                        b.backwardStep(gb);
+                    }
+                }
+            };
+        }
+        return out;
     }
 
     public static Tensor mul(Tensor a, Tensor b) {
         Tensor out = binaryOp(a, b, (x, y) -> x * y);
         // autograd for mul: dOut/dA = B * outGrad ; dOut/dB = A * outGrad
-        if (a.requires_grad || b.requires_grad) {
+        if (is_grad_enabled() && (a.requires_grad || b.requires_grad)) {
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(a, b) {
                 public void apply(Tensor outGrad) {
@@ -225,7 +242,7 @@ public class Torch {
     // attach autograd for add
     public static Tensor addWithGrad(Tensor a, Tensor b) {
         Tensor out = binaryOp(a, b, (x, y) -> x + y);
-        if (a.requires_grad || b.requires_grad) {
+        if (is_grad_enabled() && (a.requires_grad || b.requires_grad)) {
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(a, b) {
                 public void apply(Tensor outGrad) {
@@ -252,6 +269,14 @@ public class Torch {
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = a.data[i] + scalar;
+        if (is_grad_enabled() && a.requires_grad) {
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(a) {
+                public void apply(Tensor outGrad) {
+                    a.backwardStep(outGrad.clone());
+                }
+            };
+        }
         return out;
     }
 
@@ -259,6 +284,37 @@ public class Torch {
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = a.data[i] * scalar;
+        if (is_grad_enabled() && a.requires_grad) {
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(a) {
+                public void apply(Tensor outGrad) {
+                    Tensor ga = new Tensor(a.shape);
+                    for (int j = 0; j < ga.data.length; j++)
+                        ga.data[j] = outGrad.data[j] * scalar;
+                    a.backwardStep(ga);
+                }
+            };
+        }
+        return out;
+    }
+
+    public static Tensor sub(Tensor a, float scalar) {
+        return add(a, -scalar);
+    }
+
+    public static Tensor sub(float scalar, Tensor a) {
+        Tensor out = new Tensor(a.shape);
+        for (int i = 0; i < a.data.length; i++)
+            out.data[i] = scalar - a.data[i];
+        if (is_grad_enabled() && a.requires_grad) {
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(a) {
+                public void apply(Tensor outGrad) {
+                    Tensor ga = mul(outGrad, -1.0f);
+                    a.backwardStep(ga);
+                }
+            };
+        }
         return out;
     }
 
@@ -402,6 +458,256 @@ public class Torch {
     public static float mean(Tensor a) {
         return sum(a) / a.numel();
     }
+
+    // --- Batch 3: Pooling and Padding ---
+
+    public static Tensor max_pool1d(Tensor x, int kernel, int stride, int pad) {
+        int nd = x.shape.length;
+        if (nd < 2)
+            throw new IllegalArgumentException("Expected x to have at least 2 dims [C, L] or [N, C, L]");
+        final int batch = (nd == 3) ? x.shape[0] : 1;
+        final int inC = x.shape[nd - 2];
+        final int inL = x.shape[nd - 1];
+        final int outL = (inL + 2 * pad - kernel) / stride + 1;
+        int outShape[] = (nd == 3) ? new int[] { batch, inC, outL } : new int[] { inC, outL };
+        Tensor out = new Tensor(outShape);
+        final int[] maxIndices = new int[out.numel()];
+
+        for (int b = 0; b < batch; b++) {
+            for (int c = 0; c < inC; c++) {
+                for (int ol = 0; ol < outL; ol++) {
+                    float maxv = Float.NEGATIVE_INFINITY;
+                    int maxIdx = -1;
+                    for (int k = 0; k < kernel; k++) {
+                        int il = ol * stride - pad + k;
+                        if (il >= 0 && il < inL) {
+                            int idx = (nd == 3) ? (b * inC * inL + c * inL + il) : (c * inL + il);
+                            float v = x.data[idx];
+                            if (v > maxv) {
+                                maxv = v;
+                                maxIdx = idx;
+                            }
+                        }
+                    }
+                    int outIdx = (nd == 3) ? (b * inC * outL + c * outL + ol) : (c * outL + ol);
+                    out.data[outIdx] = maxv;
+                    maxIndices[outIdx] = maxIdx;
+                }
+            }
+        }
+        if (is_grad_enabled() && x.requires_grad) {
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(x) {
+                public void apply(Tensor outGrad) {
+                    Tensor gx = new Tensor(x.shape);
+                    for (int i = 0; i < outGrad.data.length; i++) {
+                        if (maxIndices[i] >= 0)
+                            gx.data[maxIndices[i]] += outGrad.data[i];
+                    }
+                    x.backwardStep(gx);
+                }
+            };
+        }
+        return out;
+    }
+
+    public static Tensor avg_pool1d(Tensor x, int kernel, int stride, int pad) {
+        int nd = x.shape.length;
+        if (nd < 2)
+            throw new IllegalArgumentException("Expected x to have at least 2 dims");
+        final int batch = (nd == 3) ? x.shape[0] : 1;
+        final int inC = x.shape[nd - 2];
+        final int inL = x.shape[nd - 1];
+        final int outL = (inL + 2 * pad - kernel) / stride + 1;
+        int outShape[] = (nd == 3) ? new int[] { batch, inC, outL } : new int[] { inC, outL };
+        Tensor out = new Tensor(outShape);
+        final float[] counts = new float[out.numel()];
+
+        for (int b = 0; b < batch; b++) {
+            for (int c = 0; c < inC; c++) {
+                for (int ol = 0; ol < outL; ol++) {
+                    float sum = 0f;
+                    int cnt = 0;
+                    for (int k = 0; k < kernel; k++) {
+                        int il = ol * stride - pad + k;
+                        if (il >= 0 && il < inL) {
+                            sum += x.data[(nd == 3) ? (b * inC * inL + c * inL + il) : (c * inL + il)];
+                            cnt++;
+                        }
+                    }
+                    int outIdx = (nd == 3) ? (b * inC * outL + c * outL + ol) : (c * outL + ol);
+                    out.data[outIdx] = cnt > 0 ? sum / cnt : 0f;
+                    counts[outIdx] = (float) cnt;
+                }
+            }
+        }
+        if (is_grad_enabled() && x.requires_grad) {
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(x) {
+                public void apply(Tensor outGrad) {
+                    Tensor gx = new Tensor(x.shape);
+                    for (int b = 0; b < batch; b++) {
+                        for (int c = 0; c < inC; c++) {
+                            for (int ol = 0; ol < outL; ol++) {
+                                int outIdx = (nd == 3) ? (b * inC * outL + c * outL + ol) : (c * outL + ol);
+                                float cnt = counts[outIdx];
+                                if (cnt > 0) {
+                                    float grad = outGrad.data[outIdx] / cnt;
+                                    for (int k = 0; k < kernel; k++) {
+                                        int il = ol * stride - pad + k;
+                                        if (il >= 0 && il < inL) {
+                                            int idx = (nd == 3) ? (b * inC * inL + c * inL + il) : (c * inL + il);
+                                            gx.data[idx] += grad;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    x.backwardStep(gx);
+                }
+            };
+        }
+        return out;
+    }
+
+    public static Tensor adaptive_avg_pool2d(Tensor x, int[] outputSize) {
+        final int nd = x.shape.length;
+        if (nd < 3)
+            throw new IllegalArgumentException("Expected x to have at least 3 dims [C, H, W] or [N, C, H, W]");
+        final int batch = (nd == 4) ? x.shape[0] : 1;
+        final int inC = x.shape[nd - 3];
+        final int inH = x.shape[nd - 2];
+        final int inW = x.shape[nd - 1];
+        final int outH = outputSize[0];
+        final int outW = outputSize[1];
+        int outShape[] = (nd == 4) ? new int[] { batch, inC, outH, outW } : new int[] { inC, outH, outW };
+        Tensor out = new Tensor(outShape);
+
+        for (int b = 0; b < batch; b++) {
+            for (int c = 0; c < inC; c++) {
+                for (int oh = 0; oh < outH; oh++) {
+                    int hs = (int) Math.floor((double) oh * inH / outH);
+                    int he = (int) Math.ceil((double) (oh + 1) * inH / outH);
+                    for (int ow = 0; ow < outW; ow++) {
+                        int ws = (int) Math.floor((double) ow * inW / outW);
+                        int we = (int) Math.ceil((double) (ow + 1) * inW / outW);
+                        float sum = 0;
+                        int cnt = 0;
+                        for (int h = hs; h < he; h++) {
+                            for (int w = ws; w < we; w++) {
+                                sum += x.data[(nd == 4) ? (b * inC * inH * inW + c * inH * inW + h * inW + w)
+                                        : (c * inH * inW + h * inW + w)];
+                                cnt++;
+                            }
+                        }
+                        int outIdx = (nd == 4) ? (b * inC * outH * outW + c * outH * outW + oh * outW + ow)
+                                : (c * outH * outW + oh * outW + ow);
+                        out.data[outIdx] = cnt > 0 ? sum / cnt : 0f;
+                    }
+                }
+            }
+        }
+        if (is_grad_enabled() && x.requires_grad) {
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(x) {
+                public void apply(Tensor outGrad) {
+                    Tensor gx = new Tensor(x.shape);
+                    for (int b = 0; b < batch; b++) {
+                        for (int c = 0; c < inC; c++) {
+                            for (int oh = 0; oh < outH; oh++) {
+                                int hs = (int) Math.floor((double) oh * inH / outH);
+                                int he = (int) Math.ceil((double) (oh + 1) * inH / outH);
+                                int hSize = he - hs;
+                                for (int ow = 0; ow < outW; ow++) {
+                                    int ws = (int) Math.floor((double) ow * inW / outW);
+                                    int we = (int) Math.ceil((double) (ow + 1) * inW / outW);
+                                    int wSize = we - ws;
+                                    int outIdx = (nd == 4) ? (b * inC * outH * outW + c * outH * outW + oh * outW + ow)
+                                            : (c * outH * outW + oh * outW + ow);
+                                    float g = outGrad.data[outIdx] / (hSize * wSize);
+                                    for (int h = hs; h < he; h++) {
+                                        for (int w = ws; w < we; w++) {
+                                            int idx = (nd == 4)
+                                                    ? (b * inC * inH * inW + c * inH * inW + h * inW + w)
+                                                    : (c * inH * inW + h * inW + w);
+                                            gx.data[idx] += g;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    x.backwardStep(gx);
+                }
+            };
+        }
+        return out;
+    }
+
+    public static Tensor pad(Tensor x, final int[] pad, String mode, float value) {
+        if (!mode.equals("constant")) {
+            throw new UnsupportedOperationException("Only constant padding supported");
+        }
+        final int nd = x.shape.length;
+        int[] newShape = x.shape.clone();
+        for (int i = 0; i < pad.length / 2; i++) {
+            int dim = nd - 1 - i;
+            if (dim < 0)
+                break;
+            newShape[dim] += pad[i * 2] + pad[i * 2 + 1];
+        }
+        Tensor out = new Tensor(newShape);
+        if (value != 0f) {
+            for (int i = 0; i < out.data.length; i++)
+                out.data[i] = value;
+        }
+
+        copyToPad(x, out, pad, 0, new int[nd], new int[nd]);
+
+        if (is_grad_enabled() && x.requires_grad) {
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(x) {
+                public void apply(Tensor outGrad) {
+                    Tensor gx = new Tensor(x.shape);
+                    copyFromPad(gx, outGrad, pad, 0, new int[nd], new int[nd]);
+                    x.backwardStep(gx);
+                }
+            };
+        }
+        return out;
+    }
+
+    private static void copyToPad(Tensor src, Tensor dst, int[] pad, int dim, int[] srcIdx, int[] dstIdx) {
+        int nd = src.shape.length;
+        if (dim == nd) {
+            dst.data[dst.offset(dstIdx)] = src.data[src.offset(srcIdx)];
+            return;
+        }
+        int pIdx = (nd - 1 - dim) * 2;
+        int pStart = (pad.length > pIdx) ? pad[pIdx] : 0;
+        for (int i = 0; i < src.shape[dim]; i++) {
+            srcIdx[dim] = i;
+            dstIdx[dim] = i + pStart;
+            copyToPad(src, dst, pad, dim + 1, srcIdx, dstIdx);
+        }
+    }
+
+    private static void copyFromPad(Tensor srcGrad, Tensor dstGrad, int[] pad, int dim, int[] srcIdx, int[] dstIdx) {
+        int nd = srcGrad.shape.length;
+        if (dim == nd) {
+            srcGrad.data[srcGrad.offset(srcIdx)] += dstGrad.data[dstGrad.offset(dstIdx)];
+            return;
+        }
+        int pIdx = (nd - 1 - dim) * 2;
+        int pStart = (pad.length > pIdx) ? pad[pIdx] : 0;
+        for (int i = 0; i < srcGrad.shape[dim]; i++) {
+            srcIdx[dim] = i;
+            dstIdx[dim] = i + pStart;
+            copyFromPad(srcGrad, dstGrad, pad, dim + 1, srcIdx, dstIdx);
+        }
+    }
+
 
     // autograd-aware mean returning a 1-element Tensor
     public static Tensor meanTensor(Tensor a) {
@@ -1100,6 +1406,387 @@ public class Torch {
         return binaryOp(a, b, (x, y) -> x < y ? 1f : 0f);
     }
 
+    // --- Batch 1 Activations & Softmax ---
+
+    public static Tensor softmax(Tensor a, int dim) {
+        if (dim < 0)
+            dim += a.shape.length;
+        int nd = a.shape.length;
+        int dimSize = a.shape[dim];
+        int outerSize = 1;
+        for (int i = 0; i < dim; i++)
+            outerSize *= a.shape[i];
+        int innerSize = 1;
+        for (int i = dim + 1; i < nd; i++)
+            innerSize *= a.shape[i];
+
+        Tensor out = new Tensor(a.shape);
+        for (int i = 0; i < outerSize; i++) {
+            for (int k = 0; k < innerSize; k++) {
+                float maxVal = Float.NEGATIVE_INFINITY;
+                for (int j = 0; j < dimSize; j++) {
+                    float v = a.data[i * dimSize * innerSize + j * innerSize + k];
+                    if (v > maxVal)
+                        maxVal = v;
+                }
+                double sum = 0;
+                for (int j = 0; j < dimSize; j++) {
+                    float v = a.data[i * dimSize * innerSize + j * innerSize + k];
+                    float ev = (float) Math.exp(v - maxVal);
+                    out.data[i * dimSize * innerSize + j * innerSize + k] = ev;
+                    sum += ev;
+                }
+                for (int j = 0; j < dimSize; j++) {
+                    out.data[i * dimSize * innerSize + j * innerSize + k] /= (float) sum;
+                }
+            }
+        }
+
+        if (is_grad_enabled() && a.requires_grad) {
+            final int fOuterSize = outerSize;
+            final int fInnerSize = innerSize;
+            final int fDimSize = dimSize;
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(a) {
+                public void apply(Tensor outGrad) {
+                    Tensor ga = new Tensor(a.shape);
+                    for (int i = 0; i < fOuterSize; i++) {
+                        for (int k = 0; k < fInnerSize; k++) {
+                            float dot = 0;
+                            for (int j = 0; j < fDimSize; j++) {
+                                int idx = i * (fDimSize * fInnerSize) + j * fInnerSize + k;
+                                dot += outGrad.data[idx] * out.data[idx];
+                            }
+                            for (int j = 0; j < fDimSize; j++) {
+                                int idx = i * (fDimSize * fInnerSize) + j * fInnerSize + k;
+                                ga.data[idx] = out.data[idx] * (outGrad.data[idx] - dot);
+                            }
+                        }
+                    }
+                    a.backwardStep(ga);
+                }
+            };
+        }
+        return out;
+    }
+
+    public static Tensor log_softmax(Tensor a, int dim) {
+        if (dim < 0)
+            dim += a.shape.length;
+        int nd = a.shape.length;
+        int dimSize = a.shape[dim];
+        int outerSize = 1;
+        for (int i = 0; i < dim; i++)
+            outerSize *= a.shape[i];
+        int innerSize = 1;
+        for (int i = dim + 1; i < nd; i++)
+            innerSize *= a.shape[i];
+
+        Tensor out = new Tensor(a.shape);
+        for (int i = 0; i < outerSize; i++) {
+            for (int k = 0; k < innerSize; k++) {
+                float maxVal = Float.NEGATIVE_INFINITY;
+                for (int j = 0; j < dimSize; j++) {
+                    float v = a.data[i * dimSize * innerSize + j * innerSize + k];
+                    if (v > maxVal)
+                        maxVal = v;
+                }
+                double sum = 0;
+                for (int j = 0; j < dimSize; j++) {
+                    float v = a.data[i * dimSize * innerSize + j * innerSize + k];
+                    sum += Math.exp(v - maxVal);
+                }
+                float logSum = (float) (Math.log(sum) + maxVal);
+                for (int j = 0; j < dimSize; j++) {
+                    float v = a.data[i * dimSize * innerSize + j * innerSize + k];
+                    out.data[i * dimSize * innerSize + j * innerSize + k] = v - logSum;
+                }
+            }
+        }
+
+        if (is_grad_enabled() && a.requires_grad) {
+            final int fDim = dim;
+            final int fOuterSize = outerSize;
+            final int fInnerSize = innerSize;
+            final int fDimSize = dimSize;
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(a) {
+                public void apply(Tensor outGrad) {
+                    Tensor ga = new Tensor(a.shape);
+                    Tensor soft = softmax(a, fDim);
+                    for (int i = 0; i < fOuterSize; i++) {
+                        for (int k = 0; k < fInnerSize; k++) {
+                            float sumGrad = 0;
+                            for (int j = 0; j < fDimSize; j++) {
+                                int idx = i * (fDimSize * fInnerSize) + j * fInnerSize + k;
+                                sumGrad += outGrad.data[idx];
+                            }
+                            for (int j = 0; j < fDimSize; j++) {
+                                int idx = i * (fDimSize * fInnerSize) + j * fInnerSize + k;
+                                ga.data[idx] = outGrad.data[idx] - soft.data[idx] * sumGrad;
+                            }
+                        }
+                    }
+                    a.backwardStep(ga);
+                }
+            };
+        }
+        return out;
+    }
+
+    public static Tensor cosine_similarity(Tensor x1, Tensor x2, int dim, float eps) {
+        if (dim < 0)
+            dim += x1.shape.length;
+        int nd = x1.shape.length;
+        int dimSize = x1.shape[dim];
+        int outerSize = 1;
+        for (int i = 0; i < dim; i++)
+            outerSize *= x1.shape[i];
+        int innerSize = 1;
+        for (int i = dim + 1; i < nd; i++)
+            innerSize *= x1.shape[i];
+
+        int[] outShape;
+        if (nd == 1) {
+            outShape = new int[] { 1 };
+        } else {
+            outShape = new int[nd - 1];
+            int p = 0;
+            for (int i = 0; i < nd; i++) {
+                if (i != dim)
+                    outShape[p++] = x1.shape[i];
+            }
+        }
+
+        Tensor res = new Tensor(outShape);
+        float[] norm1 = new float[outerSize * innerSize];
+        float[] norm2 = new float[outerSize * innerSize];
+
+        for (int i = 0; i < outerSize; i++) {
+            for (int k = 0; k < innerSize; k++) {
+                double dot = 0;
+                double n1 = 0;
+                double n2 = 0;
+                for (int j = 0; j < dimSize; j++) {
+                    int idx = i * dimSize * innerSize + j * innerSize + k;
+                    float v1 = x1.data[idx];
+                    float v2 = x2.data[idx];
+                    dot += v1 * v2;
+                    n1 += v1 * v1;
+                    n2 += v2 * v2;
+                }
+                float sn1 = (float) Math.sqrt(n1);
+                float sn2 = (float) Math.sqrt(n2);
+                float den = Math.max(sn1 * sn2, eps);
+                res.data[i * innerSize + k] = (float) (dot / den);
+                norm1[i * innerSize + k] = sn1;
+                norm2[i * innerSize + k] = sn2;
+            }
+        }
+
+        if (is_grad_enabled() && (x1.requires_grad || x2.requires_grad)) {
+            final int fOuterSize = outerSize;
+            final int fInnerSize = innerSize;
+            final int fDimSize = dimSize;
+            final float fEps = eps;
+            res.requires_grad = true;
+            res.grad_fn = new Tensor.GradFn(x1, x2) {
+                public void apply(Tensor outGrad) {
+                    if (x1.requires_grad) {
+                        Tensor g1 = new Tensor(x1.shape);
+                        for (int i = 0; i < fOuterSize; i++) {
+                            for (int k = 0; k < fInnerSize; k++) {
+                                int outIdx = i * fInnerSize + k;
+                                float og = outGrad.data[outIdx];
+                                float sim = res.data[outIdx];
+                                float n1 = norm1[outIdx];
+                                float n2 = norm2[outIdx];
+                                float den = Math.max(n1 * n2, fEps);
+                                for (int j = 0; j < fDimSize; j++) {
+                                    int idx = i * fDimSize * fInnerSize + j * fInnerSize + k;
+                                    g1.data[idx] = og * ((x2.data[idx] / den) - (sim * x1.data[idx] / (n1 * n1 + fEps)));
+                                }
+                            }
+                        }
+                        x1.backwardStep(g1);
+                    }
+                    if (x2.requires_grad) {
+                        Tensor g2 = new Tensor(x2.shape);
+                        for (int i = 0; i < fOuterSize; i++) {
+                            for (int k = 0; k < fInnerSize; k++) {
+                                int outIdx = i * fInnerSize + k;
+                                float og = outGrad.data[outIdx];
+                                float sim = res.data[outIdx];
+                                float n1 = norm1[outIdx];
+                                float n2 = norm2[outIdx];
+                                float den = Math.max(n1 * n2, fEps);
+                                for (int j = 0; j < fDimSize; j++) {
+                                    int idx = i * fDimSize * fInnerSize + j * fInnerSize + k;
+                                    g2.data[idx] = og * ((x1.data[idx] / den) - (sim * x2.data[idx] / (n2 * n2 + fEps)));
+                                }
+                            }
+                        }
+                        x2.backwardStep(g2);
+                    }
+                }
+            };
+        }
+        return res;
+    }
+
+    public static Tensor pairwise_distance(Tensor x1, Tensor x2, float p, float eps) {
+        int dim = x1.shape.length - 1;
+        if (dim < 0)
+            dim = 0;
+        int nd = x1.shape.length;
+        int dimSize = x1.shape[dim];
+        int outerSize = 1;
+        for (int i = 0; i < dim; i++)
+            outerSize *= x1.shape[i];
+
+        int[] outShape;
+        if (nd == 1) {
+            outShape = new int[] { 1 };
+        } else {
+            outShape = new int[nd - 1];
+            for (int i = 0; i < nd - 1; i++)
+                outShape[i] = x1.shape[i];
+        }
+
+        Tensor out = new Tensor(outShape);
+
+        for (int i = 0; i < outerSize; i++) {
+            double sumValue = 0;
+            for (int j = 0; j < dimSize; j++) {
+                float diff = x1.data[i * dimSize + j] - x2.data[i * dimSize + j];
+                sumValue += Math.pow(Math.abs(diff), p);
+            }
+            out.data[i] = (float) Math.pow(sumValue + eps, 1.0 / p);
+        }
+
+        if (is_grad_enabled() && (x1.requires_grad || x2.requires_grad)) {
+            final int fOuterSize = outerSize;
+            final int fDimSize = dimSize;
+            final float fP = p;
+            final float fEps = eps;
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(x1, x2) {
+                public void apply(Tensor outGrad) {
+                    if (x1.requires_grad) {
+                        Tensor g1 = new Tensor(x1.shape);
+                        for (int i = 0; i < fOuterSize; i++) {
+                            float og = outGrad.data[i];
+                            float dist = out.data[i];
+                            for (int j = 0; j < fDimSize; j++) {
+                                float diff = x1.data[i * fDimSize + j] - x2.data[i * fDimSize + j];
+                                g1.data[i * fDimSize + j] = (float) (og * Math.signum(diff)
+                                        * Math.pow(Math.abs(diff), fP - 1) / Math.pow(dist, fP - 1 + 1e-12));
+                            }
+                        }
+                        x1.backwardStep(g1);
+                    }
+                    if (x2.requires_grad) {
+                        Tensor g2 = new Tensor(x2.shape);
+                        for (int i = 0; i < fOuterSize; i++) {
+                            float og = outGrad.data[i];
+                            float dist = out.data[i];
+                            for (int j = 0; j < fDimSize; j++) {
+                                float diff = x1.data[i * fDimSize + j] - x2.data[i * fDimSize + j];
+                                g2.data[i * fDimSize + j] = (float) (-og * Math.signum(diff)
+                                        * Math.pow(Math.abs(diff), fP - 1) / Math.pow(dist, fP - 1 + 1e-12));
+                            }
+                        }
+                        x2.backwardStep(g2);
+                    }
+                }
+            };
+        }
+        return out;
+    }
+
+    public static Tensor gelu(Tensor a) {
+        // approx: 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+        Tensor out = new Tensor(a.shape);
+        for (int i = 0; i < a.data.length; i++) {
+            float x = a.data[i];
+            float inner = (float) (Math.sqrt(2.0 / Math.PI) * (x + 0.044715 * Math.pow(x, 3)));
+            out.data[i] = (float) (0.5 * x * (1.0 + Math.tanh(inner)));
+        }
+
+        if (is_grad_enabled() && a.requires_grad) {
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(a) {
+                public void apply(Tensor outGrad) {
+                    Tensor ga = new Tensor(a.shape);
+                    final float sqrt2Pi = (float) Math.sqrt(2.0 / Math.PI);
+                    for (int i = 0; i < ga.data.length; i++) {
+                        float x = a.data[i];
+                        float x3 = x * x * x;
+                        float inner = sqrt2Pi * (x + 0.044715f * x3);
+                        float th = (float) Math.tanh(inner);
+                        float sech2 = 1.0f - th * th;
+                        float deriv = 0.5f * (1.0f + th) + 0.5f * x * sech2 * sqrt2Pi * (1.0f + 3.0f * 0.044715f * x * x);
+                        ga.data[i] = outGrad.data[i] * deriv;
+                    }
+                    a.backwardStep(ga);
+                }
+            };
+        }
+        return out;
+    }
+
+    public static Tensor elu(Tensor a, float alpha) {
+        Tensor out = new Tensor(a.shape);
+        for (int i = 0; i < a.data.length; i++) {
+            float x = a.data[i];
+            out.data[i] = x > 0 ? x : (float) (alpha * (Math.exp(x) - 1.0));
+        }
+
+        if (is_grad_enabled() && a.requires_grad) {
+            final float fAlpha = alpha;
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(a) {
+                public void apply(Tensor outGrad) {
+                    Tensor ga = new Tensor(a.shape);
+                    for (int i = 0; i < ga.data.length; i++) {
+                        float x = a.data[i];
+                        float deriv = x > 0 ? 1f : (float) (fAlpha * Math.exp(x));
+                        ga.data[i] = outGrad.data[i] * deriv;
+                    }
+                    a.backwardStep(ga);
+                }
+            };
+        }
+        return out;
+    }
+
+    public static Tensor silu(Tensor a) {
+        // x * sigmoid(x)
+        Tensor out = new Tensor(a.shape);
+        Tensor sig = sigmoid(a);
+        for (int i = 0; i < a.data.length; i++) {
+            out.data[i] = a.data[i] * sig.data[i];
+        }
+
+        if (is_grad_enabled() && a.requires_grad) {
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(a) {
+                public void apply(Tensor outGrad) {
+                    Tensor ga = new Tensor(a.shape);
+                    for (int i = 0; i < ga.data.length; i++) {
+                        float s = sig.data[i];
+                        float x = a.data[i];
+                        // d(x*sig(x))/dx = sig(x) + x * sig(x)*(1-sig(x))
+                        float deriv = s + x * s * (1f - s);
+                        ga.data[i] = outGrad.data[i] * deriv;
+                    }
+                    a.backwardStep(ga);
+                }
+            };
+        }
+        return out;
+    }
+
     // more reductions
     public static float prod(Tensor a) {
         float p = 1f;
@@ -1171,6 +1858,207 @@ public class Torch {
 
     public static float std(Tensor a) {
         return (float) Math.sqrt(var(a));
+    }
+
+
+    public static Tensor one_hot(Tensor indices, int numClasses) {
+        // indices: [N] or [N, L]
+        int n = indices.numel();
+        int[] outShape = new int[indices.shape.length + 1];
+        System.arraycopy(indices.shape, 0, outShape, 0, indices.shape.length);
+        outShape[outShape.length - 1] = numClasses;
+
+        Tensor out = new Tensor(outShape);
+        for (int i = 0; i < n; i++) {
+            int classIdx = (int) indices.data[i];
+            if (classIdx >= 0 && classIdx < numClasses) {
+                out.data[i * numClasses + classIdx] = 1.0f;
+            }
+        }
+        return out;
+    }
+
+    // --- Batch 4: Conv1d, Bilinear, OneHot ---
+
+    public static Tensor conv1d(Tensor x, Tensor weight, Tensor bias, int stride, int padding) {
+        final int nd = x.shape.length;
+        if (nd < 2)
+            throw new IllegalArgumentException("Expected x to have at least 2 dims");
+        final int batch = (nd == 2) ? x.shape[0] : (nd == 3 ? x.shape[0] : 1);
+        final int inC = (nd == 2) ? weight.shape[0] / (weight.numel() / (weight.shape[weight.shape.length - 1] * weight.shape[0])) : x.shape[nd - 2];
+        // Wait, weight shape for 1D should be [outC, inC*kW] or [outC, inC, kW]
+        // Let's assume weight is [outC, inC, kW] for clarity.
+        final int outC = weight.shape[0];
+        final int weightInC = weight.shape[1];
+        final int kW = weight.shape[2];
+        final int inL = (nd == 2) ? (x.shape[1] / weightInC) : x.shape[nd - 1];
+        final int outL = (inL + 2 * padding - kW) / stride + 1;
+
+        int[] outShape = (nd == 3) ? new int[] { batch, outC, outL } : new int[] { batch, outC * outL };
+        Tensor out = new Tensor(outShape);
+
+        for (int b = 0; b < batch; b++) {
+            for (int oc = 0; oc < outC; oc++) {
+                for (int ol = 0; ol < outL; ol++) {
+                    float sum = 0f;
+                    for (int ic = 0; ic < weightInC; ic++) {
+                        for (int k = 0; k < kW; k++) {
+                            int il = ol * stride - padding + k;
+                            if (il >= 0 && il < inL) {
+                                float valX = x.data[b * (weightInC * inL) + ic * inL + il];
+                                float valW = weight.data[oc * (weightInC * kW) + ic * kW + k];
+                                sum += valX * valW;
+                            }
+                        }
+                    }
+                    if (bias != null)
+                        sum += bias.data[oc];
+                    out.data[b * (outC * outL) + oc * outL + ol] = sum;
+                }
+            }
+        }
+
+        if (is_grad_enabled() && (x.requires_grad || weight.requires_grad || (bias != null && bias.requires_grad))) {
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(x, weight, bias) {
+                public void apply(Tensor outGrad) {
+                    if (x.requires_grad) {
+                        Tensor gx = new Tensor(x.shape);
+                        for (int b = 0; b < batch; b++) {
+                            for (int oc = 0; oc < outC; oc++) {
+                                for (int ol = 0; ol < outL; ol++) {
+                                    float og = outGrad.data[b * (outC * outL) + oc * outL + ol];
+                                    for (int ic = 0; ic < weightInC; ic++) {
+                                        for (int k = 0; k < kW; k++) {
+                                            int il = ol * stride - padding + k;
+                                            if (il >= 0 && il < inL) {
+                                                gx.data[b * (weightInC * inL) + ic * inL + il] += og * weight.data[oc * (weightInC * kW) + ic * kW + k];
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        x.backwardStep(gx);
+                    }
+                    if (weight.requires_grad) {
+                        Tensor gw = new Tensor(weight.shape);
+                        for (int b = 0; b < batch; b++) {
+                            for (int oc = 0; oc < outC; oc++) {
+                                for (int ol = 0; ol < outL; ol++) {
+                                    float og = outGrad.data[b * (outC * outL) + oc * outL + ol];
+                                    for (int ic = 0; ic < weightInC; ic++) {
+                                        for (int k = 0; k < kW; k++) {
+                                            int il = ol * stride - padding + k;
+                                            if (il >= 0 && il < inL) {
+                                                gw.data[oc * (weightInC * kW) + ic * kW + k] += og * x.data[b * (weightInC * inL) + ic * inL + il];
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        weight.backwardStep(gw);
+                    }
+                    if (bias != null && bias.requires_grad) {
+                        Tensor gb = new Tensor(bias.shape);
+                        for (int b = 0; b < batch; b++) {
+                            for (int oc = 0; oc < outC; oc++) {
+                                for (int ol = 0; ol < outL; ol++) {
+                                    gb.data[oc] += outGrad.data[b * (outC * outL) + oc * outL + ol];
+                                }
+                            }
+                        }
+                        bias.backwardStep(gb);
+                    }
+                }
+            };
+        }
+        return out;
+    }
+
+    public static Tensor bilinear(Tensor x1, Tensor x2, Tensor weight, Tensor bias) {
+        // x1: [N, D1], x2: [N, D2], weight: [Out, D1, D2], bias: [Out]
+        int batch = x1.shape[0];
+        int outC = weight.shape[0];
+        int d1 = weight.shape[1];
+        int d2 = weight.shape[2];
+
+        Tensor out = new Tensor(batch, outC);
+
+        for (int b = 0; b < batch; b++) {
+            for (int oc = 0; oc < outC; oc++) {
+                float sum = 0f;
+                for (int i = 0; i < d1; i++) {
+                    for (int j = 0; j < d2; j++) {
+                        sum += x1.data[b * d1 + i] * weight.data[oc * d1 * d2 + i * d2 + j] * x2.data[b * d2 + j];
+                    }
+                }
+                if (bias != null)
+                    sum += bias.data[oc];
+                out.data[b * outC + oc] = sum;
+            }
+        }
+
+        if (is_grad_enabled() && (x1.requires_grad || x2.requires_grad || weight.requires_grad || (bias != null && bias.requires_grad))) {
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(x1, x2, weight, bias) {
+                public void apply(Tensor outGrad) {
+                    if (x1.requires_grad) {
+                        Tensor g1 = new Tensor(x1.shape);
+                        for (int b = 0; b < batch; b++) {
+                            for (int oc = 0; oc < outC; oc++) {
+                                float og = outGrad.data[b * outC + oc];
+                                for (int i = 0; i < d1; i++) {
+                                    for (int j = 0; j < d2; j++) {
+                                        g1.data[b * d1 + i] += og * weight.data[oc * d1 * d2 + i * d2 + j] * x2.data[b * d2 + j];
+                                    }
+                                }
+                            }
+                        }
+                        x1.backwardStep(g1);
+                    }
+                    if (x2.requires_grad) {
+                        Tensor g2 = new Tensor(x2.shape);
+                        for (int b = 0; b < batch; b++) {
+                            for (int oc = 0; oc < outC; oc++) {
+                                float og = outGrad.data[b * outC + oc];
+                                for (int i = 0; i < d1; i++) {
+                                    for (int j = 0; j < d2; j++) {
+                                        g2.data[b * d2 + j] += og * x1.data[b * d1 + i] * weight.data[oc * d1 * d2 + i * d2 + j];
+                                    }
+                                }
+                            }
+                        }
+                        x2.backwardStep(g2);
+                    }
+                    if (weight.requires_grad) {
+                        Tensor gw = new Tensor(weight.shape);
+                        for (int b = 0; b < batch; b++) {
+                            for (int oc = 0; oc < outC; oc++) {
+                                float og = outGrad.data[b * outC + oc];
+                                for (int i = 0; i < d1; i++) {
+                                    for (int j = 0; j < d2; j++) {
+                                        gw.data[oc * d1 * d2 + i * d2 + j] += og * x1.data[b * d1 + i] * x2.data[b * d2 + j];
+                                    }
+                                }
+                            }
+                        }
+                        weight.backwardStep(gw);
+                    }
+                    if (bias != null && bias.requires_grad) {
+                        Tensor gb = new Tensor(bias.shape);
+                        for (int b = 0; b < batch; b++) {
+                            for (int oc = 0; oc < outC; oc++) {
+                                gb.data[oc] += outGrad.data[b * outC + oc];
+                            }
+                        }
+                        bias.backwardStep(gb);
+                    }
+                }
+            };
+        }
+        return out;
     }
 
     // argmin along axis 1 for 2D
@@ -1601,4 +2489,35 @@ public class Torch {
         return out;
     }
 
+    public static Tensor embedding(Tensor weight, Tensor indices) {
+        // indices shape [...]
+        // weight shape [num_embeddings, embedding_dim]
+        int[] inS = indices.shape;
+        int d = weight.shape[1];
+        int n = indices.numel();
+        int[] outS = new int[inS.length + 1];
+        System.arraycopy(inS, 0, outS, 0, inS.length);
+        outS[inS.length] = d;
+        Tensor out = new Tensor(outS);
+        for (int i = 0; i < n; i++) {
+            int idx = (int) indices.data[i];
+            System.arraycopy(weight.data, idx * d, out.data, i * d, d);
+        }
+        if (is_grad_enabled() && weight.requires_grad) {
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(weight) {
+                public void apply(Tensor outGrad) {
+                    Tensor gw = new Tensor(weight.shape);
+                    for (int i = 0; i < n; i++) {
+                        int idx = (int) indices.data[i];
+                        for (int j = 0; j < d; j++) {
+                            gw.data[idx * d + j] += outGrad.data[i * d + j];
+                        }
+                    }
+                    weight.backwardStep(gw);
+                }
+            };
+        }
+        return out;
+    }
 }
