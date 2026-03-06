@@ -63,6 +63,7 @@ public class TrainCifar10 {
         // 5. Linear: 2048 -> 128
         model.add(new NN.Linear(lib, flattenSize, 128, true));
         model.add(new NN.ReLU());
+        model.add(new NN.Dropout(0.3f));
 
         // 6. Linear: 128 -> 10
         model.add(new NN.Linear(lib, 128, 10, true));
@@ -112,6 +113,7 @@ public class TrainCifar10 {
             float epochLoss = 0f;
             int numBatches = 0;
             accMetric.reset();
+            model.train();
 
             for (Tensor[] batch : loader) {
                 Tensor xBatch = batch[0];
@@ -165,9 +167,11 @@ public class TrainCifar10 {
 
             Tensor x = Torch.tensor(data, bs, dim);
 
+            model.eval();
             Torch.set_grad_enabled(false);
             Tensor out = model.forward(x);
             Torch.set_grad_enabled(true);
+            model.train();
 
             int[] batchLabels = new int[bs];
             for (int i = 0; i < bs; i++)

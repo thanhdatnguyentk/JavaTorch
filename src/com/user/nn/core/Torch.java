@@ -1787,6 +1787,41 @@ public class Torch {
         return out;
     }
 
+    public static Tensor dropout(Tensor a, float p, boolean training) {
+        if (p < 0f || p >= 1f)
+            throw new IllegalArgumentException("dropout: p must be in [0, 1)");
+        if (!training || p == 0f)
+            return a;
+
+        Tensor out = new Tensor(a.shape);
+        float scale = 1f / (1f - p);
+        final float[] mask = new float[a.data.length];
+
+        for (int i = 0; i < a.data.length; i++) {
+            if (globalR.nextFloat() >= p) {
+                mask[i] = 1f;
+                out.data[i] = a.data[i] * scale;
+            } else {
+                mask[i] = 0f;
+                out.data[i] = 0f;
+            }
+        }
+
+        if (is_grad_enabled() && a.requires_grad) {
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(a) {
+                public void apply(Tensor outGrad) {
+                    Tensor ga = new Tensor(a.shape);
+                    for (int i = 0; i < ga.data.length; i++) {
+                        ga.data[i] = outGrad.data[i] * mask[i] * scale;
+                    }
+                    a.backwardStep(ga);
+                }
+            };
+        }
+        return out;
+    }
+
     // more reductions
     public static float prod(Tensor a) {
         float p = 1f;

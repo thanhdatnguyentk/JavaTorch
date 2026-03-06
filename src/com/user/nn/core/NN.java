@@ -168,6 +168,25 @@ public class NN {
     public static abstract class Module {
         protected Map<String, Module> children = new LinkedHashMap<>();
         protected Map<String, Parameter> params = new LinkedHashMap<>();
+        protected boolean training = true;
+
+        public void train() {
+            this.training = true;
+            for (Module m : children.values()) {
+                m.train();
+            }
+        }
+
+        public void eval() {
+            this.training = false;
+            for (Module m : children.values()) {
+                m.eval();
+            }
+        }
+
+        public boolean is_training() {
+            return training;
+        }
 
         public void addModule(String name, Module m) {
             children.put(name, m);
@@ -749,6 +768,10 @@ public class NN {
         public static Tensor embedding(Tensor weight, Tensor indices) {
             return Torch.embedding(weight, indices);
         }
+
+        public static Tensor dropout(Tensor x, float p, boolean training) {
+            return Torch.dropout(x, p, training);
+        }
     }
 
     // --- More activations ---
@@ -945,43 +968,21 @@ public class NN {
         }
     }
 
-    // --- Dropout (stateless mask generation using seed) ---
+    // --- Dropout ---
     public static class Dropout extends Module {
-        private final float p;
-        private final long seed;
+        public float p;
+
+        public Dropout(float p) {
+            this.p = p;
+        }
 
         public Dropout(float p, long seed) {
             this.p = p;
-            this.seed = seed;
         }
 
         @Override
         public Tensor forward(Tensor x) {
-            if (p <= 0f)
-                return x;
-            Tensor out = new Tensor(x.shape);
-            java.util.Random r = new java.util.Random(seed);
-            float scale = 1.0f / (1.0f - p);
-            boolean[] mask = new boolean[x.data.length];
-            for (int i = 0; i < x.data.length; i++) {
-                boolean keep = r.nextFloat() >= p;
-                mask[i] = keep;
-                out.data[i] = keep ? x.data[i] * scale : 0f;
-            }
-
-            if (Torch.is_grad_enabled() && x.requires_grad) {
-                out.requires_grad = true;
-                out.grad_fn = new Tensor.GradFn(x) {
-                    public void apply(Tensor outGrad) {
-                        Tensor gx = new Tensor(x.shape);
-                        for (int i = 0; i < gx.data.length; i++) {
-                            gx.data[i] = mask[i] ? outGrad.data[i] * scale : 0f;
-                        }
-                        x.backwardStep(gx);
-                    }
-                };
-            }
-            return out;
+            return Torch.dropout(x, p, training);
         }
     }
 
@@ -1024,33 +1025,45 @@ public class NN {
             out.rows = batch;
             out.cols = numFeatures;
             out.es = new float[batch * numFeatures];
-            float[] mean = new float[numFeatures];
-            float[] var = new float[numFeatures];
-            // compute mean
-            for (int j = 0; j < numFeatures; j++) {
-                float s = 0f;
-                for (int i = 0; i < batch; i++)
-                    s += x.es[i * numFeatures + j];
-                mean[j] = s / batch;
-            }
-            // compute var
-            for (int j = 0; j < numFeatures; j++) {
-                float s = 0f;
-                for (int i = 0; i < batch; i++) {
-                    float d = x.es[i * numFeatures + j] - mean[j];
-                    s += d * d;
+
+            float[] useMean;
+            float[] useVar;
+
+            if (training) {
+                float[] mean = new float[numFeatures];
+                float[] var = new float[numFeatures];
+                // compute mean
+                for (int j = 0; j < numFeatures; j++) {
+                    float s = 0f;
+                    for (int i = 0; i < batch; i++)
+                        s += x.es[i * numFeatures + j];
+                    mean[j] = s / batch;
                 }
-                var[j] = s / batch;
+                // compute var
+                for (int j = 0; j < numFeatures; j++) {
+                    float s = 0f;
+                    for (int i = 0; i < batch; i++) {
+                        float d = x.es[i * numFeatures + j] - mean[j];
+                        s += d * d;
+                    }
+                    var[j] = s / batch;
+                }
+                // update running
+                for (int j = 0; j < numFeatures; j++) {
+                    runningMean[j] = momentum * mean[j] + (1 - momentum) * runningMean[j];
+                    runningVar[j] = (momentum * var[j]) + (1 - momentum) * runningVar[j];
+                }
+                useMean = mean;
+                useVar = var;
+            } else {
+                useMean = runningMean;
+                useVar = runningVar;
             }
-            // update running
-            for (int j = 0; j < numFeatures; j++) {
-                runningMean[j] = momentum * mean[j] + (1 - momentum) * runningMean[j];
-                runningVar[j] = momentum * var[j] + (1 - momentum) * runningVar[j];
-            }
+
             // normalize and affine
             for (int i = 0; i < batch; i++) {
                 for (int j = 0; j < numFeatures; j++) {
-                    float val = (x.es[i * numFeatures + j] - mean[j]) / (float) Math.sqrt(var[j] + eps);
+                    float val = (x.es[i * numFeatures + j] - useMean[j]) / (float) Math.sqrt(useVar[j] + eps);
                     if (weight != null)
                         val = val * weight.data.es[j] + bias.data.es[j];
                     out.es[i * numFeatures + j] = val;

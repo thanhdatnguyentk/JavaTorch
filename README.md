@@ -20,7 +20,7 @@ A minimal re-implementation of core PyTorch concepts in pure Java for learning a
 | **SIMD Support** | ✅ Java Vector API (AVX2/AVX-512) for `matmul`, `dot` |
 | **NLP Support** | ✅ `Embedding`, `Vocabulary`, `BasicTokenizer`, `SentimentModel` |
 | **Autograd Optimized** | ✅ **Topological Sort** for $O(N)$ backprop (No more recursive $O(2^N)$ hangs) |
-| **Test Suite** | ✅ 31 automated tests via `run-tests.ps1` |
+| **Test Suite** | ✅ 36 automated tests via `run-tests.ps1` |
 
 ## Quick Start
 
@@ -28,7 +28,7 @@ A minimal re-implementation of core PyTorch concepts in pure Java for learning a
 # Compile core framework (Note: --add-modules required for SIMD Vector API)
 javac --add-modules jdk.incubator.vector -d bin src/com/user/nn/core/*.java src/com/user/nn/optim/*.java src/com/user/nn/dataloaders/*.java src/com/user/nn/models/*.java
 
-# Run all tests (31 tests)
+# Run all tests (36 tests)
 powershell -File tests/run-tests.ps1
 
 # Examples:
@@ -55,7 +55,7 @@ java --add-modules jdk.incubator.vector -cp bin com.user.nn.examples.TrainSentim
 src/
 └── com/user/nn/
     ├── core/
-    │   ├── NN.java          # Module, Parameter, layers, F (loss functions), RNN/LSTM, **Embedding**
+    │   ├── NN.java          # Module, Parameter, layers, F (loss functions), RNN/LSTM, **Embedding**, **Dropout**
     │   ├── Tensor.java      # Core Tensor class with **Topological Sort Autograd**
     │   └── Torch.java       # Tensor utilities (creation, ops, broadcasting, SIMD)
     ├── optim/
@@ -71,7 +71,7 @@ src/
     │   ├── Cifar10Loader.java # Download/Parse CIFAR-10
     │   └── MovieCommentLoader.java # Download/Parse Movie Polarity Dataset
     ├── models/
-    │   └── SentimentModel.java  # Embedding -> LSTM -> Linear Model
+    │   └── SentimentModel.java  # Embedding -> LSTM -> Dropout -> Linear Model
     └── examples/
         ├── App.java
         ├── TrainSentiment.java  # Sentiment Analysis Training on Real Data
@@ -80,8 +80,8 @@ src/
         ├── TrainCifar10.java    # CNN with DataLoader on CIFAR-10
         └── TestVectorBenchmark.java # SIMD vs Scalar Matmul Benchmark
 tests/
-├── run-tests.ps1        # Automated test runner (31 tests)
-├── java/com/user/nn/    # Unit test files (including TestRNN, TestBatch*)
+├── run-tests.ps1        # Automated test runner (36 tests)
+├── java/com/user/nn/    # Unit test files (including TestRNN, TestDropout, TestBatch*)
 └── *.py                 # NumPy reference scripts
 ```
 
@@ -113,11 +113,13 @@ tests/
 ### ✅ Polish & Real Datasets (Complete)
 - Added `TrainFashionMNIST.java` (87% Test Accuracy in 5 epochs)
 - Added `TrainCifar10.java` (45% Test Accuracy in 2 epochs, pure Java CNN)
+- **Train/Eval Modes**: Integrated `model.train()` and `model.eval()` to support inference-specific behaviors like Dropout and BatchNorm.
+- **Dropout**: Implemented `NN.Dropout` and `Torch.dropout` with inverted dropout scaling.
 
 ### ✅ Phase 12: Metrics Tracking (Complete)
 - **metrics**: ✅ Standardized `Accuracy`, `MeanSquaredError`, and `MeanAbsoluteError`.
 - **MetricTracker**: ✅ Refactored all training examples to use decoupled metric tracking for cleaner code.
-- Full suite of 31 tests fully operational
+- Full suite of 36 tests fully operational.
 
 ### 🔲 Future Work
 - Conv1d/Conv3d, BatchNorm2d/3d, GroupNorm
@@ -125,7 +127,7 @@ tests/
 - JUnit integration
 - Data loading utilities (Dataset & DataLoader abstractions)
 
-## Test Suite (31 tests)
+## Test Suite (36 tests)
 
 | Test | Coverage |
 |------|----------|
@@ -152,7 +154,14 @@ tests/
 | TestOptimizers | SGD + Adam convergence |
 | TestLossFunctions | NLL, MSE, Huber forward+backward |
 | TestNormLayers | LayerNorm, InstanceNorm forward+backward |
+| TestMetrics | Metrics calculations |
 | TestRNN | RNN/LSTM Forward + Backpropagation Through Time |
+| TestAutogradEmbedding | Embedding layer autograd |
+| TestDropout | Training/Eval configurations and Dropout |
+| TestBatch1 | Combined batch 1 tests |
+| TestBatch2 | Combined batch 2 tests |
+| TestBatch3 | Combined batch 3 tests |
+| TestBatch4 | Combined batch 4 tests |
 
 ---
 

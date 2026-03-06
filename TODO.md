@@ -1,6 +1,6 @@
 # ML_framework — TODO
 
-Last updated: 2026-03-05
+Last updated: 2026-03-06
 
 ## Current progress (completed)
 - Core `nn` Module/Parameter system and containers (`Sequential`, `ModuleDict`, etc).
@@ -12,18 +12,21 @@ Last updated: 2026-03-05
 - **RNN/LSTM**: `RNNCell`, `LSTMCell`, `GRUCell`, `RNN`, `LSTM`, `GRU` with full BPTT support.
 - **Optimizers**: `SGD` (with momentum) and `Adam`.
 - **Loss Functions**: `cross_entropy`, `nll_loss`, `mse_loss`, `huber_loss`, `BCELoss`, `BCEWithLogitsLoss`, `KLDivLoss`, `L1Loss`.
-- **Normalization**: `BatchNorm1d`, `LayerNorm`, `InstanceNorm`, **`GroupNorm`**.
+- **Normalization**: `BatchNorm1d` (Train/Eval aware), `LayerNorm`, `InstanceNorm`, **`GroupNorm`**.
 - **Similarity & Distance**: `CosineSimilarity`, `PairwiseDistance`.
 - **NLP Utilities**: **`Embedding`**, `Vocabulary`, `BasicTokenizer`.
 - **System Optimizations**:
   - `DataLoader` with Multi-worker threading.
   - Java Vector API (SIMD) integration for AVX2/AVX-512 acceleration.
+- **Model Training Features**:
+  - `model.train()` and `model.eval()` module states.
+  - `NN.Dropout(p)` with inverted dropout scaling capability.
 - **Examples**:
   - `TrainIris.java` (Iris data)
   - `TrainFashionMNIST.java`
   - `TrainCifar10.java`
   - **`TrainSentiment.java`** (Real movie review dataset using LSTM)
-- Comprehensive test suite (31 tests) including `TestBatch4`.
+- Comprehensive test suite (36 tests) including `TestBatch4` and `TestDropout`.
 
 ---
 

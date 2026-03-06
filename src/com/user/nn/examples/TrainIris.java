@@ -104,6 +104,7 @@ public class TrainIris {
         NN.Sequential model = new NN.Sequential();
         model.add(new NN.Linear(lib, 4, 16, true));
         model.add(new NN.ReLU());
+        model.add(new NN.Dropout(0.1f));
         model.add(new NN.Linear(lib, 16, 3, true));
 
         // Let's use Adam
@@ -158,6 +159,7 @@ public class TrainIris {
             float epochLoss = 0.0f;
             int batchCount = 0;
             accMetric.reset();
+            model.train();
 
             for (Tensor[] batch : trainLoader) {
                 Tensor xBatch = batch[0]; // [batch_size, 4]
@@ -226,9 +228,11 @@ public class TrainIris {
     }
 
     static float evaluate(NN.Module model, NN.Mat X, int[] Y, Accuracy metric) {
+        model.eval();
         metric.reset();
         Tensor out = model.forward(Torch.fromMat(X));
         metric.update(out, Y);
+        model.train();
         return metric.compute();
     }
 }

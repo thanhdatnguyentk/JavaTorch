@@ -45,6 +45,9 @@ $tests = @(
     , 'com.user.nn.TestLossFunctions'
     , 'com.user.nn.TestNormLayers'
     , 'com.user.nn.TestMetrics'
+    , 'com.user.nn.TestRNN'
+    , 'com.user.nn.TestAutogradEmbedding'
+    , 'com.user.nn.TestDropout'
     , 'com.user.nn.TestBatch1'
     , 'com.user.nn.TestBatch2'
     , "com.user.nn.TestBatch3",

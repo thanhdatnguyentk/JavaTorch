@@ -37,9 +37,9 @@ public class TrainSentiment {
         int batchSize = 16;
         
         // Train on a larger subset now that Autograd is O(N)
-        int demoTrainSize = Math.min(trainEntries.size(), 5000); 
-        trainEntries = trainEntries.subList(0, demoTrainSize);
-        System.out.println("Using a subset of " + demoTrainSize + " training samples.");
+        // int demoTrainSize = Math.min(trainEntries.size(), 5000); 
+        // trainEntries = trainEntries.subList(0, demoTrainSize);
+        // System.out.println("Using a subset of " + demoTrainSize + " training samples.");
         
         // Model params
         int vocabSize = vocab.size();
@@ -54,13 +54,14 @@ public class TrainSentiment {
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), lr);
         
         Accuracy accMetric = new Accuracy();
-        int epochs = 3;
+        int epochs = 10;
         System.out.println("\nTraining on " + trainEntries.size() + " samples...");
         
         for (int epoch = 0; epoch < epochs; epoch++) {
             float totalLoss = 0f;
             int numBatches = (trainEntries.size() + batchSize - 1) / batchSize;
             accMetric.reset();
+            model.train(); // Ensure dropout/batchnorm are in training mode
 
             for (int b = 0; b < numBatches; b++) {
                 int start = b * batchSize;
@@ -116,6 +117,7 @@ public class TrainSentiment {
         metric.reset();
         int testBatchSize = 64;
         
+        model.eval();
         Torch.set_grad_enabled(false);
         for (int i = 0; i < data.size(); i += testBatchSize) {
             int end = Math.min(i + testBatchSize, data.size());
@@ -137,6 +139,7 @@ public class TrainSentiment {
             metric.update(out, yLabels);
         }
         Torch.set_grad_enabled(true);
+        model.train();
         return metric.compute();
     }
 }

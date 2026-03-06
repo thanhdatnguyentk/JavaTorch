@@ -1,4 +1,6 @@
-import com.user.nn.*;
+package com.user.nn.examples;
+
+import com.user.nn.core.*;
 
 public class TestVectorBenchmark {
 

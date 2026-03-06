@@ -10,12 +10,16 @@ public class SentimentModel extends NN.Module {
     public SentimentModel(NN outer, int vocabSize, int embedDim, int hiddenDim, int outputDim) {
         this.embedding = new NN.Embedding(outer, vocabSize, embedDim);
         this.lstm = new NN.LSTM(outer, embedDim, hiddenDim, true, true); // batchFirst=true
+        this.dropout = new NN.Dropout(0.2f);
         this.fc = new NN.Linear(outer, hiddenDim, outputDim, true);
         
         addModule("embedding", embedding);
         addModule("lstm", lstm);
+        addModule("dropout", dropout);
         addModule("fc", fc);
     }
+
+    public NN.Dropout dropout;
 
     @Override
     public Tensor forward(Tensor x) {
@@ -29,7 +33,11 @@ public class SentimentModel extends NN.Module {
         
         // Take the last time step: [batch, 1, hiddenDim]
         Tensor lastHidden = Torch.narrow(lstmOut, 1, seqLen - 1, 1);
-        // Reshape to [batch, hiddenDim]
-        return fc.forward(Torch.reshape(lastHidden, batch, hiddenDim));
+        lastHidden = Torch.reshape(lastHidden, batch, hiddenDim);
+        
+        // Apply dropout
+        lastHidden = dropout.forward(lastHidden);
+        
+        return fc.forward(lastHidden);
     }
 }

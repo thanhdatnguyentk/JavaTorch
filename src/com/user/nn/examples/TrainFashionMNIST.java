@@ -45,6 +45,7 @@ public class TrainFashionMNIST {
         // 28x28 = 784
         model.add(new NN.Linear(lib, 784, 128, true));
         model.add(new NN.ReLU());
+        model.add(new NN.Dropout(0.2f));
         model.add(new NN.Linear(lib, 128, 64, true));
         model.add(new NN.ReLU());
         model.add(new NN.Linear(lib, 64, 10, true));
@@ -106,6 +107,8 @@ public class TrainFashionMNIST {
         for (int epoch = 0; epoch < epochs; epoch++) {
             float epochLoss = 0f;
             int numBatches = 0;
+            trainAccMetric.reset();
+            model.train();
 
             for (Tensor[] batch : trainLoader) {
                 Tensor xBatch = batch[0];
@@ -180,9 +183,11 @@ public class TrainFashionMNIST {
             for(int i=0; i<bs; i++) batchLabels[i] = labels[start+i];
 
             Tensor out;
+            model.eval();
             Torch.set_grad_enabled(false);
             out = model.forward(x);
             Torch.set_grad_enabled(true);
+            model.train();
 
             metric.update(out, batchLabels);
         }
