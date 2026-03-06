@@ -18,7 +18,7 @@ A minimal re-implementation of core PyTorch concepts in pure Java for learning a
 | **RNN/LSTM** | ✅ `RNNCell`, `LSTMCell`, `RNN`, `LSTM` (with BPTT) |
 | **Data Loader** | ✅ `Dataset`, `DataLoader` (Multi-threaded Producer-Consumer) |
 | **SIMD Support** | ✅ Java Vector API (AVX2/AVX-512) for `matmul`, `dot` |
-| **GPU/cuDNN** | ✅ **JCuda + JCudnn** integration for high-performance CNN training |
+| **GPU/cuDNN** | ✅ **JCuda + JCudnn** integration for high-performance CNN training, **GPU Compatibility Audit** complete |
 | **NLP Support** | ✅ `Embedding`, `Vocabulary`, `BasicTokenizer`, `SentimentModel` |
 | **Autograd Optimized** | ✅ **Topological Sort** for $O(N)$ backprop (No more recursive $O(2^N)$ hangs) |
 | **Test Suite** | ✅ 37 automated tests fully operational |
@@ -128,7 +128,9 @@ tests/
 - **JCudnn Support**: ✅ **Conv2d**, **MaxPool2d**, and **ReLU** accelerated via cuDNN (8.9.x).
 - **Hybrid Dispatch**: ✅ Device-aware `Torch.java` / `NN.java` routes math to GPU if tensors reside there.
 - **Backward Sync**: ✅ Automatic CPU synchronization for backward pass when GPU forward is used.
-- Full suite of 38 tests operational (including cuDNN initialization and GPU forward verification).
+- **Full Compatibility Audit**: ✅ Comprehensive audit of all math and NN operations to ensure device-aware dispatch and automatic synchronization.
+- **Convenience API**: ✅ Added `Tensor.to(Device)` for seamless device migration.
+- Full suite of 39 tests operational (including cuDNN initialization and GPU forward verification).
 
 ### 🔲 Future Work
 - **GPU Backward Kernels**: Implement cuDNN backward passes for Conv/Pool to eliminate CPU sync overhead.

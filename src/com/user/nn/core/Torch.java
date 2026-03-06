@@ -266,9 +266,11 @@ public class Torch {
 
     // scalar variants
     public static Tensor add(Tensor a, float scalar) {
+        a.toCPU();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = a.data[i] + scalar;
+        if (a.isGPU()) out.toGPU();
         if (is_grad_enabled() && a.requires_grad) {
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(a) {
@@ -281,9 +283,11 @@ public class Torch {
     }
 
     public static Tensor mul(Tensor a, float scalar) {
+        a.toCPU();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = a.data[i] * scalar;
+        if (a.isGPU()) out.toGPU();
         if (is_grad_enabled() && a.requires_grad) {
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(a) {
@@ -303,9 +307,11 @@ public class Torch {
     }
 
     public static Tensor sub(float scalar, Tensor a) {
+        a.toCPU();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = scalar - a.data[i];
+        if (a.isGPU()) out.toGPU();
         if (is_grad_enabled() && a.requires_grad) {
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(a) {
@@ -369,6 +375,7 @@ public class Torch {
             }
             out.data[idx] = op.apply(a.data[offA], b.data[offB]);
         }
+        if (a.isGPU() || b.isGPU()) out.toGPU();
         return out;
     }
 
@@ -430,6 +437,7 @@ public class Torch {
                 outLinear += outCoord[d] * outStr2[d];
             out.data[outLinear] += grad.data[idx];
         }
+        if (grad.isGPU()) out.toGPU();
         return out;
     }
 
@@ -452,6 +460,7 @@ public class Torch {
 
     // reductions
     public static float sum(Tensor a) {
+        a.toCPU();
         float s = 0f;
         for (float v : a.data)
             s += v;
@@ -465,6 +474,7 @@ public class Torch {
     // --- Batch 3: Pooling and Padding ---
 
     public static Tensor max_pool1d(Tensor x, int kernel, int stride, int pad) {
+        x.toCPU();
         int nd = x.shape.length;
         if (nd < 2)
             throw new IllegalArgumentException("Expected x to have at least 2 dims [C, L] or [N, C, L]");
@@ -474,6 +484,7 @@ public class Torch {
         final int outL = (inL + 2 * pad - kernel) / stride + 1;
         int outShape[] = (nd == 3) ? new int[] { batch, inC, outL } : new int[] { inC, outL };
         Tensor out = new Tensor(outShape);
+        if (x.isGPU()) out.toGPU();
         final int[] maxIndices = new int[out.numel()];
 
         for (int b = 0; b < batch; b++) {
@@ -515,6 +526,7 @@ public class Torch {
     }
 
     public static Tensor avg_pool1d(Tensor x, int kernel, int stride, int pad) {
+        x.toCPU();
         int nd = x.shape.length;
         if (nd < 2)
             throw new IllegalArgumentException("Expected x to have at least 2 dims");
@@ -524,6 +536,7 @@ public class Torch {
         final int outL = (inL + 2 * pad - kernel) / stride + 1;
         int outShape[] = (nd == 3) ? new int[] { batch, inC, outL } : new int[] { inC, outL };
         Tensor out = new Tensor(outShape);
+        if (x.isGPU()) out.toGPU();
         final float[] counts = new float[out.numel()];
 
         for (int b = 0; b < batch; b++) {
@@ -575,6 +588,7 @@ public class Torch {
     }
 
     public static Tensor adaptive_avg_pool2d(Tensor x, int[] outputSize) {
+        x.toCPU();
         final int nd = x.shape.length;
         if (nd < 3)
             throw new IllegalArgumentException("Expected x to have at least 3 dims [C, H, W] or [N, C, H, W]");
@@ -586,6 +600,7 @@ public class Torch {
         final int outW = outputSize[1];
         int outShape[] = (nd == 4) ? new int[] { batch, inC, outH, outW } : new int[] { inC, outH, outW };
         Tensor out = new Tensor(outShape);
+        if (x.isGPU()) out.toGPU();
 
         for (int b = 0; b < batch; b++) {
             for (int c = 0; c < inC; c++) {
@@ -821,12 +836,10 @@ public class Torch {
         if (a.shape.length != 2)
             throw new IllegalArgumentException("transpose only supports 2D currently");
         
-        if (a.device == Tensor.Device.GPU) {
-            a.toCPU(); // CPU fallback
-        }
-
+        a.toCPU();
         int r = a.shape[0], c = a.shape[1];
         Tensor out = new Tensor(c, r);
+        if (a.isGPU()) out.toGPU();
         for (int i = 0; i < r; i++)
             for (int j = 0; j < c; j++)
                 out.data[j * r + i] = a.data[i * c + j];
@@ -969,14 +982,19 @@ public class Torch {
     public static Tensor where(Tensor cond, Tensor x, Tensor y) {
         if (cond.numel() != x.numel() || x.numel() != y.numel())
             throw new IllegalArgumentException("where: shapes must match elementwise");
+        cond.toCPU();
+        x.toCPU();
+        y.toCPU();
         Tensor out = new Tensor(x.shape);
-        for (int i = 0; i < out.data.length; i++)
+        for (int i = 0; i < x.data.length; i++)
             out.data[i] = (cond.data[i] != 0f) ? x.data[i] : y.data[i];
+        if (cond.isGPU() || x.isGPU() || y.isGPU()) out.toGPU();
         return out;
     }
 
     // permute axes: dims is a permutation of [0..nd-1]
     public static Tensor permute(Tensor a, int... dims) {
+        a.toCPU();
         int nd = a.shape.length;
         if (dims.length != nd)
             throw new IllegalArgumentException("permute: dims length must match rank");
@@ -990,6 +1008,7 @@ public class Torch {
         for (int i = 0; i < nd; i++)
             outShape[i] = a.shape[dims[i]];
         Tensor out = new Tensor(outShape);
+        if (a.isGPU()) out.toGPU();
         int[] inStr = computeStrides(a.shape);
         int[] outStr = computeStrides(outShape);
         int outNum = out.numel();
@@ -1033,10 +1052,13 @@ public class Torch {
         for (int i = 0; i < input.shape.length; i++)
             if (i != dim && input.shape[i] != index.shape[i])
                 throw new IllegalArgumentException("gather: shapes must match except at dim");
+        input.toCPU();
+        index.toCPU();
         int nd = input.shape.length;
         int[] inStr = computeStrides(input.shape);
         int[] idxStr = computeStrides(index.shape);
         Tensor out = new Tensor(index.shape);
+        if (input.isGPU() || index.isGPU()) out.toGPU();
         int ne = out.numel();
         for (int linear = 0; linear < ne; linear++) {
             int rem = linear;
@@ -1068,10 +1090,14 @@ public class Torch {
             dim += input.shape.length;
         if (input.shape.length != index.shape.length || !java.util.Arrays.equals(index.shape, src.shape))
             throw new IllegalArgumentException("scatter: shapes mismatch");
+        input.toCPU();
+        index.toCPU();
+        src.toCPU();
         int nd = input.shape.length;
         int[] inStr = computeStrides(input.shape);
         int[] idxStr = computeStrides(index.shape);
         Tensor out = input.clone();
+        if (input.isGPU() || index.isGPU() || src.isGPU()) out.toGPU();
         int ne = index.numel();
         for (int linear = 0; linear < ne; linear++) {
             int rem = linear;
@@ -1155,9 +1181,11 @@ public class Torch {
     }
 
     public static Tensor sigmoid(Tensor a) {
+        a.toCPU();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) (1.0 / (1.0 + Math.exp(-a.data[i])));
+        if (a.isGPU()) out.toGPU();
 
         if (is_grad_enabled() && a.requires_grad) {
             out.requires_grad = true;
@@ -1176,9 +1204,11 @@ public class Torch {
     }
 
     public static Tensor tanh(Tensor a) {
+        a.toCPU();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) Math.tanh(a.data[i]);
+        if (a.isGPU()) out.toGPU();
 
         if (is_grad_enabled() && a.requires_grad) {
             out.requires_grad = true;
@@ -1306,58 +1336,74 @@ public class Torch {
 
     // unary math helpers
     public static Tensor sin(Tensor a) {
+        a.toCPU();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) Math.sin(a.data[i]);
+        if (a.isGPU()) out.toGPU();
         return out;
     }
 
     public static Tensor cos(Tensor a) {
+        a.toCPU();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) Math.cos(a.data[i]);
+        if (a.isGPU()) out.toGPU();
         return out;
     }
 
     public static Tensor tan(Tensor a) {
+        a.toCPU();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) Math.tan(a.data[i]);
+        if (a.isGPU()) out.toGPU();
         return out;
     }
 
     public static Tensor exp(Tensor a) {
+        a.toCPU();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) Math.exp(a.data[i]);
+        if (a.isGPU()) out.toGPU();
         return out;
     }
 
     public static Tensor log(Tensor a) {
+        a.toCPU();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) Math.log(a.data[i]);
+        if (a.isGPU()) out.toGPU();
         return out;
     }
 
     public static Tensor ceil(Tensor a) {
+        a.toCPU();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) Math.ceil(a.data[i]);
+        if (a.isGPU()) out.toGPU();
         return out;
     }
 
     public static Tensor floor(Tensor a) {
+        a.toCPU();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) Math.floor(a.data[i]);
+        if (a.isGPU()) out.toGPU();
         return out;
     }
 
     public static Tensor round(Tensor a) {
+        a.toCPU();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) Math.round(a.data[i]);
+        if (a.isGPU()) out.toGPU();
         return out;
     }
 
@@ -1421,9 +1467,11 @@ public class Torch {
     }
 
     public static Tensor pow(Tensor a, float exp) {
+        a.toCPU();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) Math.pow(a.data[i], exp);
+        if (a.isGPU()) out.toGPU();
         return out;
     }
 
@@ -1442,11 +1490,10 @@ public class Torch {
 
     public static Tensor lt(Tensor a, Tensor b) {
         return binaryOp(a, b, (x, y) -> x < y ? 1f : 0f);
-    }
-
     // --- Batch 1 Activations & Softmax ---
 
     public static Tensor softmax(Tensor a, int dim) {
+        a.toCPU();
         if (dim < 0)
             dim += a.shape.length;
         int nd = a.shape.length;
@@ -1459,6 +1506,7 @@ public class Torch {
             innerSize *= a.shape[i];
 
         Tensor out = new Tensor(a.shape);
+        if (a.isGPU()) out.toGPU();
         for (int i = 0; i < outerSize; i++) {
             for (int k = 0; k < innerSize; k++) {
                 float maxVal = Float.NEGATIVE_INFINITY;
@@ -1509,6 +1557,7 @@ public class Torch {
     }
 
     public static Tensor log_softmax(Tensor a, int dim) {
+        a.toCPU();
         if (dim < 0)
             dim += a.shape.length;
         int nd = a.shape.length;
@@ -1521,6 +1570,7 @@ public class Torch {
             innerSize *= a.shape[i];
 
         Tensor out = new Tensor(a.shape);
+        if (a.isGPU()) out.toGPU();
         for (int i = 0; i < outerSize; i++) {
             for (int k = 0; k < innerSize; k++) {
                 float maxVal = Float.NEGATIVE_INFINITY;
@@ -2456,13 +2506,17 @@ public class Torch {
         }
 
         int totalDimSize = 0;
+        boolean anyGPU = false;
         for (Tensor t : tensors) {
+            t.toCPU();
             totalDimSize += t.shape[dim];
+            if (t.isGPU()) anyGPU = true;
         }
 
         int[] newShape = baseShape.clone();
         newShape[dim] = totalDimSize;
         Tensor res = new Tensor(newShape);
+        if (anyGPU) res.toGPU();
 
         int outerSize = 1;
         for (int i = 0; i < dim; i++)
@@ -2514,11 +2568,13 @@ public class Torch {
     // narrow(input, dim, start, length): Returns a new tensor that is a narrowed
     // version of input tensor.
     public static Tensor narrow(Tensor input, int dim, int start, int length) {
+        input.toCPU();
         if (dim < 0)
             dim += input.shape.length;
         int[] newShape = input.shape.clone();
         newShape[dim] = length;
         Tensor out = new Tensor(newShape);
+        if (input.isGPU()) out.toGPU();
 
         int outerSize = 1;
         for (int i = 0; i < dim; i++)
@@ -2563,6 +2619,8 @@ public class Torch {
     }
 
     public static Tensor embedding(Tensor weight, Tensor indices) {
+        weight.toCPU();
+        indices.toCPU();
         // indices shape [...]
         // weight shape [num_embeddings, embedding_dim]
         int[] inS = indices.shape;
@@ -2572,6 +2630,7 @@ public class Torch {
         System.arraycopy(inS, 0, outS, 0, inS.length);
         outS[inS.length] = d;
         Tensor out = new Tensor(outS);
+        if (weight.isGPU() || indices.isGPU()) out.toGPU();
         for (int i = 0; i < n; i++) {
             int idx = (int) indices.data[i];
             System.arraycopy(weight.data, idx * d, out.data, i * d, d);

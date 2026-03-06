@@ -59,6 +59,7 @@ public class Tensor implements AutoCloseable {
     }
 
     public Tensor reshape(int... newShape) {
+        this.toCPU();
         int n = 1;
         for (int s : newShape)
             n *= s;
@@ -158,11 +159,14 @@ public class Tensor implements AutoCloseable {
 
     // Indexing helpers (row-major)
     public float get(int... idx) {
+        this.toCPU();
         return data[offset(idx)];
     }
 
     public void set(float value, int... idx) {
+        this.toCPU();
         data[offset(idx)] = value;
+        this.markDirtyOnCPU();
     }
 
     public int offset(int... idx) {
@@ -179,6 +183,7 @@ public class Tensor implements AutoCloseable {
 
     // Elementwise operations returning new Tensor
     public Tensor add(float scalar) {
+        this.toCPU();
         Tensor out = new Tensor(shape);
         for (int i = 0; i < data.length; i++)
             out.data[i] = data[i] + scalar;
@@ -186,6 +191,7 @@ public class Tensor implements AutoCloseable {
     }
 
     public Tensor mul(float scalar) {
+        this.toCPU();
         Tensor out = new Tensor(shape);
         for (int i = 0; i < data.length; i++)
             out.data[i] = data[i] * scalar;
@@ -194,13 +200,17 @@ public class Tensor implements AutoCloseable {
 
     // In-place ops
     public void add_(float scalar) {
+        this.toCPU();
         for (int i = 0; i < data.length; i++)
             data[i] += scalar;
+        this.markDirtyOnCPU();
     }
 
     public void mul_(float scalar) {
+        this.toCPU();
         for (int i = 0; i < data.length; i++)
             data[i] *= scalar;
+        this.markDirtyOnCPU();
     }
 
     // shape utilities
@@ -263,6 +273,11 @@ public class Tensor implements AutoCloseable {
     }
 
     // --- JCuda Sync Methods ---
+
+    public Tensor to(Device targetDevice) {
+        if (targetDevice == Device.GPU) return toGPU();
+        else return toCPU();
+    }
 
     public Tensor toGPU() {
         if (device == Device.GPU && onDevice && !onHost)

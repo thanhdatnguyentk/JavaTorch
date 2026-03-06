@@ -402,6 +402,9 @@ public class NN {
 
         @Override
         public Tensor forward(Tensor indices) {
+            indices.toCPU();
+            Tensor w = weight.getTensor();
+            w.toCPU();
             int[] idxShape = indices.shape;
             int numIdx = indices.numel();
             int[] outShape = new int[idxShape.length + 1];
@@ -409,7 +412,7 @@ public class NN {
             outShape[idxShape.length] = embeddingDim;
 
             Tensor out = new Tensor(outShape);
-            Tensor w = weight.getTensor();
+            if (w.isGPU() || indices.isGPU()) out.toGPU();
 
             for (int i = 0; i < numIdx; i++) {
                 int idx = (int) indices.data[i];
@@ -832,11 +835,13 @@ public class NN {
 
         @Override
         public Tensor forward(Tensor x) {
+            x.toCPU();
             Tensor out = new Tensor(x.shape);
             for (int i = 0; i < x.data.length; i++) {
                 float v = x.data[i];
                 out.data[i] = v > 0 ? v : negativeSlope * v;
             }
+            if (x.isGPU()) out.toGPU();
             if (Torch.is_grad_enabled() && x.requires_grad) {
                 out.requires_grad = true;
                 out.grad_fn = new Tensor.GradFn(x) {
@@ -913,10 +918,12 @@ public class NN {
     public static class Softplus extends Module {
         @Override
         public Tensor forward(Tensor x) {
+            x.toCPU();
             Tensor out = new Tensor(x.shape);
             for (int i = 0; i < x.data.length; i++) {
                 out.data[i] = (float) Math.log(1.0 + Math.exp(x.data[i]));
             }
+            if (x.isGPU()) out.toGPU();
             if (Torch.is_grad_enabled() && x.requires_grad) {
                 out.requires_grad = true;
                 out.grad_fn = new Tensor.GradFn(x) {
@@ -1389,6 +1396,8 @@ public class NN {
             Tensor wt = this.weight.getTensor();
             Tensor bt = this.bias != null ? this.bias.getTensor() : null;
             Tensor out = new Tensor(batch, outSize);
+            x.toCPU();
+            wt.toCPU();
             for (int b = 0; b < batch; b++) {
                 for (int ic = 0; ic < inChannels; ic++) {
                     for (int ih = 0; ih < inH; ih++) {
@@ -1412,11 +1421,13 @@ public class NN {
                     }
                 }
                 if (bt != null) {
+                    bt.toCPU();
                     for (int oc = 0; oc < outChannels; oc++)
                         for (int pos = 0; pos < outH * outW; pos++)
                             out.data[b * outSize + oc * outH * outW + pos] += bt.data[oc];
                 }
             }
+            if (x.isGPU()) out.toGPU();
             if (Torch.is_grad_enabled() && (x.requires_grad || wt.requires_grad || (bt != null && bt.requires_grad))) {
                 out.requires_grad = true;
                 out.grad_fn = new Tensor.GradFn(x, weight.getTensor(), bias == null ? null : bias.getTensor()) {
@@ -1581,6 +1592,7 @@ public class NN {
 
         @Override
         public Tensor forward(Tensor x) {
+            x.toCPU();
             int batch = x.shape[0];
             int inSize = inC * inH * inW;
             int outH = (inH + 2 * padH - kernelH) / strideH + 1;
@@ -1661,12 +1673,14 @@ public class NN {
 
         @Override
         public Tensor forward(Tensor x) {
+            x.toCPU();
             int batch = x.shape[0];
             int inSize = inC * inH * inW;
             int outH = inH + 2 * padH;
             int outW = inW + 2 * padW;
             int outSize = inC * outH * outW;
             Tensor out = new Tensor(batch, outSize);
+            if (x.isGPU()) out.toGPU();
             for (int b = 0; b < batch; b++) {
                 for (int c = 0; c < inC; c++) {
                     for (int h = 0; h < inH; h++) {
@@ -1831,7 +1845,7 @@ public class NN {
 
         @Override
         public Tensor forward(Tensor x) {
-            // x shape: [N, C, ...]
+            x.toCPU();
             int n = x.shape[0];
             int c = numChannels;
             int g = numGroups;
@@ -1843,8 +1857,11 @@ public class NN {
             for (int i = 2; i < x.shape.length; i++) spatial *= x.shape[i];
             
             Tensor out = new Tensor(x.shape);
+            if (x.isGPU()) out.toGPU();
             Tensor wt = weight.getTensor();
+            wt.toCPU();
             Tensor bt = bias.getTensor();
+            bt.toCPU();
             
             final float[] groupMeans = new float[n * g];
             final float[] groupVars = new float[n * g];
@@ -1978,15 +1995,19 @@ public class NN {
 
         @Override
         public Tensor forward(Tensor x) {
+            x.toCPU();
             // x: [batch, normalizedSize]
             int batch = x.shape[0];
             int D = normalizedSize;
             Tensor gamma = this.weight.getTensor();
+            gamma.toCPU();
             Tensor beta = this.bias.getTensor();
-
+            beta.toCPU();
+ 
             float[] means = new float[batch];
             float[] vars = new float[batch];
             Tensor out = new Tensor(batch, D);
+            if (x.isGPU()) out.toGPU();
 
             for (int b = 0; b < batch; b++) {
                 float sum = 0f;
@@ -2076,12 +2097,14 @@ public class NN {
 
         @Override
         public Tensor forward(Tensor x) {
+            x.toCPU();
             // x: [batch, C*H*W]
             int batch = x.shape[0];
             int C = numChannels;
             int HW = spatialH * spatialW;
             int total = C * HW;
             Tensor out = new Tensor(batch, total);
+            if (x.isGPU()) out.toGPU();
 
             float[][] means = new float[batch][C];
             float[][] vars = new float[batch][C];
@@ -2290,7 +2313,7 @@ public class NN {
             int inputSize = x.shape[2];
             int hiddenSize = cell.hiddenSize;
 
-            Tensor h = Torch.zeros(batch, hiddenSize);
+            Tensor h = Torch.zeros(batch, hiddenSize).to(x.device);
 
             // Collect outputs
             java.util.List<Tensor> outputs = new java.util.ArrayList<>();
@@ -2329,8 +2352,8 @@ public class NN {
             int inputSize = x.shape[2];
             int hiddenSize = cell.hiddenSize;
 
-            Tensor h = Torch.zeros(batch, hiddenSize);
-            Tensor c = Torch.zeros(batch, hiddenSize);
+            Tensor h = Torch.zeros(batch, hiddenSize).to(x.device);
+            Tensor c = Torch.zeros(batch, hiddenSize).to(x.device);
 
             java.util.List<Tensor> outputs = new java.util.ArrayList<>();
             for (int t = 0; t < seqLen; t++) {
@@ -2407,7 +2430,7 @@ public class NN {
             int seqLen = batchFirst ? x.shape[1] : x.shape[0];
             int batch = batchFirst ? x.shape[0] : x.shape[1];
             int inputSize = x.shape[2];
-            Tensor h = Torch.zeros(batch, cell.hiddenSize);
+            Tensor h = Torch.zeros(batch, cell.hiddenSize).to(x.device);
             java.util.List<Tensor> outputs = new java.util.ArrayList<>();
             for (int t = 0; t < seqLen; t++) {
                 Tensor xt = batchFirst ? Torch.reshape(Torch.narrow(x, 1, t, 1), batch, inputSize)
