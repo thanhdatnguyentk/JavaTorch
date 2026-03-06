@@ -1,6 +1,6 @@
 # ML_framework — TODO
 
-Last updated: 2026-03-06
+Last updated: 2026-03-07
 
 ## Current progress (completed)
 - Core `nn` Module/Parameter system and containers (`Sequential`, `ModuleDict`, etc).
@@ -19,6 +19,12 @@ Last updated: 2026-03-06
   - `DataLoader` with Multi-worker threading.
   - Java Vector API (SIMD) integration (AVX2/AVX-512).
   - **GPU Acceleration**: ✅ JCuda + JCublas + JCudnn (Conv2d, MaxPool2d, ReLU).
+- **Phase 14: GPU Zero-Overhead Pipeline (NEW ✅)**:
+  - **Kernel Fusion**: `Conv2d + Bias + ReLU` single-call execution.
+  - **CUDA Streams**: Asynchronous Compute/Transfer pipelining.
+  - **Arena Memory Pool**: `GpuMemoryPool` with auto-parameter detection.
+  - **Custom PTX**: Native GPU kernels for Add/Sub/Mul (0 CPU Fallback).
+  - **MemoryScope**: Automated ephemeral memory tracking and reset.
 - **Model Training Features**:
   - `model.train()` and `model.eval()` module states.
   - `NN.Dropout(p)` with inverted dropout scaling capability.
@@ -36,24 +42,21 @@ Last updated: 2026-03-06
 
 ### Nhóm 1: Mở rộng Kiến trúc (Architectural Expansion)
 1. **RNN & LSTM (HOÀN THÀNH ✅)**
-   - Triển khai `RNNCell`, `LSTMCell`, `RNN`, `LSTM`.
-   - Hỗ trợ BPTT tự động qua Autograd.
 2. **Transformer Blocks (PHẦN TIẾP THEO 🔲)**
-   - Triển khai `MultiheadAttention` (Linear Q,K,V + Scaled Dot Product).
-   - Nâng cấp `Softmax` hỗ trợ `dim` tùy chọn.
-   - Xây dựng module `TransformerEncoderLayer`.
+   - Triển khai `MultiheadAttention`.
+   - Nâng cấp `Softmax` hỗ trợ `dim`.
+   - `TransformerEncoderLayer`.
 
 ### Nhóm 2: Tối ưu hóa Hệ thống (System Optimization) (HOÀN THÀNH ✅)
 1. **DataLoader & Dataset API (HOÀN THÀNH ✅)**
-   - Interface `Dataset` và `DataLoader` đa luồng.
 2. **Vectorization (SIMD) (HOÀN THÀNH ✅)**
-   - Tích hợp **Java Vector API**.
-3. **GPU & cuDNN (HOÀN THÀNH ✅)**
-   - Tích hợp **JCublas** cho matmul và **JCudnn** cho Conv/Pool/ReLU.
-   - Cơ chế hybrid dispatch (GPU forward / CPU backward sync).
-   - ✅ **GPU Compatibility Audit**: Kiểm tra và cập nhật toàn bộ hàm toán học/layer đảm bảo tự động đồng bộ hóa và nhận diện thiết bị (device-aware).
+3. **GPU & cuDNN Optimization (HOÀN THÀNH ✅)**
+   - ✅ **Phase 14**: Kernel Fusion, CUDA Streams, Arena Memory Pool, và Custom PTX Kernels.
+   - ✅ **GPU Compatibility Audit**: Tự động đồng bộ hóa và nhận diện thiết bị.
+4. **GPU Backward Kernels (PHẦN TIẾP THEO 🔲)**:
+   - Chuyển đổi các hàm Backward sang cuDNN để giảm thiểu CPU sync.
 
 ---
 **Steps to Begin:**
 - Xây dựng **Transformer**: Cập nhật Softmax-dim và MultiheadAttention.
-- Tối ưu hóa GPU: Chuyển đổi các hàm Backward (Grad) sang cuDNN để giảm thiểu việc đồng bộ hóa với CPU.
+- Nâng cấp GPU: Chuyển đổi các hàm Backward (Grad) sang cuDNN.
