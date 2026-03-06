@@ -18,6 +18,8 @@ A minimal re-implementation of core PyTorch concepts in pure Java for learning a
 | **RNN/LSTM** | ✅ `RNNCell`, `LSTMCell`, `RNN`, `LSTM` (with BPTT) |
 | **Data Loader** | ✅ `Dataset`, `DataLoader` (Multi-threaded Producer-Consumer) |
 | **SIMD Support** | ✅ Java Vector API (AVX2/AVX-512) for `matmul`, `dot` |
+| **NLP Support** | ✅ `Embedding`, `Vocabulary`, `BasicTokenizer`, `SentimentModel` |
+| **Autograd Optimized** | ✅ **Topological Sort** for $O(N)$ backprop (No more recursive $O(2^N)$ hangs) |
 | **Test Suite** | ✅ 24 automated tests via `run-tests.ps1` |
 
 ## Quick Start
@@ -41,6 +43,10 @@ java --add-modules jdk.incubator.vector -cp bin TrainFashionMNIST
 # Compile & run CIFAR-10 CNN (Using Multi-threaded DataLoader)
 javac --add-modules jdk.incubator.vector -d bin -cp bin src/TrainCifar10.java
 java --add-modules jdk.incubator.vector -cp bin TrainCifar10
+
+# Compile & run Sentiment Analysis (Real Movie Comments Dataset)
+javac --add-modules jdk.incubator.vector -d bin -cp bin src/SentimentModel.java src/TrainSentiment.java
+java --add-modules jdk.incubator.vector -cp bin TrainSentiment
 ```
 
 ## Project Structure
@@ -48,17 +54,20 @@ java --add-modules jdk.incubator.vector -cp bin TrainCifar10
 ```
 src/
 ├── com/user/nn/
-│   ├── nn.java          # Module, Parameter, layers, F (loss functions), RNN/LSTM
-│   ├── Tensor.java      # Core Tensor class with autograd
+│   ├── nn.java          # Module, Parameter, layers, F (loss functions), RNN/LSTM, **Embedding**
+│   ├── Tensor.java      # Core Tensor class with **Topological Sort Autograd**
 │   ├── Torch.java       # Tensor utilities (creation, ops, broadcasting, SIMD)
-│   ├── data.java        # *NEW* Dataset & DataLoader (Multithreading)
+│   ├── data.java        # Dataset, DataLoader, **Vocabulary**, **BasicTokenizer**
 │   ├── optim.java       # Optimizers (SGD, Adam)
 │   ├── MnistLoader.java # Download/Parse Fashion-MNIST
-│   └── Cifar10Loader.java # Download/Parse CIFAR-10
+│   ├── Cifar10Loader.java # Download/Parse CIFAR-10
+│   └── MovieCommentLoader.java # *NEW* Download/Parse Movie Polarity Dataset
+├── SentimentModel.java  # *NEW* Embedding -> LSTM -> Linear Model
+├── TrainSentiment.java  # *NEW* Sentiment Analysis Training on Real Data
 ├── TrainIris.java       # Simple MLP for Iris classification
 ├── TrainFashionMNIST.java # MLP with DataLoader for Fashion-MNIST
 ├── TrainCifar10.java    # CNN with DataLoader on CIFAR-10
-├── TestVectorBenchmark.java # *NEW* SIMD vs Scalar Matmul Benchmark
+├── TestVectorBenchmark.java # SIMD vs Scalar Matmul Benchmark
 tests/
 ├── run-tests.ps1        # Automated test runner (24 tests)
 ├── java/com/user/nn/    # Unit test files (including TestRNN)
@@ -82,6 +91,13 @@ tests/
 - **DataLoader**: ✅ Multi-threaded Producer-Consumer pipeline (`data.java`).
 - **SIMD**: ✅ Java Vector API integration for hardware-accelerated `matmul` and `dot`.
 - Added `TestVectorBenchmark` showing 1024x1024 Matmul in ~112ms.
+
+### ✅ Phase 11: NLP & Autograd Optimization (Complete)
+- **Embedding**: Added `Embedding` layer with full backprop.
+- **NLP Utilities**: `Vocabulary` and `BasicTokenizer` added to `data.java`.
+- **Topological Sort**: Rewrote `Tensor.backward()` to use non-recursive topological sorting, improving RNN/LSTM backprop complexity from $O(2^N)$ to $O(N)$.
+- **Movie Dataset**: Added `MovieCommentLoader` for Rotten Tomatoes dataset.
+- **Sentiment Analysis**: End-to-end training achieved with `TrainSentiment.java`.
 
 ### ✅ Polish & Real Datasets (Complete)
 - Added `TrainFashionMNIST.java` (87% Test Accuracy in 5 epochs)
@@ -125,4 +141,4 @@ tests/
 
 ---
 
-*Last updated: 2026-03-05*
+*Last updated: 2026-03-06*

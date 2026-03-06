@@ -48,7 +48,7 @@ public class Tensor {
         Tensor result = new Tensor(this.data, newShape);
         if (Torch.is_grad_enabled() && this.requires_grad) {
             result.requires_grad = true;
-            result.grad_fn = new GradFn() {
+            result.grad_fn = new GradFn(this) {
                 public void apply(Tensor gradOutput) {
                     backwardStep(gradOutput.reshape(shape));
                 }
@@ -67,6 +67,12 @@ public class Tensor {
 
     // Autograd support
     public static abstract class GradFn {
+        public final Tensor[] dependencies;
+
+        public GradFn(Tensor... dependencies) {
+            this.dependencies = dependencies;
+        }
+
         public abstract void apply(Tensor gradOutput);
     }
 
@@ -86,17 +92,44 @@ public class Tensor {
     public void backward() {
         if (!this.requires_grad)
             throw new IllegalStateException("backward() called on tensor that does not require grad");
+        
+        // Topological sort
+        java.util.List<Tensor> topo = new java.util.ArrayList<>();
+        java.util.Set<Tensor> visited = new java.util.HashSet<>();
+        buildTopo(this, visited, topo);
+
         Tensor gradInit = new Tensor(this.shape);
         for (int i = 0; i < gradInit.data.length; i++)
             gradInit.data[i] = 1f;
-        backwardStep(gradInit);
+        this.grad = gradInit; // Root gradient is 1.0
+
+        // Iterate in reverse topological order (root -> leaves)
+        for (int i = topo.size() - 1; i >= 0; i--) {
+            Tensor t = topo.get(i);
+            if (t.grad_fn != null && t.grad != null) {
+                t.grad_fn.apply(t.grad);
+            }
+        }
+    }
+
+    private void buildTopo(Tensor t, java.util.Set<Tensor> visited, java.util.List<Tensor> topo) {
+        if (!visited.contains(t)) {
+            visited.add(t);
+            if (t.grad_fn != null && t.grad_fn.dependencies != null) {
+                for (Tensor dep : t.grad_fn.dependencies) {
+                    if (dep != null) {
+                        buildTopo(dep, visited, topo);
+                    }
+                }
+            }
+            topo.add(t);
+        }
     }
 
     // package-visible for GradFn callbacks
+    // Only accumulates grad now, does not trigger recursive backward
     public void backwardStep(Tensor gradOutput) {
         accumulateGrad(gradOutput);
-        if (this.grad_fn != null)
-            this.grad_fn.apply(gradOutput);
     }
 
     // Indexing helpers (row-major)

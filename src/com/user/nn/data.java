@@ -162,4 +162,53 @@ public class data {
             }
         }
     }
+
+    /** Simple vocabulary for NLP tasks. */
+    public static class Vocabulary {
+        private final Map<String, Integer> wordToId = new HashMap<>();
+        private final List<String> idToWord = new ArrayList<>();
+        public final String unkToken = "<UNK>";
+        public final String padToken = "<PAD>";
+
+        public Vocabulary() {
+            addWord(padToken); // ID 0
+            addWord(unkToken); // ID 1
+        }
+
+        public int addWord(String word) {
+            if (!wordToId.containsKey(word)) {
+                wordToId.put(word, idToWord.size());
+                idToWord.add(word);
+            }
+            return wordToId.get(word);
+        }
+
+        public int getId(String word) {
+            return wordToId.getOrDefault(word, wordToId.get(unkToken));
+        }
+
+        public String getWord(int id) {
+            if (id < 0 || id >= idToWord.size())
+                return unkToken;
+            return idToWord.get(id);
+        }
+
+        public int size() {
+            return idToWord.size();
+        }
+    }
+
+    /** Basic RegEx-based tokenizer. */
+    public static class BasicTokenizer {
+        public List<String> tokenize(String text) {
+            text = text.toLowerCase().replaceAll("[^a-z0-9\\s]", " ");
+            String[] tokens = text.split("\\s+");
+            List<String> result = new ArrayList<>();
+            for (String t : tokens) {
+                if (!t.isEmpty())
+                    result.add(t);
+            }
+            return result;
+        }
+    }
 }

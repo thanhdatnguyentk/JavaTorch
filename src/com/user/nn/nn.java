@@ -333,6 +333,59 @@ public class nn {
         }
     }
 
+    public static class Embedding extends Module {
+        public int numEmbeddings;
+        public int embeddingDim;
+        public Parameter weight;
+
+        public Embedding(nn outer, int numEmbeddings, int embeddingDim) {
+            this.numEmbeddings = numEmbeddings;
+            this.embeddingDim = embeddingDim;
+            Mat w = outer.mat_alloc(numEmbeddings, embeddingDim);
+            float k = (float) Math.sqrt(1.0 / embeddingDim);
+            outer.mat_rand(w, -k, k);
+            this.weight = new Parameter(w);
+            addParameter("weight", this.weight);
+        }
+
+        @Override
+        public Tensor forward(Tensor indices) {
+            int[] idxShape = indices.shape;
+            int numIdx = indices.numel();
+            int[] outShape = new int[idxShape.length + 1];
+            System.arraycopy(idxShape, 0, outShape, 0, idxShape.length);
+            outShape[idxShape.length] = embeddingDim;
+
+            Tensor out = new Tensor(outShape);
+            Tensor w = weight.getTensor();
+
+            for (int i = 0; i < numIdx; i++) {
+                int idx = (int) indices.data[i];
+                if (idx < 0 || idx >= numEmbeddings) {
+                    throw new IndexOutOfBoundsException("Embedding index out of range: " + idx);
+                }
+                System.arraycopy(w.data, idx * embeddingDim, out.data, i * embeddingDim, embeddingDim);
+            }
+
+            if (Torch.is_grad_enabled() && w.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn(weight.getTensor()) {
+                    public void apply(Tensor outGrad) {
+                        Tensor gw = new Tensor(w.shape);
+                        for (int i = 0; i < numIdx; i++) {
+                            int idx = (int) indices.data[i];
+                            for (int d = 0; d < embeddingDim; d++) {
+                                gw.data[idx * embeddingDim + d] += outGrad.data[i * embeddingDim + d];
+                            }
+                        }
+                        w.backwardStep(gw);
+                    }
+                };
+            }
+            return out;
+        }
+    }
+
     public static class ReLU extends Module {
         @Override
         public Tensor forward(Tensor x) {
@@ -411,7 +464,7 @@ public class nn {
             out.data[0] = total / batch;
             if (logits.requires_grad) {
                 out.requires_grad = true;
-                out.grad_fn = new Tensor.GradFn() {
+                out.grad_fn = new Tensor.GradFn(logits) {
                     public void apply(Tensor outGrad) {
                         float scale = outGrad.data[0] / batch;
                         Tensor g = new Tensor(logits.shape);
@@ -443,7 +496,7 @@ public class nn {
             out.data[0] = total / batch;
             if (logProbs.requires_grad) {
                 out.requires_grad = true;
-                out.grad_fn = new Tensor.GradFn() {
+                out.grad_fn = new Tensor.GradFn(logProbs) {
                     public void apply(Tensor outGrad) {
                         float scale = outGrad.data[0] / batch;
                         Tensor g = new Tensor(logProbs.shape);
@@ -469,7 +522,7 @@ public class nn {
             out.data[0] = sum / n;
             if (pred.requires_grad) {
                 out.requires_grad = true;
-                out.grad_fn = new Tensor.GradFn() {
+                out.grad_fn = new Tensor.GradFn(pred) {
                     public void apply(Tensor outGrad) {
                         Tensor g = new Tensor(pred.shape);
                         float scale = 2f * outGrad.data[0] / n;
@@ -499,7 +552,7 @@ public class nn {
             out.data[0] = sum / n;
             if (pred.requires_grad) {
                 out.requires_grad = true;
-                out.grad_fn = new Tensor.GradFn() {
+                out.grad_fn = new Tensor.GradFn(pred) {
                     public void apply(Tensor outGrad) {
                         Tensor g = new Tensor(pred.shape);
                         float scale = outGrad.data[0] / n;
@@ -550,7 +603,7 @@ public class nn {
             }
             if (Torch.is_grad_enabled() && x.requires_grad) {
                 out.requires_grad = true;
-                out.grad_fn = new Tensor.GradFn() {
+                out.grad_fn = new Tensor.GradFn(x) {
                     public void apply(Tensor outGrad) {
                         Tensor gx = new Tensor(x.shape);
                         for (int i = 0; i < gx.data.length; i++) {
@@ -573,7 +626,7 @@ public class nn {
             }
             if (Torch.is_grad_enabled() && x.requires_grad) {
                 out.requires_grad = true;
-                out.grad_fn = new Tensor.GradFn() {
+                out.grad_fn = new Tensor.GradFn(x) {
                     public void apply(Tensor outGrad) {
                         Tensor gx = new Tensor(x.shape);
                         for (int i = 0; i < gx.data.length; i++) {
@@ -614,7 +667,7 @@ public class nn {
 
             if (Torch.is_grad_enabled() && x.requires_grad) {
                 out.requires_grad = true;
-                out.grad_fn = new Tensor.GradFn() {
+                out.grad_fn = new Tensor.GradFn(x) {
                     public void apply(Tensor outGrad) {
                         Tensor gx = new Tensor(x.shape);
                         for (int i = 0; i < gx.data.length; i++) {
@@ -802,7 +855,7 @@ public class nn {
             // Autograd backward
             if (Torch.is_grad_enabled() && (x.requires_grad || wt.requires_grad || (bt != null && bt.requires_grad))) {
                 out.requires_grad = true;
-                out.grad_fn = new Tensor.GradFn() {
+                out.grad_fn = new Tensor.GradFn(x, weight.getTensor(), bias == null ? null : bias.getTensor()) {
                     public void apply(Tensor outGrad) {
                         // outGrad: [batch, outC * outH * outW]
                         // Gradient w.r.t. weight: sum_b col[b]^T * dOut[b]
@@ -976,7 +1029,7 @@ public class nn {
             }
             if (Torch.is_grad_enabled() && (x.requires_grad || wt.requires_grad || (bt != null && bt.requires_grad))) {
                 out.requires_grad = true;
-                out.grad_fn = new Tensor.GradFn() {
+                out.grad_fn = new Tensor.GradFn(x, weight.getTensor(), bias == null ? null : bias.getTensor()) {
                     public void apply(Tensor outGrad) {
                         if (x.requires_grad) {
                             Tensor gx = new Tensor(x.shape);
@@ -1095,7 +1148,7 @@ public class nn {
             }
             if (Torch.is_grad_enabled() && x.requires_grad) {
                 out.requires_grad = true;
-                out.grad_fn = new Tensor.GradFn() {
+                out.grad_fn = new Tensor.GradFn(x) {
                     public void apply(Tensor outGrad) {
                         Tensor gx = new Tensor(x.shape);
                         for (int i = 0; i < outGrad.data.length; i++) {
@@ -1163,7 +1216,7 @@ public class nn {
             }
             if (Torch.is_grad_enabled() && x.requires_grad) {
                 out.requires_grad = true;
-                out.grad_fn = new Tensor.GradFn() {
+                out.grad_fn = new Tensor.GradFn(x) {
                     public void apply(Tensor outGrad) {
                         Tensor gx = new Tensor(x.shape);
                         for (int b = 0; b < batch; b++) {
@@ -1229,7 +1282,7 @@ public class nn {
             }
             if (Torch.is_grad_enabled() && x.requires_grad) {
                 out.requires_grad = true;
-                out.grad_fn = new Tensor.GradFn() {
+                out.grad_fn = new Tensor.GradFn(x) {
                     public void apply(Tensor outGrad) {
                         Tensor gx = new Tensor(x.shape);
                         for (int b = 0; b < batch; b++) {
@@ -1306,7 +1359,7 @@ public class nn {
 
             if (Torch.is_grad_enabled() && (x.requires_grad || gamma.requires_grad || beta.requires_grad)) {
                 out.requires_grad = true;
-                out.grad_fn = new Tensor.GradFn() {
+                out.grad_fn = new Tensor.GradFn(x, weight.getTensor(), bias.getTensor()) {
                     public void apply(Tensor outGrad) {
                         if (beta.requires_grad) {
                             Tensor gb = new Tensor(beta.shape);
@@ -1405,7 +1458,7 @@ public class nn {
 
             if (Torch.is_grad_enabled() && x.requires_grad) {
                 out.requires_grad = true;
-                out.grad_fn = new Tensor.GradFn() {
+                out.grad_fn = new Tensor.GradFn(x) {
                     public void apply(Tensor outGrad) {
                         Tensor gx = new Tensor(x.shape);
                         for (int b = 0; b < batch; b++) {
