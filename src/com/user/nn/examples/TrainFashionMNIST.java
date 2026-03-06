@@ -3,6 +3,7 @@ package com.user.nn.examples;
 import com.user.nn.core.*;
 import com.user.nn.optim.*;
 import com.user.nn.dataloaders.*;
+import com.user.nn.metrics.*;
 import java.io.File;
 import java.util.*;
 
@@ -73,6 +74,9 @@ public class TrainFashionMNIST {
         final int inputDim = 784; // 28*28
         final int numClasses = 10;
 
+        Accuracy trainAccMetric = new Accuracy();
+        Accuracy testAccMetric = new Accuracy();
+
         Data.Dataset trainDataset = new Data.Dataset() {
             @Override
             public int len() {
@@ -101,7 +105,6 @@ public class TrainFashionMNIST {
 
         for (int epoch = 0; epoch < epochs; epoch++) {
             float epochLoss = 0f;
-            int correct = 0;
             int numBatches = 0;
 
             for (Tensor[] batch : trainLoader) {
@@ -130,20 +133,8 @@ public class TrainFashionMNIST {
                 epochLoss += loss.data[0];
                 numBatches++;
 
-                // Compute train accuracy for this batch
-                for (int i = 0; i < bs; i++) {
-                    float maxVal = Float.NEGATIVE_INFINITY;
-                    int pred = 0;
-                    for (int j = 0; j < numClasses; j++) {
-                        float v = logits.data[i * numClasses + j];
-                        if (v > maxVal) {
-                            maxVal = v;
-                            pred = j;
-                        }
-                    }
-                    if (pred == batchLabels[i])
-                        correct++;
-                }
+                // Track accuracy
+                trainAccMetric.update(logits, batchLabels);
 
                 if (numBatches % 100 == 0) {
                     System.out.printf("  Epoch %d batch %d/%d  loss=%.4f%n",
@@ -151,30 +142,31 @@ public class TrainFashionMNIST {
                 }
             }
 
-            float trainAcc = (float) correct / (numBatches * batchSize);
+            float trainAcc = trainAccMetric.compute();
             float avgLoss = epochLoss / numBatches;
 
             // --- Test accuracy ---
-            float testAcc = evaluate(model, testImages, testLabels);
+            float testAcc = evaluate(model, testImages, testLabels, testAccMetric);
 
             System.out.printf("Epoch %d/%d  avg_loss=%.4f  train_acc=%.4f  test_acc=%.4f%n",
                     epoch + 1, epochs, avgLoss, trainAcc, testAcc);
+            
+            trainAccMetric.reset();
         }
 
         trainLoader.shutdown();
 
         // Final test
-        float finalAcc = evaluate(model, testImages, testLabels);
+        float finalAcc = evaluate(model, testImages, testLabels, testAccMetric);
         System.out.printf("%nFinal test accuracy: %.2f%%%n", finalAcc * 100);
     }
 
     // --- Evaluation helper ---
-    static float evaluate(NN.Module model, float[][] images, int[] labels) {
+    static float evaluate(NN.Module model, float[][] images, int[] labels, Accuracy metric) {
+        metric.reset();
         int N = images.length;
         int dim = images[0].length;
-        int correct = 0;
         int evalBatch = 256;
-        int numClasses = 10; // Hardcoded for Fashion-MNIST
 
         // Disable gradient tracking during evaluation
         for (int start = 0; start < N; start += evalBatch) {
@@ -184,25 +176,16 @@ public class TrainFashionMNIST {
                 System.arraycopy(images[start + i], 0, data, i * dim, dim);
             Tensor x = Torch.tensor(data, bs, dim);
 
+            int[] batchLabels = new int[bs];
+            for(int i=0; i<bs; i++) batchLabels[i] = labels[start+i];
+
             Tensor out;
             Torch.set_grad_enabled(false);
             out = model.forward(x);
             Torch.set_grad_enabled(true);
 
-            for (int i = 0; i < bs; i++) {
-                float maxVal = Float.NEGATIVE_INFINITY;
-                int pred = 0;
-                for (int j = 0; j < numClasses; j++) {
-                    float v = out.data[i * numClasses + j];
-                    if (v > maxVal) {
-                        maxVal = v;
-                        pred = j;
-                    }
-                }
-                if (pred == labels[start + i])
-                    correct++;
-            }
+            metric.update(out, batchLabels);
         }
-        return (float) correct / N;
+        return metric.compute();
     }
 }

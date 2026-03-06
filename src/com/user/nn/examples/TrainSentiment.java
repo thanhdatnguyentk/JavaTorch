@@ -4,6 +4,7 @@ import com.user.nn.core.*;
 import com.user.nn.optim.*;
 import com.user.nn.dataloaders.*;
 import com.user.nn.models.*;
+import com.user.nn.metrics.*;
 import java.util.*;
 
 public class TrainSentiment {
@@ -52,14 +53,15 @@ public class TrainSentiment {
         float lr = 0.001f;
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), lr);
         
+        Accuracy accMetric = new Accuracy();
         int epochs = 3;
         System.out.println("\nTraining on " + trainEntries.size() + " samples...");
         
         for (int epoch = 0; epoch < epochs; epoch++) {
             float totalLoss = 0f;
-            int correct = 0;
             int numBatches = (trainEntries.size() + batchSize - 1) / batchSize;
-            
+            accMetric.reset();
+
             for (int b = 0; b < numBatches; b++) {
                 int start = b * batchSize;
                 int end = Math.min(start + batchSize, trainEntries.size());
@@ -89,10 +91,9 @@ public class TrainSentiment {
                 optimizer.step();
                 
                 totalLoss += loss.data[0];
-                for (int i = 0; i < currentBs; i++) {
-                    int pred = logits.data[i * 2] > logits.data[i * 2 + 1] ? 0 : 1;
-                    if (pred == yLabels[i]) correct++;
-                }
+                
+                // Track accuracy
+                accMetric.update(logits, yLabels);
 
                 if ((b + 1) % 1 == 0) {
                     System.out.printf("  Epoch %d Batch %d/%d - loss: %.4f%n", epoch + 1, b + 1, numBatches, loss.data[0]);
@@ -100,10 +101,10 @@ public class TrainSentiment {
             }
             
             float avgLoss = totalLoss / numBatches;
-            float trainAcc = (float) correct / trainEntries.size();
+            float trainAcc = accMetric.compute();
             
             // Evaluation on test set
-            float testAcc = evaluate(model, testEntries, vocab, tokenizer, maxLen);
+            float testAcc = evaluate(model, testEntries, vocab, tokenizer, maxLen, accMetric);
             
             System.out.printf("Epoch %d/%d - loss: %.4f - train_acc: %.2f%% - test_acc: %.2f%%%n",
                 epoch + 1, epochs, avgLoss, trainAcc * 100, testAcc * 100);
@@ -111,8 +112,8 @@ public class TrainSentiment {
     }
 
     private static float evaluate(SentimentModel model, List<MovieCommentLoader.Entry> data, 
-                                 Data.Vocabulary vocab, Data.BasicTokenizer tokenizer, int maxLen) {
-        int correct = 0;
+                                 Data.Vocabulary vocab, Data.BasicTokenizer tokenizer, int maxLen, Accuracy metric) {
+        metric.reset();
         int testBatchSize = 64;
         
         Torch.set_grad_enabled(false);
@@ -133,12 +134,9 @@ public class TrainSentiment {
             }
             Tensor xBatch = Torch.tensor(xData, bs, maxLen);
             Tensor out = model.forward(xBatch);
-            for (int j = 0; j < bs; j++) {
-                int pred = out.data[j * 2] > out.data[j * 2 + 1] ? 0 : 1;
-                if (pred == yLabels[j]) correct++;
-            }
+            metric.update(out, yLabels);
         }
         Torch.set_grad_enabled(true);
-        return (float) correct / data.size();
+        return metric.compute();
     }
 }

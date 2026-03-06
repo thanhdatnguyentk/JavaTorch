@@ -60,6 +60,11 @@ src/
     │   └── Torch.java       # Tensor utilities (creation, ops, broadcasting, SIMD)
     ├── optim/
     │   └── Optim.java       # Optimizers (SGD, Adam)
+    ├── metrics/
+    │   ├── Metric.java      # Metric interface
+    │   ├── Accuracy.java    # Classification accuracy
+    │   ├── MeanSquaredError.java # Regression MSE
+    │   └── MetricTracker.java # Epoch state tracking
     ├── dataloaders/
     │   ├── Data.java        # Dataset, DataLoader, **Vocabulary**, **BasicTokenizer**
     │   ├── MnistLoader.java # Download/Parse Fashion-MNIST
@@ -108,6 +113,10 @@ tests/
 ### ✅ Polish & Real Datasets (Complete)
 - Added `TrainFashionMNIST.java` (87% Test Accuracy in 5 epochs)
 - Added `TrainCifar10.java` (45% Test Accuracy in 2 epochs, pure Java CNN)
+
+### ✅ Phase 12: Metrics Tracking (Complete)
+- **metrics**: ✅ Standardized `Accuracy`, `MeanSquaredError`, and `MeanAbsoluteError`.
+- **MetricTracker**: ✅ Refactored all training examples to use decoupled metric tracking for cleaner code.
 - Full suite of 31 tests fully operational
 
 ### 🔲 Future Work

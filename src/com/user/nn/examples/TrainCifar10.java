@@ -3,6 +3,7 @@ package com.user.nn.examples;
 import com.user.nn.core.*;
 import com.user.nn.optim.*;
 import com.user.nn.dataloaders.*;
+import com.user.nn.metrics.*;
 import java.io.*;
 import java.util.*;
 
@@ -104,12 +105,13 @@ public class TrainCifar10 {
 
         Data.DataLoader loader = new Data.DataLoader(trainDataset, batchSize, true, 4);
 
+        Accuracy accMetric = new Accuracy();
         System.out.println("Starting training (will take a while for pure Java CNN)...");
 
         for (int epoch = 0; epoch < epochs; epoch++) {
             float epochLoss = 0f;
-            int correct = 0;
             int numBatches = 0;
+            accMetric.reset();
 
             for (Tensor[] batch : loader) {
                 Tensor xBatch = batch[0];
@@ -130,19 +132,8 @@ public class TrainCifar10 {
                 epochLoss += loss.data[0];
                 numBatches++;
 
-                for (int i = 0; i < bs; i++) {
-                    float maxVal = Float.NEGATIVE_INFINITY;
-                    int pred = 0;
-                    for (int j = 0; j < 10; j++) {
-                        float v = logits.data[i * 10 + j];
-                        if (v > maxVal) {
-                            maxVal = v;
-                            pred = j;
-                        }
-                    }
-                    if (pred == batchLabels[i])
-                        correct++;
-                }
+                // Track accuracy
+                accMetric.update(logits, batchLabels);
 
                 if (numBatches % 20 == 0) {
                     System.out.printf("  Epoch %d batch %d/%d  loss=%.4f%n",
@@ -150,20 +141,20 @@ public class TrainCifar10 {
                 }
             }
 
-            float trainAcc = (float) correct / (numBatches * batchSize);
+            float trainAcc = accMetric.compute();
             float avgLoss = epochLoss / numBatches;
             System.out.printf("Evaluating test set...%n");
-            float testAcc = evaluate(model, testImages, testLabels, 10);
+            float testAcc = evaluate(model, testImages, testLabels, accMetric);
             System.out.printf("Epoch %d/%d  avg_loss=%.4f  train_acc=%.4f  test_acc=%.4f%n",
                     epoch + 1, epochs, avgLoss, trainAcc, testAcc);
         }
         loader.shutdown();
     }
 
-    static float evaluate(NN.Module model, float[][] images, int[] labels, int numClasses) {
+    static float evaluate(NN.Module model, float[][] images, int[] labels, Accuracy metric) {
+        metric.reset();
         int N = images.length;
         int dim = 3072;
-        int correct = 0;
         int evalBatch = 256;
 
         for (int start = 0; start < N; start += evalBatch) {
@@ -178,20 +169,11 @@ public class TrainCifar10 {
             Tensor out = model.forward(x);
             Torch.set_grad_enabled(true);
 
-            for (int i = 0; i < bs; i++) {
-                float maxVal = Float.NEGATIVE_INFINITY;
-                int pred = 0;
-                for (int j = 0; j < numClasses; j++) {
-                    float v = out.data[i * numClasses + j];
-                    if (v > maxVal) {
-                        maxVal = v;
-                        pred = j;
-                    }
-                }
-                if (pred == labels[start + i])
-                    correct++;
-            }
+            int[] batchLabels = new int[bs];
+            for (int i = 0; i < bs; i++)
+                batchLabels[i] = labels[start + i];
+            metric.update(out, batchLabels);
         }
-        return (float) correct / N;
+        return metric.compute();
     }
 }

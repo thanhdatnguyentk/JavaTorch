@@ -3,10 +3,10 @@ package com.user.nn.examples;
 import com.user.nn.core.*;
 import com.user.nn.optim.*;
 import com.user.nn.dataloaders.Data;
+import com.user.nn.metrics.*;
 import java.io.*;
 import java.net.URL;
 import java.util.*;
-import java.util.Collections;
 
 /**
  * TrainIris:
@@ -100,10 +100,6 @@ public class TrainIris {
             YtestArr[i] = Y[id];
         }
 
-        // network: dim -> hidden -> classes
-        int hidden = 10;
-        int classes = 3;
-
         // Build Model
         NN.Sequential model = new NN.Sequential();
         model.add(new NN.Linear(lib, 4, 16, true));
@@ -117,7 +113,6 @@ public class TrainIris {
         // Optional: Manual Train/Test split mechanism (80/20)
         int numSamples = N; // Use N from loaded data
         int numTrain = (int) (numSamples * 0.8);
-        int numTest = numSamples - numTrain;
 
         // Prepare data for Dataset
         float[][] data = new float[N][dim];
@@ -136,10 +131,8 @@ public class TrainIris {
 
             @Override
             public Tensor[] get(int index) {
-                // index matches train subset
                 Tensor x = Torch.tensor(data[index], 1, 4);
                 Tensor y = Torch.tensor(new float[] { labelsData[index] }, 1, 1);
-                // reshape to remove batch dim since DataLoader stacks them
                 x = Torch.reshape(x, 4);
                 y = Torch.reshape(y, 1);
                 return new Tensor[] { x, y };
@@ -158,11 +151,14 @@ public class TrainIris {
             t.requires_grad = true;
         }
 
-        int epochs = 20000;
+        Accuracy accMetric = new Accuracy();
+        int epochs = 2000;
 
         for (int e = 0; e < epochs; e++) {
             float epochLoss = 0.0f;
             int batchCount = 0;
+            accMetric.reset();
+
             for (Tensor[] batch : trainLoader) {
                 Tensor xBatch = batch[0]; // [batch_size, 4]
                 Tensor yBatch = batch[1]; // [batch_size, 1]
@@ -185,6 +181,9 @@ public class TrainIris {
                 epochLoss += loss.data[0];
                 batchCount++;
 
+                // Track accuracy
+                accMetric.update(logits, batchLabels);
+
                 // Backward pass using autograd
                 loss.backward();
 
@@ -193,12 +192,13 @@ public class TrainIris {
             }
 
             if (e % 100 == 0) {
-                float acc = evaluate(model, XtestMat, YtestArr);
-                System.out.println(String.format("Epoch %d loss=%.6f test_acc=%.4f", e, epochLoss / batchCount, acc));
+                float trainAcc = accMetric.compute();
+                float testAcc = evaluate(model, XtestMat, YtestArr, accMetric);
+                System.out.println(String.format("Epoch %d loss=%.6f train_acc=%.4f test_acc=%.4f", e, epochLoss / batchCount, trainAcc, testAcc));
             }
         }
 
-        float finalAcc = evaluate(model, XtestMat, YtestArr);
+        float finalAcc = evaluate(model, XtestMat, YtestArr, accMetric);
         System.out.println("Final test accuracy=" + finalAcc);
     }
 
@@ -225,23 +225,10 @@ public class TrainIris {
         return 2;
     }
 
-    static float evaluate(NN.Module model, NN.Mat X, int[] Y) {
+    static float evaluate(NN.Module model, NN.Mat X, int[] Y, Accuracy metric) {
+        metric.reset();
         Tensor out = model.forward(Torch.fromMat(X));
-        int correct = 0;
-        int N = X.rows;
-        int classes = out.shape[1];
-        for (int i = 0; i < N; i++) {
-            float max = Float.NEGATIVE_INFINITY;
-            int best = 0;
-            for (int j = 0; j < classes; j++) {
-                if (out.data[i * classes + j] > max) {
-                    max = out.data[i * classes + j];
-                    best = j;
-                }
-            }
-            if (best == Y[i])
-                correct++;
-        }
-        return (float) correct / N;
+        metric.update(out, Y);
+        return metric.compute();
     }
 }
