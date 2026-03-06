@@ -1,10 +1,25 @@
 package com.user.nn.core;
 
 import java.util.Arrays;
+import jcuda.*;
+import jcuda.runtime.JCuda;
+import static jcuda.runtime.JCuda.*;
+import static jcuda.runtime.cudaMemcpyKind.*;
 
-public class Tensor {
+public class Tensor implements AutoCloseable {
+    public enum Device { CPU, GPU }
+    public Device device = Device.CPU;
+
     public int[] shape;
     public float[] data;
+    
+    // GPU memory
+    public Pointer deviceData = null;
+    
+    // Synchronization flags
+    private boolean onHost = true;
+    private boolean onDevice = false;
+
     // autograd fields
     public boolean requires_grad = false;
     public Tensor grad = null;
@@ -218,8 +233,12 @@ public class Tensor {
     }
 
     public String toString() {
+        if (!onHost && onDevice) {
+            // Need data for printing
+            toCPU();
+        }
         StringBuilder sb = new StringBuilder();
-        sb.append("Tensor(shape=" + Arrays.toString(shape) + ", data=");
+        sb.append("Tensor(shape=" + Arrays.toString(shape) + ", device=" + device + ", data=");
         int limit = Math.min(data.length, 20);
         sb.append("[");
         String fmt = "%." + Torch.printOptions.precision + "f";
@@ -232,5 +251,69 @@ public class Tensor {
             sb.append(", ... " + data.length + " elements");
         sb.append("])");
         return sb.toString();
+    }
+
+    // --- JCuda Sync Methods ---
+
+    public void toGPU() {
+        if (onDevice && !onHost) return; // Already on device and host is not newer
+        if (deviceData == null) {
+            deviceData = new Pointer();
+            cudaMalloc(deviceData, (long) numel() * Sizeof.FLOAT);
+        }
+        cudaMemcpy(deviceData, Pointer.to(data), (long) numel() * Sizeof.FLOAT, cudaMemcpyHostToDevice);
+        onDevice = true;
+        device = Device.GPU;
+    }
+
+    public void toCPU() {
+        if (onHost && !onDevice) return; // Already on host and device is not newer
+        if (deviceData == null) {
+            onHost = true;
+            device = Device.CPU;
+            return;
+        }
+        cudaMemcpy(Pointer.to(data), deviceData, (long) numel() * Sizeof.FLOAT, cudaMemcpyDeviceToHost);
+        onHost = true;
+        device = Device.CPU;
+    }
+
+    public Pointer getDevicePointer() {
+        if (!onDevice) toGPU();
+        return deviceData;
+    }
+
+    public void markDirtyOnGPU() {
+        onDevice = true;
+        onHost = false;
+        device = Device.GPU;
+    }
+
+    public void markDirtyOnCPU() {
+        onHost = true;
+        onDevice = false;
+        device = Device.CPU;
+    }
+
+    @Override
+    public void close() {
+        if (deviceData != null) {
+            cudaFree(deviceData);
+            deviceData = null;
+            onDevice = false;
+        }
+        if (grad != null) {
+            grad.close();
+        }
+    }
+
+    // Finalizer as safety net (though try-with-resources is preferred)
+    @Override
+    protected void finalize() throws Throwable {
+        try {
+            close();
+        } finally {
+            super.finalize();
+        }
     }
 }

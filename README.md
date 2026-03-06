@@ -119,18 +119,26 @@ tests/
 ### ✅ Phase 12: Metrics Tracking (Complete)
 - **metrics**: ✅ Standardized `Accuracy`, `MeanSquaredError`, and `MeanAbsoluteError`.
 - **MetricTracker**: ✅ Refactored all training examples to use decoupled metric tracking for cleaner code.
-- Full suite of 36 tests fully operational.
+
+### ✅ Phase 13: GPU Acceleration (Initial Integration)
+- **JCuda Core**: ✅ Integrated JCuda (12.0.0) for GPU-aware tensors.
+- **Memory Management**: ✅ Implement `AutoCloseable` tensors with `cudaFree` for GPU memory leak prevention.
+- **CUBLAS Integration**: ✅ GPU-accelerated `matmul` using `cublasSgemm`.
+- **Hybrid Dispatch**: ✅ Device-aware `Torch.java` automatically routes math to GPU if tensors reside there.
+- Full suite of 37 tests fully operational (including GPU Matmul verification).
 
 ### 🔲 Future Work
+- **Custom Kernels**: Implement element-wise kernels (Add, Sub, Mul) and Activations via custom PTX for full GPU pipeline.
+- **JCudnn Support**: Port Conv2d and BatchNorm to use cuDNN for peak performance.
 - Conv1d/Conv3d, BatchNorm2d/3d, GroupNorm
 - Learning rate schedulers
 - JUnit integration
-- Data loading utilities (Dataset & DataLoader abstractions)
 
-## Test Suite (36 tests)
+## Test Suite (37 tests)
 
 | Test | Coverage |
 |------|----------|
+| TestGPUMatmul | JCuda/GPU Data transfer & Matmul correctness |
 | TestMatOps | Matrix operations |
 | TestContainers | Sequential, ModuleList, ModuleDict |
 | TestParameterAndModules | Parameter, Module base |
@@ -165,4 +173,4 @@ tests/
 
 ---
 
-*Last updated: 2026-03-06*
+*Last updated: 2026-03-07*

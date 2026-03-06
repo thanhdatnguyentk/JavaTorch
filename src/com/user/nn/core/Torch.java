@@ -817,6 +817,11 @@ public class Torch {
     public static Tensor transpose(Tensor a, int dim0, int dim1) {
         if (a.shape.length != 2)
             throw new IllegalArgumentException("transpose only supports 2D currently");
+        
+        if (a.device == Tensor.Device.GPU) {
+            a.toCPU(); // CPU fallback
+        }
+
         int r = a.shape[0], c = a.shape[1];
         Tensor out = new Tensor(c, r);
         for (int i = 0; i < r; i++)
@@ -845,9 +850,35 @@ public class Torch {
         int m = a.shape[0], k = a.shape[1], n = b.shape[1];
         if (k != b.shape[0])
             throw new IllegalArgumentException("matmul shape mismatch");
-        Tensor out = new Tensor(m, n);
 
-        // We optimize matmul by transposing B once, so memory access is contiguous
+        // GPU Path
+        if (a.device == Tensor.Device.GPU || b.device == Tensor.Device.GPU) {
+            Tensor out = new Tensor(m, n);
+            out.toGPU(); // Ensure output is pre-allocated on GPU
+            CUDAOps.matmul(a, b, out);
+            
+            if (is_grad_enabled() && (a.requires_grad || b.requires_grad)) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn(a, b) {
+                    public void apply(Tensor outGrad) {
+                        if (a.requires_grad) {
+                            Tensor bt = transpose(b);
+                            Tensor ga = matmul(outGrad, bt);
+                            a.backwardStep(ga);
+                        }
+                        if (b.requires_grad) {
+                            Tensor at = transpose(a);
+                            Tensor gb = matmul(at, outGrad);
+                            b.backwardStep(gb);
+                        }
+                    }
+                };
+            }
+            return out;
+        }
+
+        // CPU Path (SIMD)
+        Tensor out = new Tensor(m, n);
         Tensor bt = transpose(b);
         int upperBound = SPECIES.loopBound(k);
 
@@ -873,11 +904,10 @@ public class Torch {
                 out.data[i * n + j] = sum;
             }
         }
-        // autograd for matmul: dOut/dA = outGrad.matmul(B^T); dOut/dB =
-        // A^T.matmul(outGrad)
-        if (a.requires_grad || b.requires_grad) {
+
+        if (is_grad_enabled() && (a.requires_grad || b.requires_grad)) {
             out.requires_grad = true;
-            out.grad_fn = new Tensor.GradFn(a) {
+            out.grad_fn = new Tensor.GradFn(a, b) {
                 public void apply(Tensor outGrad) {
                     if (a.requires_grad) {
                         Tensor ga = matmul(outGrad, bt);

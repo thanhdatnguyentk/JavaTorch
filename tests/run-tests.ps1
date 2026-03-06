@@ -13,11 +13,11 @@ Write-Host "Project root: $($pwd)"
 if (!(Test-Path bin)) { New-Item -ItemType Directory -Path bin | Out-Null }
 
 Write-Host "Compiling library sources..."
-javac --add-modules jdk.incubator.vector -d bin src\com\user\nn\core\*.java src\com\user\nn\optim\*.java src\com\user\nn\dataloaders\*.java src\com\user\nn\models\*.java src\com\user\nn\metrics\*.java src\com\user\nn\examples\*.java
+javac --add-modules jdk.incubator.vector -d bin -cp "lib/*" src\com\user\nn\core\*.java src\com\user\nn\optim\*.java src\com\user\nn\dataloaders\*.java src\com\user\nn\models\*.java src\com\user\nn\metrics\*.java src\com\user\nn\examples\*.java
 if ($LASTEXITCODE -ne 0) { Write-Error "Compilation of sources failed."; exit 1 }
 
 Write-Host "Compiling test runners..."
-javac --add-modules jdk.incubator.vector -d bin -cp bin tests\java\com\user\nn\*.java
+javac --add-modules jdk.incubator.vector -d bin -cp "bin;lib/*" tests\java\com\user\nn\*.java
 if ($LASTEXITCODE -ne 0) { Write-Error "Compilation of tests failed."; exit 1 }
 
 $tests = @(
@@ -58,7 +58,7 @@ $failures = @()
 
 foreach ($t in $tests) {
     Write-Host "\n=== Running $t ==="
-    java --add-modules jdk.incubator.vector -cp bin $t
+    java --add-modules jdk.incubator.vector -cp "bin;lib/*" $t
     $code = $LASTEXITCODE
     if ($code -eq 0) {
         Write-Host "PASS: $t" -ForegroundColor Green
