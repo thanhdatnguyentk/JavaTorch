@@ -42,6 +42,12 @@ public class MemoryScope implements AutoCloseable {
             trackedTensors.get(i).close();
         }
         trackedTensors.clear();
+        
+        // If this is a top-level scope, reset the memory pool
+        if (parent == null && GpuMemoryPool.isInitialized()) {
+            GpuMemoryPool.reset();
+        }
+        
         currentScope.set(parent);
     }
 }

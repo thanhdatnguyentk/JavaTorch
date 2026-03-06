@@ -19,6 +19,7 @@ public class Tensor implements AutoCloseable {
     
     // GPU memory
     public Pointer deviceData = null;
+    boolean poolManaged = false; // true if allocated from GpuMemoryPool
     
     // Synchronization flags
     private boolean onHost = true;
@@ -288,8 +289,16 @@ public class Tensor implements AutoCloseable {
         if (device == Device.GPU && onDevice && !onHost)
             return this;
         if (deviceData == null) {
-            deviceData = new Pointer();
-            cudaMalloc(deviceData, (long) numel() * Sizeof.FLOAT);
+            // Try Arena Allocator first for fast allocation
+            Pointer poolSlice = GpuMemoryPool.allocate(numel());
+            if (poolSlice != null) {
+                deviceData = poolSlice;
+                poolManaged = true;
+            } else {
+                deviceData = new Pointer();
+                cudaMalloc(deviceData, (long) numel() * Sizeof.FLOAT);
+                poolManaged = false;
+            }
         }
         cudaMemcpy(deviceData, Pointer.to(data), (long) numel() * Sizeof.FLOAT, cudaMemcpyHostToDevice);
         onDevice = true;
@@ -335,9 +344,13 @@ public class Tensor implements AutoCloseable {
     @Override
     public void close() {
         if (deviceData != null) {
-            cudaFree(deviceData);
+            // Only cudaFree if NOT managed by the memory pool
+            if (!poolManaged) {
+                cudaFree(deviceData);
+            }
             deviceData = null;
             onDevice = false;
+            poolManaged = false;
         }
         if (grad != null) {
             grad.close();

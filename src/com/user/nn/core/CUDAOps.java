@@ -19,8 +19,10 @@ import static jcuda.runtime.JCuda.*;
 import static jcuda.runtime.cudaMemcpyKind.*;
 import jcuda.driver.CUfunction;
 import jcuda.driver.CUmodule;
+import jcuda.driver.CUstream;
 import jcuda.driver.JCudaDriver;
 import static jcuda.driver.JCudaDriver.*;
+import jcuda.runtime.cudaStream_t;
 
 public class CUDAOps {
     private static cublasHandle cublasHandle;
@@ -33,6 +35,10 @@ public class CUDAOps {
     private static CUfunction mulFunction;
     private static CUfunction addScalarFunction;
     private static CUfunction mulScalarFunction;
+    
+    // CUDA Streams for pipelining
+    private static cudaStream_t computeStream;
+    private static cudaStream_t transferStream;
     
     private static boolean initialized = false;
 
@@ -74,8 +80,61 @@ public class CUDAOps {
                 e.printStackTrace();
             }
             
+            // Create CUDA Streams
+            computeStream = new cudaStream_t();
+            jcuda.runtime.JCuda.cudaStreamCreate(computeStream);
+            
+            transferStream = new cudaStream_t();
+            jcuda.runtime.JCuda.cudaStreamCreate(transferStream);
+            
+            // Bind streams to cuBLAS and cuDNN handles
+            jcuda.jcublas.JCublas2.cublasSetStream(cublasHandle, computeStream);
+            cudnnSetStream(cudnnHandle, computeStream);
+            
             initialized = true;
         }
+    }
+    
+    /**
+     * Get the compute stream for synchronization.
+     */
+    public static cudaStream_t getComputeStream() {
+        init();
+        return computeStream;
+    }
+    
+    /**
+     * Get the transfer stream for async H2D memory copies.
+     */
+    public static cudaStream_t getTransferStream() {
+        init();
+        return transferStream;
+    }
+
+    /**
+     * Asynchronous Host-to-Device memory copy on the transfer stream.
+     * Uses pinned memory for best performance.
+     */
+    public static void memcpyHostToDeviceAsync(Pointer devicePtr, Pointer hostPtr, long bytes) {
+        init();
+        jcuda.runtime.JCuda.cudaMemcpyAsync(devicePtr, hostPtr, bytes, 
+            jcuda.runtime.cudaMemcpyKind.cudaMemcpyHostToDevice, transferStream);
+    }
+    
+    /**
+     * Synchronize the compute stream (wait for all pending compute ops).
+     */
+    public static void syncComputeStream() {
+        init();
+        jcuda.runtime.JCuda.cudaStreamSynchronize(computeStream);
+    }
+    
+    /**
+     * Synchronize the transfer stream (wait for all pending transfers).
+     */
+    public static void syncTransferStream() {
+        init();
+        jcuda.runtime.JCuda.cudaStreamSynchronize(transferStream);
     }
 
     private static void launchElementwiseKernel(CUfunction function, Tensor a, Tensor b, Tensor out) {
@@ -259,6 +318,86 @@ public class CUDAOps {
         cudnnDestroyTensorDescriptor(yDesc);
         cudnnDestroyFilterDescriptor(wDesc);
         cudnnDestroyConvolutionDescriptor(convDesc);
+
+        out.markDirtyOnGPU();
+    }
+
+    /**
+     * Fused Conv2d + Bias + ReLU Forward using cudnnConvolutionBiasActivationForward.
+     * Eliminates intermediate VRAM read/write between Conv, BiasAdd, and Activation.
+     */
+    public static void conv2dBiasReluForward(Tensor x, Tensor weight, Tensor bias, Tensor out,
+                                             int inC, int inH, int inW,
+                                             int kH, int kW,
+                                             int outC, int outH, int outW,
+                                             int padH, int padW, int strideH, int strideW) {
+        init();
+        int batch = x.shape[0];
+
+        cudnnTensorDescriptor xDesc = new cudnnTensorDescriptor();
+        cudnnTensorDescriptor yDesc = new cudnnTensorDescriptor();
+        cudnnFilterDescriptor wDesc = new cudnnFilterDescriptor();
+        cudnnConvolutionDescriptor convDesc = new cudnnConvolutionDescriptor();
+        jcuda.jcudnn.cudnnActivationDescriptor actDesc = new jcuda.jcudnn.cudnnActivationDescriptor();
+
+        cudnnCreateTensorDescriptor(xDesc);
+        cudnnSetTensor4dDescriptor(xDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, inC, inH, inW);
+
+        cudnnCreateFilterDescriptor(wDesc);
+        cudnnSetFilter4dDescriptor(wDesc, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NCHW, outC, inC, kH, kW);
+
+        cudnnCreateConvolutionDescriptor(convDesc);
+        cudnnSetConvolution2dDescriptor(convDesc, padH, padW, strideH, strideW, 1, 1, CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT);
+
+        cudnnCreateTensorDescriptor(yDesc);
+        cudnnSetTensor4dDescriptor(yDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, outC, outH, outW);
+
+        // Activation descriptor for ReLU
+        cudnnCreateActivationDescriptor(actDesc);
+        cudnnSetActivationDescriptor(actDesc, CUDNN_ACTIVATION_RELU, CUDNN_PROPAGATE_NAN, 0.0);
+
+        // Bias descriptor
+        cudnnTensorDescriptor bDesc = new cudnnTensorDescriptor();
+        cudnnCreateTensorDescriptor(bDesc);
+        cudnnSetTensor4dDescriptor(bDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, outC, 1, 1);
+
+        int algo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
+
+        long[] workspaceSizeInBytes = {0};
+        cudnnGetConvolutionForwardWorkspaceSize(cudnnHandle, xDesc, wDesc, convDesc, yDesc, algo, workspaceSizeInBytes);
+
+        Pointer workspace = new Pointer();
+        if (workspaceSizeInBytes[0] > 0) {
+            cudaMalloc(workspace, workspaceSizeInBytes[0]);
+        }
+
+        Pointer pAlpha1 = Pointer.to(new float[]{1.0f});
+        Pointer pAlpha2 = Pointer.to(new float[]{0.0f});
+
+        // z descriptor (for residual add, not used here, so we pass y itself with alpha2=0)
+        cudnnTensorDescriptor zDesc = new cudnnTensorDescriptor();
+        cudnnCreateTensorDescriptor(zDesc);
+        cudnnSetTensor4dDescriptor(zDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, outC, outH, outW);
+
+        cudnnConvolutionBiasActivationForward(cudnnHandle,
+            pAlpha1, xDesc, x.getDevicePointer(),
+            wDesc, weight.getDevicePointer(),
+            convDesc, algo, workspace, workspaceSizeInBytes[0],
+            pAlpha2, zDesc, out.getDevicePointer(),       // z = out (alpha2=0 means z is ignored)
+            bDesc, bias.getDevicePointer(),
+            actDesc, yDesc, out.getDevicePointer());
+
+        if (workspaceSizeInBytes[0] > 0) {
+            cudaFree(workspace);
+        }
+
+        cudnnDestroyTensorDescriptor(xDesc);
+        cudnnDestroyTensorDescriptor(yDesc);
+        cudnnDestroyTensorDescriptor(zDesc);
+        cudnnDestroyTensorDescriptor(bDesc);
+        cudnnDestroyFilterDescriptor(wDesc);
+        cudnnDestroyConvolutionDescriptor(convDesc);
+        cudnnDestroyActivationDescriptor(actDesc);
 
         out.markDirtyOnGPU();
     }
