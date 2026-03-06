@@ -1,4 +1,6 @@
 package com.user.nn;
+import com.user.nn.core.*;
+import com.user.nn.optim.*;
 
 /**
  * Tests for autograd-aware loss functions: nll_loss, mse_loss_tensor,
@@ -39,7 +41,7 @@ public class TestLossFunctions {
             logProbs.requires_grad = true;
             int[] targets = { 0, 1 }; // target class for each sample
 
-            Tensor loss = nn.F.nll_loss(logProbs, targets);
+            Tensor loss = NN.F.nll_loss(logProbs, targets);
             // Expected: (-(-0.5) + -(-0.3)) / 2 = (0.5 + 0.3) / 2 = 0.4
             check(Math.abs(loss.data[0] - 0.4f) < 1e-5f, "NLL loss value, got " + loss.data[0]);
 
@@ -64,7 +66,7 @@ public class TestLossFunctions {
             pred.requires_grad = true;
             Tensor target = Torch.tensor(new float[] { 1f, 1f, 1f, 1f }, 2, 2);
 
-            Tensor loss = nn.F.mse_loss_tensor(pred, target);
+            Tensor loss = NN.F.mse_loss_tensor(pred, target);
             // MSE = ((0)^2 + (1)^2 + (2)^2 + (3)^2) / 4 = (0+1+4+9)/4 = 3.5
             check(Math.abs(loss.data[0] - 3.5f) < 1e-5f, "MSE loss value, got " + loss.data[0]);
 
@@ -91,7 +93,7 @@ public class TestLossFunctions {
             Tensor target = Torch.tensor(new float[] { 0f, 0f, 0f }, 1, 3);
             float delta = 1f;
 
-            Tensor loss = nn.F.huber_loss(pred, target, delta);
+            Tensor loss = NN.F.huber_loss(pred, target, delta);
             // errors: [0, 2, 5]
             // |0|<=1: 0.5*0=0; |2|>1: 1*(2-0.5)=1.5; |5|>1: 1*(5-0.5)=4.5
             // total = (0 + 1.5 + 4.5)/3 = 2.0

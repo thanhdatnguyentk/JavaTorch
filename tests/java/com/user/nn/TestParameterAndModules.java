@@ -1,9 +1,11 @@
 package com.user.nn;
+import com.user.nn.core.*;
+import com.user.nn.optim.*;
 
 public class TestParameterAndModules {
     public static void main(String[] args) {
-        nn lib = new nn();
-        nn.Linear l = new nn.Linear(lib, 6, 2, true);
+        NN lib = new NN();
+        NN.Linear l = new NN.Linear(lib, 6, 2, true);
         // parameters should include weight and bias
         if (l.getParameter("weight") == null) { System.err.println("weight missing"); System.exit(1); }
         if (l.getParameter("bias") == null) { System.err.println("bias missing"); System.exit(2); }

@@ -1,7 +1,9 @@
 package com.user.nn;
+import com.user.nn.core.*;
+import com.user.nn.optim.*;
 
 /**
- * Tests for optim.SGD and optim.Adam on simple quadratic minimization.
+ * Tests for Optim.SGD and Optim.Adam on simple quadratic minimization.
  * f(x) = sum(x^2), gradient = 2*x, minimum at x=0.
  */
 public class TestOptimizers {
@@ -24,13 +26,13 @@ public class TestOptimizers {
     // Minimize f(x) = x0^2 + x1^2 with plain SGD
     private static boolean testSGDNoMomentum() {
         try {
-            nn.Linear layer = new nn.Linear(new nn(), 2, 1, false); // no bias
+            NN.Linear layer = new NN.Linear(new NN(), 2, 1, false); // no bias
             Tensor w = layer.weight.getTensor();
             w.data[0] = 5f;
             w.data[1] = -3f;
             w.requires_grad = true;
 
-            optim.SGD opt = new optim.SGD(layer.parameters(), 0.1f);
+            Optim.SGD opt = new Optim.SGD(layer.parameters(), 0.1f);
 
             for (int i = 0; i < 100; i++) {
                 opt.zero_grad();
@@ -53,13 +55,13 @@ public class TestOptimizers {
     // Minimize with SGD + momentum
     private static boolean testSGDWithMomentum() {
         try {
-            nn.Linear layer = new nn.Linear(new nn(), 2, 1, false);
+            NN.Linear layer = new NN.Linear(new NN(), 2, 1, false);
             Tensor w = layer.weight.getTensor();
             w.data[0] = 5f;
             w.data[1] = -3f;
             w.requires_grad = true;
 
-            optim.SGD opt = new optim.SGD(layer.parameters(), 0.01f, 0.9f);
+            Optim.SGD opt = new Optim.SGD(layer.parameters(), 0.01f, 0.9f);
 
             for (int i = 0; i < 200; i++) {
                 opt.zero_grad();
@@ -80,13 +82,13 @@ public class TestOptimizers {
     // Minimize with Adam
     private static boolean testAdam() {
         try {
-            nn.Linear layer = new nn.Linear(new nn(), 2, 1, false);
+            NN.Linear layer = new NN.Linear(new NN(), 2, 1, false);
             Tensor w = layer.weight.getTensor();
             w.data[0] = 5f;
             w.data[1] = -3f;
             w.requires_grad = true;
 
-            optim.Adam opt = new optim.Adam(layer.parameters(), 0.1f);
+            Optim.Adam opt = new Optim.Adam(layer.parameters(), 0.1f);
 
             for (int i = 0; i < 200; i++) {
                 opt.zero_grad();

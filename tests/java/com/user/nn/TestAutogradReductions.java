@@ -1,4 +1,6 @@
 package com.user.nn;
+import com.user.nn.core.*;
+import com.user.nn.optim.*;
 
 public class TestAutogradReductions {
     public static void main(String[] args) {

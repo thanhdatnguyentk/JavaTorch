@@ -1,4 +1,6 @@
 package com.user.nn;
+import com.user.nn.core.*;
+import com.user.nn.optim.*;
 
 public class TestAutogradMLP {
     public static void main(String[] args) {
@@ -25,17 +27,17 @@ public class TestAutogradMLP {
 
     private static boolean testMLP() {
         try {
-            nn outer = new nn();
+            NN outer = new NN();
             Torch.manual_seed(42);
 
             // Layer 1: 2 -> 4
-            nn.Linear l1 = new nn.Linear(outer, 2, 4, true);
+            NN.Linear l1 = new NN.Linear(outer, 2, 4, true);
             // Layer 2: 4 -> 2
-            nn.Linear l2 = new nn.Linear(outer, 4, 2, true);
+            NN.Linear l2 = new NN.Linear(outer, 4, 2, true);
 
-            nn.Sequential model = new nn.Sequential();
+            NN.Sequential model = new NN.Sequential();
             model.add(l1);
-            model.add(new nn.ReLU());
+            model.add(new NN.ReLU());
             model.add(l2);
 
             // Forward pass test
@@ -46,7 +48,7 @@ public class TestAutogradMLP {
             check(out.dim() == 2 && out.shape[0] == 1 && out.shape[1] == 2, "MLP output shape");
 
             int[] targets = new int[] { 1 };
-            Tensor loss = nn.F.cross_entropy_tensor(out, targets);
+            Tensor loss = NN.F.cross_entropy_tensor(out, targets);
 
             check(loss.dim() == 1 && loss.shape[0] == 1, "Loss shape");
 

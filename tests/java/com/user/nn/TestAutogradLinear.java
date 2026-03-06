@@ -1,12 +1,14 @@
 package com.user.nn;
+import com.user.nn.core.*;
+import com.user.nn.optim.*;
 
 public class TestAutogradLinear {
     public static void main(String[] args) throws Exception {
         int failures = 0;
         try {
-            nn outer = new nn();
-            nn.Linear lin = new nn.Linear(outer, 3, 2, true);
-            // create input tensor (batch 2 x 3)
+            NN outer = new NN();
+            NN.Linear lin = new NN.Linear(outer, 3, 2, true);
+            // create input Tensor (batch 2 x 3)
             Tensor inp = Torch.tensor(new float[] { 1f, 2f, 3f, 4f, 5f, 6f }, 2, 3);
             inp.requires_grad = false;
             Tensor out = lin.forward(inp);

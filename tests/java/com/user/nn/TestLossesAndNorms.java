@@ -1,24 +1,26 @@
 package com.user.nn;
+import com.user.nn.core.*;
+import com.user.nn.optim.*;
 
 public class TestLossesAndNorms {
     public static void main(String[] args) {
-        nn lib = new nn();
+        NN lib = new NN();
         // MSE loss
-        nn.Mat a = lib.mat_alloc(2,2);
-        nn.Mat b = lib.mat_alloc(2,2);
+        NN.Mat a = lib.mat_alloc(2,2);
+        NN.Mat b = lib.mat_alloc(2,2);
         a.es[0]=1; a.es[1]=2; a.es[2]=3; a.es[3]=4;
         b.es[0]=1; b.es[1]=1; b.es[2]=1; b.es[3]=1;
-        float mse = nn.F.mse_loss(a,b);
+        float mse = NN.F.mse_loss(a,b);
         // manual: ((0^2)+(1^2)+(2^2)+(3^2))/4 = (0+1+4+9)/4 = 14/4 = 3.5
         if (Math.abs(mse - 3.5f) > 1e-6f) { System.err.println("MSELoss mismatch"); System.exit(1); }
 
         // Cross entropy logits
-        nn.Mat logits = lib.mat_alloc(2,3);
+        NN.Mat logits = lib.mat_alloc(2,3);
         // sample logits
         logits.es[0]=2; logits.es[1]=1; logits.es[2]=0;
         logits.es[3]=0; logits.es[4]=1; logits.es[5]=2;
         int[] targets = new int[]{0,2};
-        float ce = nn.F.cross_entropy_logits(logits, targets);
+        float ce = NN.F.cross_entropy_logits(logits, targets);
         // compute manually
         // first row: softmax denom = e^2+e^1+e^0 = e^2+e+1; logsum = log(denom); loss1 = logsum - 2
         // second row: denom = e^0+e^1+e^2 = same; loss2 = logsum - 2 (since target index 2 has logit 2)
@@ -29,11 +31,11 @@ public class TestLossesAndNorms {
         if (Math.abs(ce - expected) > 1e-6f) { System.err.println("CrossEntropy mismatch"); System.exit(2); }
 
         // BatchNorm1d: ensure output mean approx 0 per feature
-        nn.BatchNorm1d bn = new nn.BatchNorm1d(lib, 3, false);
-        nn.Mat x = lib.mat_alloc(4,3);
+        NN.BatchNorm1d bn = new NN.BatchNorm1d(lib, 3, false);
+        NN.Mat x = lib.mat_alloc(4,3);
         // fill with increasing values so each column has distinct mean
         for (int i = 0; i < x.rows; i++) for (int j = 0; j < x.cols; j++) x.es[i*x.cols+j] = i + j;
-        nn.Mat out = bn.forward(x);
+        NN.Mat out = bn.forward(x);
         // compute mean of out per column
         for (int j = 0; j < out.cols; j++) {
             float s = 0f;

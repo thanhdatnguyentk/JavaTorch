@@ -1,4 +1,6 @@
 package com.user.nn;
+import com.user.nn.core.*;
+import com.user.nn.optim.*;
 
 import java.util.ArrayList;
 import java.util.List;

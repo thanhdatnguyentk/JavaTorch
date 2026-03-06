@@ -1,11 +1,13 @@
 package com.user.nn;
+import com.user.nn.core.*;
+import com.user.nn.optim.*;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
 public class TestLinearReLU {
     public static void main(String[] args) throws Exception {
-        nn lib = new nn();
+        NN lib = new NN();
 
         // deterministic sizes
         int batch = 4;
@@ -13,9 +15,9 @@ public class TestLinearReLU {
         int outF = 3;
         long seed = 12345L;
 
-        nn.Mat input = lib.mat_alloc(batch, inF);
-        nn.Mat weight = lib.mat_alloc(inF, outF);
-        nn.Mat bias = lib.mat_alloc(1, outF);
+        NN.Mat input = lib.mat_alloc(batch, inF);
+        NN.Mat weight = lib.mat_alloc(inF, outF);
+        NN.Mat bias = lib.mat_alloc(1, outF);
 
         lib.mat_rand_seed(input, seed, -1f, 1f);
         lib.mat_rand_seed(weight, seed + 1, -0.5f, 0.5f);
@@ -52,25 +54,25 @@ public class TestLinearReLU {
         }
 
         // run Java implementation: Linear + ReLU
-        nn.Linear linear = new nn.Linear(lib, inF, outF, true);
+        NN.Linear linear = new NN.Linear(lib, inF, outF, true);
         // copy weights/bias from files into params to ensure same values used by both
         try {
-            nn.Mat wpy = lib.readMatCSV(wPath);
-            nn.Mat bpy = lib.readMatCSV(bPath);
+            NN.Mat wpy = lib.readMatCSV(wPath);
+            NN.Mat bpy = lib.readMatCSV(bPath);
             // override random init
-            linear.weight = new nn.Parameter(wpy);
-            linear.bias = new nn.Parameter(bpy);
+            linear.weight = new NN.Parameter(wpy);
+            linear.bias = new NN.Parameter(bpy);
         } catch (IOException e) {
             e.printStackTrace();
             System.exit(5);
         }
 
-        nn.Mat jOut = linear.forward(input);
-        nn.ReLU relu = new nn.ReLU();
-        nn.Mat jOutRelu = relu.forward(jOut);
+        NN.Mat jOut = linear.forward(input);
+        NN.ReLU relu = new NN.ReLU();
+        NN.Mat jOutRelu = relu.forward(jOut);
 
         // read python output
-        nn.Mat pyMat = null;
+        NN.Mat pyMat = null;
         try {
             pyMat = lib.readMatCSV(pyOut);
         } catch (IOException e) {

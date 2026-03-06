@@ -1,4 +1,6 @@
 package com.user.nn;
+import com.user.nn.core.*;
+import com.user.nn.optim.*;
 
 public class TestBatch1 {
     public static void main(String[] args) {
@@ -155,47 +157,47 @@ public class TestBatch1 {
     }
 
     private static void testModuleWrappers() {
-        System.out.println("Testing nn Module wrappers...");
+        System.out.println("Testing NN Module wrappers...");
         Tensor x = new Tensor(new float[]{1.0f, 2.0f, 3.0f}, 3);
 
-        nn.GELU gelu = new nn.GELU();
+        NN.GELU gelu = new NN.GELU();
         Tensor g = gelu.forward(x);
-        check("nn.GELU forward", Math.abs(g.data[0] - 0.8412f) < 1e-3f); // gelu(1) ≈ 0.84
+        check("NN.GELU forward", Math.abs(g.data[0] - 0.8412f) < 1e-3f); // gelu(1) ≈ 0.84
 
-        nn.ELU elu = new nn.ELU();
+        NN.ELU elu = new NN.ELU();
         Tensor e = elu.forward(x);
-        check("nn.ELU forward", e.data[0] == 1.0f);
+        check("NN.ELU forward", e.data[0] == 1.0f);
 
-        nn.SiLU silu = new nn.SiLU();
+        NN.SiLU silu = new NN.SiLU();
         Tensor s = silu.forward(x);
-        check("nn.SiLU forward", s.data[0] > 0);
+        check("NN.SiLU forward", s.data[0] > 0);
 
-        nn.Softmax softmax = new nn.Softmax(0);
+        NN.Softmax softmax = new NN.Softmax(0);
         Tensor sm = softmax.forward(x);
-        check("nn.Softmax sum=1", Math.abs(Torch.sum(sm) - 1.0f) < 1e-6f);
+        check("NN.Softmax sum=1", Math.abs(Torch.sum(sm) - 1.0f) < 1e-6f);
 
-        nn.LogSoftmax logSoftmax = new nn.LogSoftmax(0);
+        NN.LogSoftmax logSoftmax = new NN.LogSoftmax(0);
         Tensor lsm = logSoftmax.forward(x);
-        check("nn.LogSoftmax values negative", lsm.data[0] < 0);
+        check("NN.LogSoftmax values negative", lsm.data[0] < 0);
     }
 
     private static void testFunctionalAPI() {
-        System.out.println("Testing nn.F functional API...");
+        System.out.println("Testing NN.F functional API...");
         Tensor x = new Tensor(new float[]{1.0f, 2.0f, 3.0f}, 3);
 
-        Tensor sm = nn.F.softmax(x, 0);
+        Tensor sm = NN.F.softmax(x, 0);
         check("F.softmax sum=1", Math.abs(Torch.sum(sm) - 1.0f) < 1e-6f);
 
-        Tensor lsm = nn.F.log_softmax(x, 0);
+        Tensor lsm = NN.F.log_softmax(x, 0);
         check("F.log_softmax values", lsm.data[0] < 0);
 
-        Tensor g = nn.F.gelu(x);
+        Tensor g = NN.F.gelu(x);
         check("F.gelu", g.data[0] > 0);
 
-        Tensor e = nn.F.elu(x, 1.0f);
+        Tensor e = NN.F.elu(x, 1.0f);
         check("F.elu", e.data[0] == 1.0f);
 
-        Tensor s = nn.F.silu(x);
+        Tensor s = NN.F.silu(x);
         check("F.silu", s.data[0] > 0);
     }
 }
