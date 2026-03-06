@@ -10,7 +10,9 @@ import static jcuda.runtime.JCuda.*;
  * of per-tensor cudaMalloc/cudaFree calls during training.
  *
  * Usage:
- *   GpuMemoryPool.init(2L * 1024 * 1024 * 1024);  // 2 GB
+ *   GpuMemoryPool.autoInit();           // Auto-detect free VRAM, use 80%
+ *   GpuMemoryPool.autoInit(0.6);        // Auto-detect free VRAM, use 60%
+ *   GpuMemoryPool.init(2L * 1024 * 1024 * 1024);  // Manual: 2 GB
  *   Pointer slice = GpuMemoryPool.allocate(numElements);
  *   GpuMemoryPool.reset();  // Reset head pointer (instant "free all")
  */
@@ -19,6 +21,39 @@ public class GpuMemoryPool {
     private static long poolSizeBytes = 0;
     private static long currentOffset = 0;
     private static boolean initialized = false;
+
+    /**
+     * Automatically initialize the memory pool by querying the GPU's free VRAM.
+     * Allocates 80% of the available free memory by default.
+     */
+    public static synchronized void autoInit() {
+        autoInit(0.8);
+    }
+
+    /**
+     * Automatically initialize the memory pool by querying the GPU's free VRAM.
+     * @param fraction The fraction of free VRAM to allocate (0.0 to 1.0).
+     *                 For example, 0.8 means use 80% of free VRAM.
+     */
+    public static synchronized void autoInit(double fraction) {
+        if (initialized) return;
+        if (fraction <= 0 || fraction > 1.0) {
+            throw new IllegalArgumentException("Fraction must be between 0 and 1.0, got: " + fraction);
+        }
+        
+        long[] free = new long[1];
+        long[] total = new long[1];
+        cudaMemGetInfo(free, total);
+        
+        long allocBytes = (long) (free[0] * fraction);
+        // Align to 1 MB boundary
+        allocBytes = (allocBytes / (1024 * 1024)) * (1024 * 1024);
+        
+        System.out.printf("[GpuMemoryPool] GPU VRAM: Total=%d MB, Free=%d MB, Allocating=%.0f%% (%d MB)%n",
+            total[0] / (1024 * 1024), free[0] / (1024 * 1024), fraction * 100, allocBytes / (1024 * 1024));
+        
+        init(allocBytes);
+    }
 
     /**
      * Initialize the memory pool with a fixed size in bytes.

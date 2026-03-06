@@ -15,6 +15,9 @@ import jcuda.runtime.JCuda;
 public class TrainCifar10 {
 
     public static void main(String[] args) throws Exception {
+        // Initialize GPU Memory Pool (Arena Allocator) - auto-detect free VRAM
+        GpuMemoryPool.autoInit();
+
         System.out.println("Preparing CIFAR-10 data...");
         Cifar10Loader.prepareData();
 
