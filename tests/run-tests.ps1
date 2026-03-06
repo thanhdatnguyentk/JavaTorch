@@ -50,8 +50,9 @@ $tests = @(
     , 'com.user.nn.TestDropout'
     , 'com.user.nn.TestBatch1'
     , 'com.user.nn.TestBatch2'
-    , "com.user.nn.TestBatch3",
-    "com.user.nn.TestBatch4"
+    , "com.user.nn.TestBatch3"
+    , "com.user.nn.TestBatch4"
+    , "com.user.nn.TestGPUBenchmark"
 )
 
 $failures = @()

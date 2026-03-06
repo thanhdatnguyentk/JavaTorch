@@ -27,7 +27,7 @@ Last updated: 2026-03-06
   - `TrainFashionMNIST.java`
   - `TrainCifar10.java`
   - **`TrainSentiment.java`** (Real movie review dataset using LSTM)
-- Comprehensive test suite (39 tests) including `TestBatch4`, `TestDropout`, and full GPU compatibility verification.
+- Comprehensive test suite (40 tests) including `TestBatch4`, `TestDropout`, and full GPU compatibility verification.
 - ✅ **GPU Compatibility Audit**: Fully audited all mathematical and neural network operations for device-aware logic and automatic synchronization.
 
 ---

@@ -130,7 +130,7 @@ tests/
 - **Backward Sync**: ✅ Automatic CPU synchronization for backward pass when GPU forward is used.
 - **Full Compatibility Audit**: ✅ Comprehensive audit of all math and NN operations to ensure device-aware dispatch and automatic synchronization.
 - **Convenience API**: ✅ Added `Tensor.to(Device)` for seamless device migration.
-- Full suite of 39 tests operational (including cuDNN initialization and GPU forward verification).
+- Full suite of 40 tests operational (including cuDNN initialization and GPU forward verification).
 
 ### 🔲 Future Work
 - **GPU Backward Kernels**: Implement cuDNN backward passes for Conv/Pool to eliminate CPU sync overhead.
