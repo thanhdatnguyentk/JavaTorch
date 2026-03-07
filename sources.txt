@@ -14,6 +14,7 @@ D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\u
 D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples\TrainCifar10.java
 D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples\TrainFashionMNIST.java
 D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples\TrainIris.java
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples\TrainLeNet.java
 D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples\TrainSentiment.java
 D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\metrics\Accuracy.java
 D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\metrics\MeanAbsoluteError.java
@@ -21,4 +22,5 @@ D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\u
 D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\metrics\Metric.java
 D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\metrics\MetricTracker.java
 D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\models\SentimentModel.java
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\models\cv\LeNet.java
 D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\optim\Optim.java

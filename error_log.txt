@@ -1,0 +1,10 @@
+warning: using incubating module(s): jdk.incubator.vector
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\core\Tensor.java:370: warning: [removal] finalize() in Object has been deprecated and marked for removal
+    protected void finalize() throws Throwable {
+                   ^
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\core\Tensor.java:374: warning: [removal] finalize() in Object has been deprecated and marked for removal
+            super.finalize();
+                 ^
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+3 warnings
