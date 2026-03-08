@@ -3,6 +3,8 @@ package com.user.nn;
 import com.user.nn.core.Tensor;
 import com.user.nn.core.Torch;
 import com.user.nn.core.NN;
+import com.user.nn.layers.*;
+import com.user.nn.pooling.*;
 
 public class TestGPUBenchmark {
 
@@ -35,11 +37,11 @@ public class TestGPUBenchmark {
         a.close(); b.close();
     }
 
-    private static void benchmarkConv2d(NN nn, int batch, int channels, int size, int runs) {
+    private static void benchmarkConv2d(int batch, int channels, int size, int runs) {
         System.out.println("\n--- Benchmarking Conv2d (Batch: " + batch + ", Channels: " + channels + ", Size: " + size + "x" + size + ") ---");
         Tensor x = Torch.randn(new int[]{batch, channels, size, size});
-        // NN outer, inChannels, outChannels, kernelH, kernelW, strideH, strideW, padH, padW, bias
-        NN.Conv2d conv = new NN.Conv2d(nn, channels, 32, 3, 3, 1, 1, 1, 1, true);
+        // inChannels, outChannels, kernelH, kernelW, inH, inW, stride, pad, bias
+        Conv2d conv = new Conv2d(channels, 32, 3, 3, size, size, 1, 1, true);
         
         // Warmup CPU
         for (int i = 0; i < 3; i++) conv.forward(x);
@@ -66,11 +68,11 @@ public class TestGPUBenchmark {
         x.close();
     }
     
-    private static void benchmarkMaxPool2d(NN nn, int batch, int channels, int size, int runs) {
+    private static void benchmarkMaxPool2d(int batch, int channels, int size, int runs) {
         System.out.println("\n--- Benchmarking MaxPool2d (Batch: " + batch + ", Channels: " + channels + ", Size: " + size + "x" + size + ") ---");
         Tensor x = Torch.randn(new int[]{batch, channels, size, size});
         // kernelH, kernelW, strideH, strideW, padH, padW, inC, inH, inW
-        NN.MaxPool2d pool = new NN.MaxPool2d(2, 2, 2, 2, 0, 0, channels, size, size);
+        MaxPool2d pool = new MaxPool2d(2, 2, 2, 2, 0, 0, channels, size, size);
         
         // Warmup CPU
         for (int i = 0; i < 3; i++) pool.forward(x);
@@ -128,18 +130,16 @@ public class TestGPUBenchmark {
             boolean previousGradConfig = Torch.is_grad_enabled();
             Torch.set_grad_enabled(false); // Evaluate forward pass times only
             
-            NN nn = new NN();
-            
             // Benchmark Matrix Multiplication (CPU uses SIMD Vector API)
             benchmarkMatmul(1024, 20); // 1K x 1K matrix
             System.gc();
             
             // Benchmark Convolution
-            benchmarkConv2d(nn, 32, 64, 64, 20); // 32 batch, 64 channels, 64x64 img
+            benchmarkConv2d(32, 64, 64, 20); // 32 batch, 64 channels, 64x64 img
             System.gc();
             
             // Benchmark Max Pooling
-            benchmarkMaxPool2d(nn, 32, 64, 64, 20); 
+            benchmarkMaxPool2d(32, 64, 64, 20); 
             System.gc();
             
             // Benchmark ReLU (element-wise)

@@ -1,5 +1,6 @@
 package com.user.nn;
 import com.user.nn.core.*;
+import com.user.nn.layers.*;
 import java.util.Arrays;
 
 public class TestDropout {
@@ -22,7 +23,7 @@ public class TestDropout {
 
     private static void testDropoutEval() {
         System.out.println("Testing Dropout Eval mode...");
-        NN.Dropout dropout = new NN.Dropout(0.5f);
+        Dropout dropout = new Dropout(0.5f);
         dropout.eval();
         
         Tensor x = Torch.ones(10, 10);
@@ -40,7 +41,7 @@ public class TestDropout {
 
     private static void testDropoutTrain() {
         System.out.println("Testing Dropout Train mode (scaling)...");
-        NN.Dropout dropout = new NN.Dropout(0.5f);
+        Dropout dropout = new Dropout(0.5f);
         dropout.train(); // default is true
         
         // Large tensor to get stable statistics
@@ -72,7 +73,7 @@ public class TestDropout {
 
     private static void testDropoutGrad() {
         System.out.println("Testing Dropout Gradient...");
-        NN.Dropout dropout = new NN.Dropout(0.5f);
+        Dropout dropout = new Dropout(0.5f);
         dropout.train();
         
         Tensor x = Torch.ones(100);
@@ -99,13 +100,13 @@ public class TestDropout {
         Tensor x = Torch.ones(10, 10);
         
         // Test training mode
-        Tensor outTrain = NN.F.dropout(x, 0.5f, true);
+        Tensor outTrain = Functional.dropout(x, 0.5f, true);
         float sumTrain = 0;
         for(float v : outTrain.data) sumTrain += v;
         check("F.dropout training active (sum not 100 or scale 2)", sumTrain != 100.0f || outTrain.data[0] == 2.0f || outTrain.data[0] == 0.0f);
         
         // Test eval mode
-        Tensor outEval = NN.F.dropout(x, 0.5f, false);
+        Tensor outEval = Functional.dropout(x, 0.5f, false);
         float sumEval = 0;
         for(float v : outEval.data) sumEval += v;
         check("F.dropout eval mode identity (sum=100)", sumEval == 100.0f);

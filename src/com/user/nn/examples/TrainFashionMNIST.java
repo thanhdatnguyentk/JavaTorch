@@ -1,6 +1,9 @@
 package com.user.nn.examples;
 
 import com.user.nn.core.*;
+import com.user.nn.containers.*;
+import com.user.nn.layers.*;
+import com.user.nn.activations.*;
 import com.user.nn.optim.*;
 import com.user.nn.dataloaders.*;
 import com.user.nn.metrics.*;
@@ -37,19 +40,18 @@ public class TrainFashionMNIST {
         System.out.println("Train: " + trainImages.length + " images, Test: " + testImages.length + " images");
 
         // --- Build model ---
-        NN lib = new NN();
-        NN.Sequential model = new NN.Sequential();
+        Sequential model = new Sequential();
         // 28x28 = 784
-        model.add(new NN.Linear(lib, 784, 128, true));
-        model.add(new NN.ReLU());
-        model.add(new NN.Dropout(0.2f));
-        model.add(new NN.Linear(lib, 128, 64, true));
-        model.add(new NN.ReLU());
-        model.add(new NN.Linear(lib, 64, 10, true));
+        model.add(new Linear(784, 128, true));
+        model.add(new ReLU());
+        model.add(new Dropout(0.2f));
+        model.add(new Linear(128, 64, true));
+        model.add(new ReLU());
+        model.add(new Linear(64, 10, true));
 
         // Initialize parameters
         long seed = 42L;
-        for (NN.Parameter p : model.parameters()) {
+        for (Parameter p : model.parameters()) {
             Tensor t = p.getTensor();
             float scale = (float) Math.sqrt(2.0 / t.numel());
             Random rng = new Random(seed++);
@@ -117,7 +119,7 @@ public class TrainFashionMNIST {
 
                     optimizer.zero_grad();
                     Tensor logits = model.forward(xBatch);
-                    Tensor loss = NN.F.cross_entropy_tensor(logits, batchLabels);
+                    Tensor loss = Functional.cross_entropy_tensor(logits, batchLabels);
 
                     loss.backward();
                     optimizer.step();

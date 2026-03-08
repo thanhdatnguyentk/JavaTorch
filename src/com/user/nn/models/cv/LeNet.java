@@ -1,6 +1,10 @@
 package com.user.nn.models.cv;
 
 import com.user.nn.core.*;
+import com.user.nn.containers.*;
+import com.user.nn.layers.*;
+import com.user.nn.activations.*;
+import com.user.nn.pooling.*;
 
 /**
  * Classic LeNet-5 architecture for 28x28 grayscale images (like MNIST).
@@ -18,34 +22,34 @@ import com.user.nn.core.*;
  *          Tanh
  * Output:  Linear(84 -> 10)
  */
-public class LeNet extends NN.Sequential {
-    public LeNet(NN lib) {
+public class LeNet extends Sequential {
+    public LeNet() {
         // C1: Conv2d (in=1, out=6, kH=5, kW=5, inH=28, inW=28, stride=1, pad=2, bias=true)
-        add(new NN.Conv2d(lib, 1, 6, 5, 5, 28, 28, 1, 2, true));
-        add(new NN.Tanh());
+        add(new Conv2d(1, 6, 5, 5, 28, 28, 1, 2, true));
+        add(new Tanh());
         
         // S2: Pool2d (poolH=2, poolW=2, strH=2, strW=2, padH=0, padW=0, channels=6, inH=28, inW=28)
-        add(new NN.MaxPool2d(2, 2, 2, 2, 0, 0, 6, 28, 28));
+        add(new MaxPool2d(2, 2, 2, 2, 0, 0, 6, 28, 28));
 
         // C3: Conv2d (in=6, out=16, kH=5, kW=5, inH=14, inW=14, stride=1, pad=0, bias=true)
-        add(new NN.Conv2d(lib, 6, 16, 5, 5, 14, 14, 1, 0, true));
-        add(new NN.Tanh());
+        add(new Conv2d(6, 16, 5, 5, 14, 14, 1, 0, true));
+        add(new Tanh());
         
         // S4: Pool2d (poolH=2, poolW=2, strH=2, strW=2, padH=0, padW=0, channels=16, inH=10, inW=10)
-        add(new NN.MaxPool2d(2, 2, 2, 2, 0, 0, 16, 10, 10));
+        add(new MaxPool2d(2, 2, 2, 2, 0, 0, 16, 10, 10));
 
         // Flatten features = 16 * 5 * 5 = 400
         int flattenSize = 400;
 
         // C5: Linear (400 -> 120)
-        add(new NN.Linear(lib, flattenSize, 120, true));
-        add(new NN.Tanh());
+        add(new Linear(flattenSize, 120, true));
+        add(new Tanh());
 
         // F6: Linear (120 -> 84)
-        add(new NN.Linear(lib, 120, 84, true));
-        add(new NN.Tanh());
+        add(new Linear(120, 84, true));
+        add(new Tanh());
 
         // OUTPUT: Linear (84 -> 10)
-        add(new NN.Linear(lib, 84, 10, true));
+        add(new Linear(84, 10, true));
     }
 }

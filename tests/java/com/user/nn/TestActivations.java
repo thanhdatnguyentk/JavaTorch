@@ -1,15 +1,14 @@
 package com.user.nn;
 import com.user.nn.core.*;
-import com.user.nn.optim.*;
+import com.user.nn.activations.*;
 
 public class TestActivations {
     public static void main(String[] args) {
-        NN lib = new NN();
-        NN.Mat m = lib.mat_alloc(3,3);
+        NN.Mat m = NN.mat_alloc(3,3);
         // fill with a range
         for (int i = 0; i < m.rows * m.cols; i++) m.es[i] = (i - 4) * 0.5f; // values -2,-1.5,...
 
-        NN.Sigmoid s = new NN.Sigmoid();
+        Sigmoid s = new Sigmoid();
         NN.Mat outS = s.forward(m);
         for (int i = 0; i < outS.es.length; i++) {
             float v = outS.es[i];
@@ -17,7 +16,7 @@ public class TestActivations {
             if (Math.abs(v - expected) > 1e-6f) { System.err.println("Sigmoid mismatch"); System.exit(1); }
         }
 
-        NN.Tanh t = new NN.Tanh();
+        Tanh t = new Tanh();
         NN.Mat outT = t.forward(m);
         for (int i = 0; i < outT.es.length; i++) {
             float v = outT.es[i];
@@ -25,7 +24,7 @@ public class TestActivations {
             if (Math.abs(v - expected) > 1e-6f) { System.err.println("Tanh mismatch"); System.exit(2); }
         }
 
-        NN.LeakyReLU lr = new NN.LeakyReLU(0.1f);
+        LeakyReLU lr = new LeakyReLU(0.1f);
         NN.Mat outL = lr.forward(m);
         for (int i = 0; i < outL.es.length; i++) {
             float v = outL.es[i];
@@ -33,7 +32,7 @@ public class TestActivations {
             if (Math.abs(v - expected) > 1e-6f) { System.err.println("LeakyReLU mismatch"); System.exit(3); }
         }
 
-        NN.Softplus sp = new NN.Softplus();
+        Softplus sp = new Softplus();
         NN.Mat outP = sp.forward(m);
         for (int i = 0; i < outP.es.length; i++) {
             float v = outP.es[i];

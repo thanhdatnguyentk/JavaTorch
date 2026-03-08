@@ -11,8 +11,6 @@ public class TrainSentiment {
     public static void main(String[] args) throws Exception {
         MixedPrecision.enable(); // Opt-in to Tensor Cores (FP16)
         
-        NN lib = new NN();
-        
         System.out.println("Loading Movie Review dataset...");
         List<MovieCommentLoader.Entry> allData = MovieCommentLoader.load();
         System.out.println("Total reviews: " + allData.size());
@@ -39,8 +37,8 @@ public class TrainSentiment {
         int hiddenDim = 64;
         int outputDim = 2;
         
-        SentimentModel model = new SentimentModel(lib, vocabSize, embedDim, hiddenDim, outputDim);
-        for (NN.Parameter p : model.parameters()) {
+        SentimentModel model = new SentimentModel(vocabSize, embedDim, hiddenDim, outputDim);
+        for (Parameter p : model.parameters()) {
             Tensor t = p.getTensor();
             t.requires_grad = true;
         }
@@ -87,7 +85,7 @@ public class TrainSentiment {
                     
                     optimizer.zero_grad();
                     Tensor logits = model.forward(xBatch);
-                    Tensor loss = NN.F.cross_entropy_tensor(logits, yLabels);
+                    Tensor loss = Functional.cross_entropy_tensor(logits, yLabels);
                     
                     loss.backward();
                     optimizer.step();

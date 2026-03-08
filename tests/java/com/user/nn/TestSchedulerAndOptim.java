@@ -1,6 +1,7 @@
 package com.user.nn;
 
 import com.user.nn.core.*;
+import com.user.nn.layers.*;
 import com.user.nn.optim.*;
 import java.util.List;
 
@@ -34,8 +35,7 @@ public class TestSchedulerAndOptim {
 
     private static void testStepLRDecay() {
         // Create a simple Linear layer to get an optimizer
-        NN lib = new NN();
-        NN.Linear layer = new NN.Linear(lib, 2, 1, false);
+        Linear layer = new Linear(2, 1, false);
         Optim.SGD sgd = new Optim.SGD(layer.parameters(), 1.0f);
 
         Scheduler.StepLR scheduler = new Scheduler.StepLR(sgd, 3, 0.1f);
@@ -65,8 +65,7 @@ public class TestSchedulerAndOptim {
     }
 
     private static void testStepLRInvalidStepSize() {
-        NN lib = new NN();
-        NN.Linear layer = new NN.Linear(lib, 2, 1, false);
+        Linear layer = new Linear(2, 1, false);
         Optim.SGD sgd = new Optim.SGD(layer.parameters(), 0.1f);
 
         // stepSize = 0 should throw
@@ -91,8 +90,7 @@ public class TestSchedulerAndOptim {
     }
 
     private static void testOptimizerZeroGrad() {
-        NN lib = new NN();
-        NN.Linear layer = new NN.Linear(lib, 2, 1, true);
+        Linear layer = new Linear(2, 1, true);
         Optim.Adam adam = new Optim.Adam(layer.parameters(), 0.01f);
 
         // Forward + backward to populate grads
@@ -106,7 +104,7 @@ public class TestSchedulerAndOptim {
 
         // Zero grad should clear them
         adam.zero_grad();
-        for (NN.Parameter p : layer.parameters()) {
+        for (Parameter p : layer.parameters()) {
             check(p.getTensor().grad == null, "grad should be null after zero_grad");
         }
 
@@ -115,8 +113,7 @@ public class TestSchedulerAndOptim {
 
     private static void testAdamConvergence() {
         // Minimize f(x) = (x - 3)^2 with Adam
-        NN lib = new NN();
-        NN.Linear layer = new NN.Linear(lib, 1, 1, false);
+        Linear layer = new Linear(1, 1, false);
         Tensor w = layer.weight.getTensor();
         w.data[0] = 10f; // start far from optimum
         w.requires_grad = true;

@@ -1,6 +1,5 @@
 package com.user.nn;
 import com.user.nn.core.*;
-import com.user.nn.optim.*;
 
 public class TestBatch2 {
     public static void main(String[] args) {
@@ -27,7 +26,7 @@ public class TestBatch2 {
         Tensor pred = new Tensor(new float[]{1.0f, 2.0f, 3.0f}, 3);
         pred.requires_grad = true;
         Tensor target = new Tensor(new float[]{1.5f, 1.5f, 3.5f}, 3);
-        Tensor loss = NN.F.l1_loss(pred, target);
+        Tensor loss = Functional.l1_loss(pred, target);
         // |1-1.5| + |2-1.5| + |3-3.5| = 0.5 + 0.5 + 0.5 = 1.5. mean = 1.5/3 = 0.5
         check("L1Loss value", Math.abs(loss.data[0] - 0.5f) < 1e-6f);
 
@@ -42,7 +41,7 @@ public class TestBatch2 {
         Tensor pred = new Tensor(new float[]{0.1f, 0.9f}, 2);
         pred.requires_grad = true;
         Tensor target = new Tensor(new float[]{0.0f, 1.0f}, 2);
-        Tensor loss = NN.F.binary_cross_entropy(pred, target);
+        Tensor loss = Functional.binary_cross_entropy(pred, target);
         // Loss = -(0*log(0.1) + 1*log(0.9) + 1*log(0.9) + 0*log(0.1)) ? No, reduction=mean
         // sample 0: -(0*log(0.1) + 1*log(0.9)) = -log(0.9) = 0.10536
         // sample 1: -(1*log(0.9) + 0*log(0.1)) = -log(0.9) = 0.10536
@@ -62,7 +61,7 @@ public class TestBatch2 {
         Tensor logits = new Tensor(new float[]{0.0f, 2.0f}, 2);
         logits.requires_grad = true;
         Tensor target = new Tensor(new float[]{0.0f, 1.0f}, 2);
-        Tensor loss = NN.F.binary_cross_entropy_with_logits(logits, target);
+        Tensor loss = Functional.binary_cross_entropy_with_logits(logits, target);
         // sample 0: sig(0)=0.5. Loss = - (0*log(0.5) + (1-0)*log(1-0.5)) = -log(0.5) = 0.6931
         // sample 1: sig(2)=0.8808. Loss = - (1*log(0.8808) + (1-1)*log(0.1192)) = -log(0.8808) = 0.1269
         // mean = (0.6931 + 0.1269)/2 = 0.4100
@@ -81,7 +80,7 @@ public class TestBatch2 {
         Tensor input = new Tensor(new float[]{-1f, -2f}, 2); // log-probs
         input.requires_grad = true;
         Tensor target = new Tensor(new float[]{0.5f, 0.5f}, 2); // target probs
-        Tensor loss = NN.F.kl_div(input, target);
+        Tensor loss = Functional.kl_div(input, target);
         // Loss = Q * (log(Q) - input)
         // sample 0: 0.5 * (log(0.5) - (-1)) = 0.5 * (-0.6931 + 1) = 0.1534
         // sample 1: 0.5 * (log(0.5) - (-2)) = 0.5 * (-0.6931 + 2) = 0.6534
@@ -99,7 +98,7 @@ public class TestBatch2 {
         x1.requires_grad = true;
         Tensor x2 = new Tensor(new float[]{0f, 1f, 1f, 1f}, 2, 2);
         x2.requires_grad = true;
-        Tensor sim = NN.F.cosine_similarity(x1, x2, 1, 1e-8f);
+        Tensor sim = Functional.cosine_similarity(x1, x2, 1, 1e-8f);
         
         check("Cosine sim[0]", Math.abs(sim.data[0] - 0f) < 1e-6f);
         check("Cosine sim[1]", Math.abs(sim.data[1] - 1f) < 1e-6f);
@@ -120,7 +119,7 @@ public class TestBatch2 {
         x1.requires_grad = true;
         Tensor x2 = new Tensor(new float[]{3f, 4f, 0f, 0f}, 2, 2);
         x2.requires_grad = true;
-        Tensor dist = NN.F.pairwise_distance(x1, x2, 2.0f, 1e-6f);
+        Tensor dist = Functional.pairwise_distance(x1, x2, 2.0f, 1e-6f);
 
         check("Pairwise dist[0]", Math.abs(dist.data[0] - 5.0f) < 1e-6f);
         check("Pairwise dist[1]", Math.abs(dist.data[1] - 3.0f) < 1e-6f);

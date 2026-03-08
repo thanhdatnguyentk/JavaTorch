@@ -1,13 +1,13 @@
 package com.user.nn;
 import com.user.nn.core.*;
-import com.user.nn.optim.*;
+import com.user.nn.layers.*;
+import com.user.nn.pooling.*;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
 public class TestConvPool {
     public static void main(String[] args) throws Exception {
-        NN lib = new NN();
         int batch = 1;
         int inC = 1;
         int inH = 4;
@@ -18,14 +18,14 @@ public class TestConvPool {
         int pad = 0;
         int outC = 1;
 
-        NN.Mat input = lib.mat_alloc(batch, inC * inH * inW);
-        NN.Mat weight = lib.mat_alloc(inC * kh * kw, outC);
-        NN.Mat bias = lib.mat_alloc(1, outC);
+        NN.Mat input = NN.mat_alloc(batch, inC * inH * inW);
+        NN.Mat weight = NN.mat_alloc(inC * kh * kw, outC);
+        NN.Mat bias = NN.mat_alloc(1, outC);
 
         // deterministic values
-        lib.mat_rand_seed(input, 11L, -1f, 1f);
-        lib.mat_rand_seed(weight, 12L, -0.5f, 0.5f);
-        lib.mat_rand_seed(bias, 13L, -0.1f, 0.1f);
+        NN.mat_rand_seed(input, 11L, -1f, 1f);
+        NN.mat_rand_seed(weight, 12L, -0.5f, 0.5f);
+        NN.mat_rand_seed(bias, 13L, -0.1f, 0.1f);
 
         String tmp = "tests/tmp";
         String inPath = tmp + "/conv_in.csv";
@@ -34,9 +34,9 @@ public class TestConvPool {
         String pyOut = tmp + "/conv_out_py.csv";
 
         try {
-            lib.writeMatCSV(input, inPath);
-            lib.writeMatCSV(weight, wPath);
-            lib.writeMatCSV(bias, bPath);
+            NN.writeMatCSV(input, inPath);
+            NN.writeMatCSV(weight, wPath);
+            NN.writeMatCSV(bias, bPath);
         } catch (IOException e) {
             e.printStackTrace();
             System.exit(2);
@@ -59,12 +59,12 @@ public class TestConvPool {
         }
 
         // run java conv
-        NN.Conv2d conv = new NN.Conv2d(inC, outC, kh, kw, inH, inW, stride, pad, lib, true);
+        Conv2d conv = new Conv2d(inC, outC, kh, kw, inH, inW, stride, pad, true);
         try {
-            NN.Mat wpy = lib.readMatCSV(wPath);
-            NN.Mat bpy = lib.readMatCSV(bPath);
-            conv.weight = new NN.Parameter(wpy);
-            conv.bias = new NN.Parameter(bpy);
+            NN.Mat wpy = NN.readMatCSV(wPath);
+            NN.Mat bpy = NN.readMatCSV(bPath);
+            conv.weight = new Parameter(wpy);
+            conv.bias = new Parameter(bpy);
         } catch (IOException e) {
             e.printStackTrace();
             System.exit(5);
@@ -83,7 +83,7 @@ public class TestConvPool {
 
         NN.Mat pyMat = null;
         try {
-            pyMat = lib.readMatCSV(pyOut);
+            pyMat = NN.readMatCSV(pyOut);
         } catch (IOException e) {
             e.printStackTrace();
             System.exit(6);
@@ -108,7 +108,7 @@ public class TestConvPool {
         }
 
         // test MaxPool2d
-        NN.MaxPool2d pool = new NN.MaxPool2d(2, 2, 2, 2, 0, 0, inC, inH, inW);
+        MaxPool2d pool = new MaxPool2d(2, 2, 2, 2, 0, 0, inC, inH, inW);
         Tensor pOut = pool.forward(tin);
         // check shape
         int outH = (inH + 2 * 0 - 2) / 2 + 1;

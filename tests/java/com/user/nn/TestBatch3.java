@@ -1,6 +1,5 @@
 package com.user.nn;
 import com.user.nn.core.*;
-import com.user.nn.optim.*;
 
 public class TestBatch3 {
     public static void main(String[] args) {
@@ -26,7 +25,7 @@ public class TestBatch3 {
         Tensor x = new Tensor(new float[]{1f, 3f, 2f, 4f}, 1, 4);
         x.requires_grad = true;
         // kernel=2, stride=2, pad=0 -> outL = (4-2)/2 + 1 = 2
-        Tensor out = NN.F.max_pool1d(x, 2, 2, 0);
+        Tensor out = Functional.max_pool1d(x, 2, 2, 0);
         check("MaxPool1d value[0]", out.data[0] == 3f);
         check("MaxPool1d value[1]", out.data[1] == 4f);
 
@@ -40,7 +39,7 @@ public class TestBatch3 {
         System.out.println("Testing AvgPool1d...");
         Tensor x = new Tensor(new float[]{1f, 3f, 2f, 4f}, 1, 4);
         x.requires_grad = true;
-        Tensor out = NN.F.avg_pool1d(x, 2, 2, 0);
+        Tensor out = Functional.avg_pool1d(x, 2, 2, 0);
         // (1+3)/2 = 2, (2+4)/2 = 3
         check("AvgPool1d value[0]", out.data[0] == 2f);
         check("AvgPool1d value[1]", out.data[1] == 3f);
@@ -58,7 +57,7 @@ public class TestBatch3 {
         Tensor x = Torch.ones(1, 4, 4);
         x.requires_grad = true;
         // out [2, 2]
-        Tensor out = NN.F.adaptive_avg_pool2d(x, 2, 2);
+        Tensor out = Functional.adaptive_avg_pool2d(x, 2, 2);
         check("Adaptive out shape", out.shape[out.shape.length-1] == 2);
         check("Adaptive value", out.data[0] == 1f);
 
@@ -75,7 +74,7 @@ public class TestBatch3 {
         Tensor x = Torch.ones(2, 2);
         x.requires_grad = true;
         // pad [left, right, top, bottom] = [1, 1, 1, 1]
-        Tensor out = NN.F.pad(x, new int[]{1, 1, 1, 1}, "constant", 0f);
+        Tensor out = Functional.pad(x, new int[]{1, 1, 1, 1}, "constant", 0f);
         // 2x2 -> 4x4
         check("Pad shape H", out.shape[0] == 4);
         check("Pad shape W", out.shape[1] == 4);

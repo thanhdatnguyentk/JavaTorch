@@ -91,7 +91,7 @@ public class TestPhase4GPU {
             Tensor target = Torch.tensor(new float[]{0.0f, 1.0f, 0.0f}, 3).toGPU();
             input.requires_grad = true;
 
-            Tensor loss = NN.F.binary_cross_entropy(input, target);
+            Tensor loss = Functional.binary_cross_entropy(input, target);
             check(loss.isGPU(), "BCE output should be on GPU");
             loss.backward();
 

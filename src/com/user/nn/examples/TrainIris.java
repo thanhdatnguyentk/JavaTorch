@@ -1,6 +1,9 @@
 package com.user.nn.examples;
 
 import com.user.nn.core.*;
+import com.user.nn.containers.*;
+import com.user.nn.layers.*;
+import com.user.nn.activations.*;
 import com.user.nn.optim.*;
 import com.user.nn.dataloaders.Data;
 import com.user.nn.metrics.*;
@@ -15,7 +18,6 @@ import java.util.*;
  */
 public class TrainIris {
     public static void main(String[] args) throws Exception {
-        NN lib = new NN();
 
         String url = "https://archive.ics.uci.edu/ml/machine-learning-databases/iris/iris.data";
         File csv = new File("tests/iris.csv");
@@ -83,8 +85,8 @@ public class TrainIris {
         int trainN = (int) (N * 0.8);
         int testN = N - trainN;
 
-        NN.Mat XtrainMat = lib.mat_alloc(trainN, dim);
-        NN.Mat XtestMat = lib.mat_alloc(testN, dim);
+        NN.Mat XtrainMat = NN.mat_alloc(trainN, dim);
+        NN.Mat XtestMat = NN.mat_alloc(testN, dim);
         int[] YtrainArr = new int[trainN];
         int[] YtestArr = new int[testN];
         for (int i = 0; i < trainN; i++) {
@@ -101,11 +103,11 @@ public class TrainIris {
         }
 
         // Build Model
-        NN.Sequential model = new NN.Sequential();
-        model.add(new NN.Linear(lib, 4, 16, true));
-        model.add(new NN.ReLU());
-        model.add(new NN.Dropout(0.1f));
-        model.add(new NN.Linear(lib, 16, 3, true));
+        Sequential model = new Sequential();
+        model.add(new Linear(4, 16, true));
+        model.add(new ReLU());
+        model.add(new Dropout(0.1f));
+        model.add(new Linear(16, 3, true));
 
         // Let's use Adam
         float lr = 0.05f;
@@ -151,9 +153,9 @@ public class TrainIris {
 
         // seed parameters
         long pSeed = 123L;
-        for (NN.Parameter p : model.parameters()) {
+        for (Parameter p : model.parameters()) {
             Tensor t = p.getTensor();
-            lib.mat_rand_seed(p.data, pSeed++, -0.5f, 0.5f);
+            NN.mat_rand_seed(p.data, pSeed++, -0.5f, 0.5f);
             System.arraycopy(p.data.es, 0, t.data, 0, t.data.length);
             t.requires_grad = true;
         }
@@ -206,7 +208,7 @@ public class TrainIris {
                     Tensor logits = model.forward(xBatch);
 
                     // Loss
-                    Tensor loss = NN.F.cross_entropy_tensor(logits, batchLabels);
+                    Tensor loss = Functional.cross_entropy_tensor(logits, batchLabels);
                     epochLoss += loss.data[0];
                     batchCount++;
 

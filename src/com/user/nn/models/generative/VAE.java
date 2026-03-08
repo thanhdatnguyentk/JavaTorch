@@ -1,26 +1,30 @@
 package com.user.nn.models.generative;
 
 import com.user.nn.core.*;
+import com.user.nn.core.Module;
+import com.user.nn.containers.*;
+import com.user.nn.layers.*;
+import com.user.nn.activations.*;
 
-public class VAE extends NN.Module {
-    public NN.Sequential encoder;
-    public NN.Linear fc_mu;
-    public NN.Linear fc_logvar;
-    public NN.Sequential decoder;
+public class VAE extends Module {
+    public Sequential encoder;
+    public Linear fc_mu;
+    public Linear fc_logvar;
+    public Sequential decoder;
 
-    public VAE(NN nn, int inputDim, int latentDim) {
-        encoder = new NN.Sequential(
-            new NN.Linear(nn, inputDim, 512, true),
-            new NN.ReLU()
+    public VAE(int inputDim, int latentDim) {
+        encoder = new Sequential(
+            new Linear(inputDim, 512, true),
+            new ReLU()
         );
-        fc_mu = new NN.Linear(nn, 512, latentDim, true);
-        fc_logvar = new NN.Linear(nn, 512, latentDim, true);
+        fc_mu = new Linear(512, latentDim, true);
+        fc_logvar = new Linear(512, latentDim, true);
         
-        decoder = new NN.Sequential(
-            new NN.Linear(nn, latentDim, 512, true),
-            new NN.ReLU(),
-            new NN.Linear(nn, 512, inputDim, true),
-            new NN.Sigmoid()
+        decoder = new Sequential(
+            new Linear(latentDim, 512, true),
+            new ReLU(),
+            new Linear(512, inputDim, true),
+            new Sigmoid()
         );
         
         addModule("encoder", encoder);

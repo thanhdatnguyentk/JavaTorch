@@ -43,7 +43,7 @@ public class TrainViTCifar10 {
         // Small configuration to avoid OOM and speed up training:
         // embedDim=64, depth=4, numHeads=4, mlpDim=128
         System.out.println("Initializing Vision Transformer (ViT)...");
-        ViT model = new ViT(lib, 32, 4, 3, 10, 64, 4, 4, 128, 0.1f);
+        ViT model = new ViT(32, 4, 3, 10, 64, 4, 4, 128, 0.1f);
         
         // Move to GPU
         System.out.println("Moving ViT to GPU...");
@@ -108,7 +108,7 @@ public class TrainViTCifar10 {
 
                     optimizer.zero_grad();
                     Tensor logits = model.forward(xBatch);
-                    Tensor loss = NN.F.cross_entropy_tensor(logits, batchLabels);
+                    Tensor loss = Functional.cross_entropy_tensor(logits, batchLabels);
                     loss.backward();
                     optimizer.step();
 

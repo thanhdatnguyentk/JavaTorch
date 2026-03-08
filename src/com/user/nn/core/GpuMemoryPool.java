@@ -60,7 +60,7 @@ public class GpuMemoryPool {
      * Computes the base memory required for parameters, gradients, and optimizer states,
      * then applies an overhead multiplier to account for forward activations and batch size.
      */
-    public static synchronized void autoInit(NN.Module model) {
+    public static synchronized void autoInit(Module model) {
         autoInit(model, 10.0f); // Default 10x multiplier for activations/workspace
     }
 
@@ -69,7 +69,7 @@ public class GpuMemoryPool {
      * @param model The neural network model.
      * @param overheadMultiplier Multiplier applied on base memory for activations (e.g. 5.0 to 15.0).
      */
-    public static synchronized void autoInit(NN.Module model, float overheadMultiplier) {
+    public static synchronized void autoInit(Module model, float overheadMultiplier) {
         if (initialized) return;
         
         long paramCount = model.countParameters();

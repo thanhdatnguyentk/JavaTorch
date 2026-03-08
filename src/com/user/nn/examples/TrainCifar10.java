@@ -1,6 +1,10 @@
 package com.user.nn.examples;
 
 import com.user.nn.core.*;
+import com.user.nn.containers.*;
+import com.user.nn.layers.*;
+import com.user.nn.activations.*;
+import com.user.nn.pooling.*;
 import com.user.nn.optim.*;
 import com.user.nn.dataloaders.*;
 import com.user.nn.metrics.*;
@@ -39,22 +43,22 @@ public class TrainCifar10 {
         int[] testLabels = (int[]) testBatch[1];
 
         NN lib = new NN();
-        NN.Sequential model = new NN.Sequential();
-        model.add(new NN.Conv2d(lib, 3, 16, 3, 3, 32, 32, 1, 1, true));
-        model.add(new NN.ReLU());
-        model.add(new NN.MaxPool2d(2, 2, 2, 2, 0, 0, 16, 32, 32));
-        model.add(new NN.Conv2d(lib, 16, 32, 3, 3, 16, 16, 1, 1, true));
-        model.add(new NN.ReLU());
-        model.add(new NN.MaxPool2d(2, 2, 2, 2, 0, 0, 32, 16, 16));
+        Sequential model = new Sequential();
+        model.add(new Conv2d(3, 16, 3, 3, 32, 32, 1, 1, true));
+        model.add(new ReLU());
+        model.add(new MaxPool2d(2, 2, 2, 2, 0, 0, 16, 32, 32));
+        model.add(new Conv2d(16, 32, 3, 3, 16, 16, 1, 1, true));
+        model.add(new ReLU());
+        model.add(new MaxPool2d(2, 2, 2, 2, 0, 0, 32, 16, 16));
 
         int flattenSize = 32 * 8 * 8; 
-        model.add(new NN.Linear(lib, flattenSize, 128, true));
-        model.add(new NN.ReLU());
-        model.add(new NN.Dropout(0.3f));
-        model.add(new NN.Linear(lib, 128, 10, true));
+        model.add(new Linear(flattenSize, 128, true));
+        model.add(new ReLU());
+        model.add(new Dropout(0.3f));
+        model.add(new Linear(128, 10, true));
 
         long seed = 123L;
-        for (NN.Parameter p : model.parameters()) {
+        for (Parameter p : model.parameters()) {
             Tensor t = p.getTensor();
             float scale = (float) Math.sqrt(2.0 / t.numel());
             Random rng = new Random(seed++);
@@ -112,7 +116,7 @@ public class TrainCifar10 {
 
                     optimizer.zero_grad();
                     Tensor logits = model.forward(xBatch);
-                    Tensor loss = NN.F.cross_entropy_tensor(logits, batchLabels);
+                    Tensor loss = Functional.cross_entropy_tensor(logits, batchLabels);
                     loss.backward();
                     optimizer.step();
 

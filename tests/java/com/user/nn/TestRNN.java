@@ -1,6 +1,6 @@
 package com.user.nn;
 import com.user.nn.core.*;
-import com.user.nn.optim.*;
+import com.user.nn.rnn.*;
 
 import java.util.List;
 
@@ -12,13 +12,12 @@ public class TestRNN {
 
     public static void testRNNForwardBackward() {
         System.out.println("Testing RNN Forward/Backward...");
-        NN outer = new NN();
         int inputSize = 4;
         int hiddenSize = 8;
         int seqLen = 5;
         int batch = 2;
 
-        NN.RNN rnn = new NN.RNN(outer, inputSize, hiddenSize, true, true);
+        RNN rnn = new RNN(inputSize, hiddenSize, true, true);
         Tensor x = Torch.randn(new int[] { batch, seqLen, inputSize });
         x.requires_grad = true;
 
@@ -43,13 +42,12 @@ public class TestRNN {
 
     public static void testLSTMForwardBackward() {
         System.out.println("Testing LSTM Forward/Backward...");
-        NN outer = new NN();
         int inputSize = 4;
         int hiddenSize = 8;
         int seqLen = 5;
         int batch = 2;
 
-        NN.LSTM lstm = new NN.LSTM(outer, inputSize, hiddenSize, true, true);
+        LSTM lstm = new LSTM(inputSize, hiddenSize, true, true);
         Tensor x = Torch.randn(new int[] { batch, seqLen, inputSize });
         x.requires_grad = true;
 

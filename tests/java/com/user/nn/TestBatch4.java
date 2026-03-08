@@ -1,6 +1,8 @@
 package com.user.nn;
 import com.user.nn.core.*;
-import com.user.nn.optim.*;
+import com.user.nn.layers.*;
+import com.user.nn.norm.*;
+import com.user.nn.rnn.*;
 
 import java.util.List;
 
@@ -34,8 +36,7 @@ public class TestBatch4 {
     }
 
     public static void testConv1d() {
-        NN model = new NN();
-        NN.Conv1d conv = new NN.Conv1d(model, 2, 2, 3, 1, 0, true);
+        Conv1d conv = new Conv1d(2, 2, 3, 1, 0, true);
         
         Tensor x = new Tensor(new float[] { 1,2,3,4,5, 6,7,8,9,10 }, 1, 2, 5);
         x.requires_grad = true;
@@ -52,8 +53,7 @@ public class TestBatch4 {
     }
 
     public static void testBilinear() {
-        NN model = new NN();
-        NN.Bilinear bl = new NN.Bilinear(model, 2, 3, 4, true);
+        Bilinear bl = new Bilinear(2, 3, 4, true);
         
         Tensor x1 = new Tensor(new float[] { 1, 2 }, 1, 2);
         Tensor x2 = new Tensor(new float[] { 3, 4, 5 }, 1, 3);
@@ -71,8 +71,7 @@ public class TestBatch4 {
     }
 
     public static void testGroupNorm() {
-        NN model = new NN();
-        NN.GroupNorm gn = new NN.GroupNorm(model, 2, 4);
+        GroupNorm gn = new GroupNorm(2, 4);
         
         Tensor x = new Tensor(new float[] { 1,2, 3,4, 5,6, 7,8 }, 1, 4, 2);
         x.requires_grad = true;
@@ -98,8 +97,7 @@ public class TestBatch4 {
     }
 
     public static void testGRU() {
-        NN model = new NN();
-        NN.GRU gru = new NN.GRU(model, 5, 10, true, true);
+        GRU gru = new GRU(5, 10, true, true);
         
         Tensor x = new Tensor(1, 3, 5);
         for (int i = 0; i < x.data.length; i++) x.data[i] = (float)Math.sin(i);

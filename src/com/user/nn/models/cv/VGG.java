@@ -1,6 +1,12 @@
 package com.user.nn.models.cv;
 
 import com.user.nn.core.*;
+import com.user.nn.core.Module;
+import com.user.nn.containers.*;
+import com.user.nn.layers.*;
+import com.user.nn.activations.*;
+import com.user.nn.norm.*;
+import com.user.nn.pooling.*;
 import java.util.*;
 
 /**
@@ -8,9 +14,9 @@ import java.util.*;
  * Supports VGG11, VGG13, VGG16, VGG19 configurations.
  * Optimized for CIFAR-10 (32x32 input) or generic input sizes.
  */
-public class VGG extends NN.Module {
-    public NN.Sequential features;
-    public NN.Sequential classifier;
+public class VGG extends Module {
+    public Sequential features;
+    public Sequential classifier;
 
     private static final Map<String, Object[]> configs = new HashMap<>();
     static {
@@ -20,27 +26,27 @@ public class VGG extends NN.Module {
         configs.put("VGG19", new Object[]{64, 64, "M", 128, 128, "M", 256, 256, 256, 256, "M", 512, 512, 512, 512, "M", 512, 512, 512, 512, "M"});
     }
 
-    public VGG(NN lib, String modelName, int inChannels, int numClasses, boolean batchNorm, int inH, int inW) {
+    public VGG(String modelName, int inChannels, int numClasses, boolean batchNorm, int inH, int inW) {
         Object[] cfg = configs.get(modelName);
         if (cfg == null) throw new IllegalArgumentException("Unknown VGG model: " + modelName);
 
-        this.features = new NN.Sequential();
+        this.features = new Sequential();
         int currentC = inChannels;
         int currentH = inH;
         int currentW = inW;
 
         for (Object x : cfg) {
             if (x instanceof String && x.equals("M")) {
-                features.add(new NN.MaxPool2d(2, 2, 2, 2, 0, 0, currentC, currentH, currentW));
+                features.add(new MaxPool2d(2, 2, 2, 2, 0, 0, currentC, currentH, currentW));
                 currentH /= 2;
                 currentW /= 2;
             } else {
                 int outC = (int) x;
-                features.add(new NN.Conv2d(lib, currentC, outC, 3, 3, currentH, currentW, 1, 1, true));
+                features.add(new Conv2d(currentC, outC, 3, 3, currentH, currentW, 1, 1, true));
                 if (batchNorm) {
-                    features.add(new NN.BatchNorm2d(lib, outC));
+                    features.add(new BatchNorm2d(outC));
                 }
-                features.add(new NN.ReLU());
+                features.add(new ReLU());
                 currentC = outC;
             }
         }
@@ -50,14 +56,14 @@ public class VGG extends NN.Module {
         // For ImageNet (224x224), after 5 max pools, spatial size is 7x7.
         int flattenSize = currentC * currentH * currentW;
 
-        this.classifier = new NN.Sequential();
-        this.classifier.add(new NN.Linear(lib, flattenSize, 512, true));
-        this.classifier.add(new NN.ReLU());
-        this.classifier.add(new NN.Dropout(0.5f));
-        this.classifier.add(new NN.Linear(lib, 512, 512, true));
-        this.classifier.add(new NN.ReLU());
-        this.classifier.add(new NN.Dropout(0.5f));
-        this.classifier.add(new NN.Linear(lib, 512, numClasses, true));
+        this.classifier = new Sequential();
+        this.classifier.add(new Linear(flattenSize, 512, true));
+        this.classifier.add(new ReLU());
+        this.classifier.add(new Dropout(0.5f));
+        this.classifier.add(new Linear(512, 512, true));
+        this.classifier.add(new ReLU());
+        this.classifier.add(new Dropout(0.5f));
+        this.classifier.add(new Linear(512, numClasses, true));
         addModule("classifier", classifier);
     }
 

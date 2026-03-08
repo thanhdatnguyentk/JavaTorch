@@ -1,6 +1,10 @@
 package com.user.nn;
 
 import com.user.nn.core.*;
+import com.user.nn.core.Module;
+import com.user.nn.layers.*;
+import com.user.nn.containers.*;
+import com.user.nn.activations.*;
 import java.io.File;
 
 public class TestSerialization {
@@ -21,11 +25,10 @@ public class TestSerialization {
 
     private static boolean testSaveLoadCPU() {
         try {
-            NN nn = new NN();
-            NN.Sequential model = new NN.Sequential(
-                new NN.Linear(nn, 10, 5, true),
-                new NN.ReLU(),
-                new NN.Linear(nn, 5, 2, true)
+            Sequential model = new Sequential(
+                new Linear(10, 5, true),
+                new ReLU(),
+                new Linear(5, 2, true)
             );
             
             // Randomize and capture initial state
@@ -35,7 +38,7 @@ public class TestSerialization {
             model.save(path);
             
             // Modify params slightly to ensure load actually does something
-            NN.Parameter p = model.parameters().get(0);
+            Parameter p = model.parameters().get(0);
             p.getTensor().data[0] += 1.0f;
             
             model.load(path);
@@ -58,11 +61,10 @@ public class TestSerialization {
                 System.out.println("  Skipping GPU Serialization (CUDA not available)");
                 return true;
             }
-            NN nn = new NN();
-            NN.Sequential model = new NN.Sequential(
-                new NN.Linear(nn, 10, 5, true),
-                new NN.ReLU(),
-                new NN.Linear(nn, 5, 2, true)
+            Sequential model = new Sequential(
+                new Linear(10, 5, true),
+                new ReLU(),
+                new Linear(5, 2, true)
             );
             model.to(Tensor.Device.GPU);
             
@@ -84,14 +86,14 @@ public class TestSerialization {
         }
     }
 
-    private static float[] captureParams(NN.Module model) {
+    private static float[] captureParams(Module model) {
         int total = 0;
-        for (NN.Parameter p : model.parameters()) {
+        for (Parameter p : model.parameters()) {
             total += p.getTensor().numel();
         }
         float[] out = new float[total];
         int offset = 0;
-        for (NN.Parameter p : model.parameters()) {
+        for (Parameter p : model.parameters()) {
             Tensor t = p.getTensor();
             boolean wasGPU = t.isGPU();
             if (wasGPU) t.toCPU();

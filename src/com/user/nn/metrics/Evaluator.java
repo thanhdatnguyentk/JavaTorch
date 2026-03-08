@@ -1,6 +1,7 @@
 package com.user.nn.metrics;
 
 import com.user.nn.core.*;
+import com.user.nn.core.Module;
 import com.user.nn.dataloaders.Data;
 
 public class Evaluator {
@@ -14,7 +15,7 @@ public class Evaluator {
      * @param metric The metric to compute (e.g., Accuracy)
      * @return The computed metric value
      */
-    public static float evaluate(NN.Module model, Data.DataLoader loader, Accuracy metric) {
+    public static float evaluate(Module model, Data.DataLoader loader, Accuracy metric) {
         model.eval();
         metric.reset();
         

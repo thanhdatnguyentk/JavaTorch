@@ -1,6 +1,6 @@
 package com.user.nn;
 import com.user.nn.core.*;
-import com.user.nn.optim.*;
+import com.user.nn.activations.*;
 
 public class TestBatch1 {
     public static void main(String[] args) {
@@ -160,23 +160,23 @@ public class TestBatch1 {
         System.out.println("Testing NN Module wrappers...");
         Tensor x = new Tensor(new float[]{1.0f, 2.0f, 3.0f}, 3);
 
-        NN.GELU gelu = new NN.GELU();
+        GELU gelu = new GELU();
         Tensor g = gelu.forward(x);
         check("NN.GELU forward", Math.abs(g.data[0] - 0.8412f) < 1e-3f); // gelu(1) ≈ 0.84
 
-        NN.ELU elu = new NN.ELU();
+        ELU elu = new ELU();
         Tensor e = elu.forward(x);
         check("NN.ELU forward", e.data[0] == 1.0f);
 
-        NN.SiLU silu = new NN.SiLU();
+        SiLU silu = new SiLU();
         Tensor s = silu.forward(x);
         check("NN.SiLU forward", s.data[0] > 0);
 
-        NN.Softmax softmax = new NN.Softmax(0);
+        Softmax softmax = new Softmax(0);
         Tensor sm = softmax.forward(x);
         check("NN.Softmax sum=1", Math.abs(Torch.sum(sm) - 1.0f) < 1e-6f);
 
-        NN.LogSoftmax logSoftmax = new NN.LogSoftmax(0);
+        LogSoftmax logSoftmax = new LogSoftmax(0);
         Tensor lsm = logSoftmax.forward(x);
         check("NN.LogSoftmax values negative", lsm.data[0] < 0);
     }
@@ -185,19 +185,19 @@ public class TestBatch1 {
         System.out.println("Testing NN.F functional API...");
         Tensor x = new Tensor(new float[]{1.0f, 2.0f, 3.0f}, 3);
 
-        Tensor sm = NN.F.softmax(x, 0);
+        Tensor sm = Functional.softmax(x, 0);
         check("F.softmax sum=1", Math.abs(Torch.sum(sm) - 1.0f) < 1e-6f);
 
-        Tensor lsm = NN.F.log_softmax(x, 0);
+        Tensor lsm = Functional.log_softmax(x, 0);
         check("F.log_softmax values", lsm.data[0] < 0);
 
-        Tensor g = NN.F.gelu(x);
+        Tensor g = Functional.gelu(x);
         check("F.gelu", g.data[0] > 0);
 
-        Tensor e = NN.F.elu(x, 1.0f);
+        Tensor e = Functional.elu(x, 1.0f);
         check("F.elu", e.data[0] == 1.0f);
 
-        Tensor s = NN.F.silu(x);
+        Tensor s = Functional.silu(x);
         check("F.silu", s.data[0] > 0);
     }
 }

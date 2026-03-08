@@ -13,15 +13,15 @@ public class Optim {
      * Abstract base class for all optimizers.
      */
     public static abstract class Optimizer {
-        protected List<NN.Parameter> parameters;
+        protected List<Parameter> parameters;
 
-        public Optimizer(List<NN.Parameter> parameters) {
+        public Optimizer(List<Parameter> parameters) {
             this.parameters = parameters;
         }
 
         /** Zero out gradients of all parameters. */
         public void zero_grad() {
-            for (NN.Parameter p : parameters) {
+            for (Parameter p : parameters) {
                 Tensor t = p.getTensor();
                 t.grad = null;
             }
@@ -42,19 +42,19 @@ public class Optim {
         private final float momentum;
 
         // Stores velocity for momentum per parameter
-        private Map<NN.Parameter, Tensor> v;
+        private Map<Parameter, Tensor> v;
 
-        public SGD(List<NN.Parameter> parameters, float lr) {
+        public SGD(List<Parameter> parameters, float lr) {
             this(parameters, lr, 0.0f);
         }
 
-        public SGD(List<NN.Parameter> parameters, float lr, float momentum) {
+        public SGD(List<Parameter> parameters, float lr, float momentum) {
             super(parameters);
             this.lr = lr;
             this.momentum = momentum;
             if (this.momentum > 0) {
                 this.v = new HashMap<>();
-                for (NN.Parameter p : parameters) {
+                for (Parameter p : parameters) {
                     this.v.put(p, Torch.zeros(p.getTensor().shape));
                 }
             }
@@ -62,7 +62,7 @@ public class Optim {
 
         @Override
         public void step() {
-            for (NN.Parameter p : parameters) {
+            for (Parameter p : parameters) {
                 Tensor t = p.getTensor();
                 if (t.grad == null)
                     continue;
@@ -108,16 +108,16 @@ public class Optim {
         private float[][] v; // second moment
         private int stepCount;
 
-        public Adam(List<NN.Parameter> params, float lr) {
+        public Adam(List<Parameter> params, float lr) {
             this(params, lr, 0.9f, 0.999f, 1e-8f);
         }
 
             // Convenience constructor without eps (uses default eps)
-            public Adam(List<NN.Parameter> params, float lr, float beta1, float beta2) {
+            public Adam(List<Parameter> params, float lr, float beta1, float beta2) {
                 this(params, lr, beta1, beta2, 1e-8f);
             }
 
-        public Adam(List<NN.Parameter> params, float lr, float beta1, float beta2, float eps) {
+        public Adam(List<Parameter> params, float lr, float beta1, float beta2, float eps) {
             super(params);
             this.lr = lr;
             this.beta1 = beta1;

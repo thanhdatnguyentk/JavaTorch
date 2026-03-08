@@ -1,6 +1,10 @@
 package com.user.nn.examples;
 
 import com.user.nn.core.*;
+import com.user.nn.core.Module;
+import com.user.nn.containers.*;
+import com.user.nn.layers.*;
+import com.user.nn.activations.*;
 import com.user.nn.dataloaders.MnistLoader;
 import com.user.nn.dataloaders.Data;
 import com.user.nn.optim.*;
@@ -14,25 +18,25 @@ import java.util.*;
  */
 public class TrainVAEMnist {
 
-    public static class VAE extends NN.Module {
-        public NN.Sequential encoder;
-        public NN.Linear fc_mu;
-        public NN.Linear fc_logvar;
-        public NN.Sequential decoder;
+    public static class VAE extends Module {
+        public Sequential encoder;
+        public Linear fc_mu;
+        public Linear fc_logvar;
+        public Sequential decoder;
 
-        public VAE(NN nn, int latentDim) {
-            encoder = new NN.Sequential(
-                new NN.Linear(nn, 784, 400, true),
-                new NN.ReLU()
+        public VAE(int latentDim) {
+            encoder = new Sequential(
+                new Linear(784, 400, true),
+                new ReLU()
             );
-            fc_mu = new NN.Linear(nn, 400, latentDim, true);
-            fc_logvar = new NN.Linear(nn, 400, latentDim, true);
+            fc_mu = new Linear(400, latentDim, true);
+            fc_logvar = new Linear(400, latentDim, true);
             
-            decoder = new NN.Sequential(
-                new NN.Linear(nn, latentDim, 400, true),
-                new NN.ReLU(),
-                new NN.Linear(nn, 400, 784, true),
-                new NN.Sigmoid()
+            decoder = new Sequential(
+                new Linear(latentDim, 400, true),
+                new ReLU(),
+                new Linear(400, 784, true),
+                new Sigmoid()
             );
             
             addModule("encoder", encoder);
@@ -85,7 +89,7 @@ public class TrainVAEMnist {
         Data.DataLoader loader = new Data.DataLoader(dataset, batchSize, true, 2);
         
         NN nn = new NN();
-        VAE model = new VAE(nn, latentDim);
+        VAE model = new VAE(latentDim);
         model.toGPU();
         
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), lr);
@@ -111,7 +115,7 @@ public class TrainVAEMnist {
                     
                     // --- Loss calculation ---
                     // 1. Reconstruction loss: BCE
-                    Tensor bce = NN.F.binary_cross_entropy(recon_x, x);
+                    Tensor bce = Functional.binary_cross_entropy(recon_x, x);
                     float reconLoss = bce.item() * 784; 
                     
                     // 2. KL Divergence

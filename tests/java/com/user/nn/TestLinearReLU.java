@@ -1,13 +1,13 @@
 package com.user.nn;
 import com.user.nn.core.*;
-import com.user.nn.optim.*;
+import com.user.nn.layers.*;
+import com.user.nn.activations.*;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
 public class TestLinearReLU {
     public static void main(String[] args) throws Exception {
-        NN lib = new NN();
 
         // deterministic sizes
         int batch = 4;
@@ -15,13 +15,13 @@ public class TestLinearReLU {
         int outF = 3;
         long seed = 12345L;
 
-        NN.Mat input = lib.mat_alloc(batch, inF);
-        NN.Mat weight = lib.mat_alloc(inF, outF);
-        NN.Mat bias = lib.mat_alloc(1, outF);
+        NN.Mat input = NN.mat_alloc(batch, inF);
+        NN.Mat weight = NN.mat_alloc(inF, outF);
+        NN.Mat bias = NN.mat_alloc(1, outF);
 
-        lib.mat_rand_seed(input, seed, -1f, 1f);
-        lib.mat_rand_seed(weight, seed + 1, -0.5f, 0.5f);
-        lib.mat_rand_seed(bias, seed + 2, -0.1f, 0.1f);
+        NN.mat_rand_seed(input, seed, -1f, 1f);
+        NN.mat_rand_seed(weight, seed + 1, -0.5f, 0.5f);
+        NN.mat_rand_seed(bias, seed + 2, -0.1f, 0.1f);
 
         String tmpDir = "tests/tmp";
         String inPath = tmpDir + "/input.csv";
@@ -30,9 +30,9 @@ public class TestLinearReLU {
         String pyOut = tmpDir + "/out_py.csv";
 
         try {
-            lib.writeMatCSV(input, inPath);
-            lib.writeMatCSV(weight, wPath);
-            lib.writeMatCSV(bias, bPath);
+            NN.writeMatCSV(input, inPath);
+            NN.writeMatCSV(weight, wPath);
+            NN.writeMatCSV(bias, bPath);
         } catch (IOException e) {
             e.printStackTrace();
             System.exit(2);
@@ -54,27 +54,27 @@ public class TestLinearReLU {
         }
 
         // run Java implementation: Linear + ReLU
-        NN.Linear linear = new NN.Linear(lib, inF, outF, true);
+        Linear linear = new Linear(inF, outF, true);
         // copy weights/bias from files into params to ensure same values used by both
         try {
-            NN.Mat wpy = lib.readMatCSV(wPath);
-            NN.Mat bpy = lib.readMatCSV(bPath);
+            NN.Mat wpy = NN.readMatCSV(wPath);
+            NN.Mat bpy = NN.readMatCSV(bPath);
             // override random init
-            linear.weight = new NN.Parameter(wpy);
-            linear.bias = new NN.Parameter(bpy);
+            linear.weight = new Parameter(wpy);
+            linear.bias = new Parameter(bpy);
         } catch (IOException e) {
             e.printStackTrace();
             System.exit(5);
         }
 
         NN.Mat jOut = linear.forward(input);
-        NN.ReLU relu = new NN.ReLU();
+        ReLU relu = new ReLU();
         NN.Mat jOutRelu = relu.forward(jOut);
 
         // read python output
         NN.Mat pyMat = null;
         try {
-            pyMat = lib.readMatCSV(pyOut);
+            pyMat = NN.readMatCSV(pyOut);
         } catch (IOException e) {
             e.printStackTrace();
             System.exit(6);

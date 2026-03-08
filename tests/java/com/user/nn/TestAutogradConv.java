@@ -1,6 +1,7 @@
 package com.user.nn;
 import com.user.nn.core.*;
-import com.user.nn.optim.*;
+import com.user.nn.layers.*;
+import com.user.nn.pooling.*;
 
 public class TestAutogradConv {
     public static void main(String[] args) {
@@ -30,10 +31,9 @@ public class TestAutogradConv {
 
     private static boolean testConv2dForwardBackward() {
         try {
-            NN outer = new NN();
             // 1 channel, 2 filters, 3x3 kernel, input 4x4, stride=1, pad=0
             int inC = 1, outC = 2, kh = 3, kw = 3, inH = 4, inW = 4;
-            NN.Conv2d conv = new NN.Conv2d(outer, inC, outC, kh, kw, inH, inW, 1, 0, true);
+            Conv2d conv = new Conv2d(inC, outC, kh, kw, inH, inW, 1, 0, true);
 
             // input: batch=1, flattened=1*4*4=16
             Tensor x = Torch.rand(new int[] { 1, inC * inH * inW });
@@ -74,7 +74,7 @@ public class TestAutogradConv {
     private static boolean testMaxPool2dBackward() {
         try {
             int inC = 1, inH = 4, inW = 4;
-            NN.MaxPool2d pool = new NN.MaxPool2d(2, 2, 2, 2, 0, 0, inC, inH, inW);
+            MaxPool2d pool = new MaxPool2d(2, 2, 2, 2, 0, 0, inC, inH, inW);
 
             // Create a known input
             float[] data = new float[inC * inH * inW];
@@ -115,7 +115,7 @@ public class TestAutogradConv {
     private static boolean testAvgPool2dBackward() {
         try {
             int inC = 1, inH = 4, inW = 4;
-            NN.AvgPool2d pool = new NN.AvgPool2d(2, 2, 2, 2, 0, 0, inC, inH, inW);
+            AvgPool2d pool = new AvgPool2d(2, 2, 2, 2, 0, 0, inC, inH, inW);
 
             Tensor x = Torch.ones(1, inC * inH * inW);
             x.requires_grad = true;
@@ -151,7 +151,7 @@ public class TestAutogradConv {
     private static boolean testZeroPad2dBackward() {
         try {
             int inC = 1, inH = 2, inW = 2;
-            NN.ZeroPad2d pad = new NN.ZeroPad2d(1, 1, inC, inH, inW);
+            ZeroPad2d pad = new ZeroPad2d(1, 1, inC, inH, inW);
 
             Tensor x = Torch.tensor(new float[] { 1, 2, 3, 4 }, 1, inC * inH * inW);
             x.requires_grad = true;
@@ -188,10 +188,9 @@ public class TestAutogradConv {
 
     private static boolean testConvTranspose2dBackward() {
         try {
-            NN outer = new NN();
             // inC=2, outC=1, kH=3, kW=3, inH=2, inW=2, stride=2, pad=0, outPad=1
             int inC = 2, outC = 1, kh = 3, kw = 3, inH2 = 2, inW2 = 2;
-            NN.ConvTranspose2d deconv = new NN.ConvTranspose2d(outer, inC, outC, kh, kw, inH2, inW2, 2, 0, 1, true);
+            ConvTranspose2d deconv = new ConvTranspose2d(inC, outC, kh, kw, inH2, inW2, 2, 0, 1, true);
 
             Tensor x = Torch.ones(1, inC * inH2 * inW2);
             x.requires_grad = true;

@@ -1,6 +1,6 @@
 package com.user.nn;
 import com.user.nn.core.*;
-import com.user.nn.optim.*;
+import com.user.nn.norm.*;
 
 /**
  * Tests for LayerNorm and InstanceNorm with autograd backward.
@@ -30,9 +30,8 @@ public class TestNormLayers {
 
     private static boolean testLayerNorm() {
         try {
-            NN outer = new NN();
             int D = 4;
-            NN.LayerNorm ln = new NN.LayerNorm(outer, D);
+            LayerNorm ln = new LayerNorm(D);
 
             // batch=2, features=4
             Tensor x = Torch.tensor(new float[] {
@@ -80,7 +79,7 @@ public class TestNormLayers {
     private static boolean testInstanceNorm() {
         try {
             int C = 2, H = 2, W = 2;
-            NN.InstanceNorm in_ = new NN.InstanceNorm(C, H, W);
+            InstanceNorm in_ = new InstanceNorm(C, H, W);
 
             // batch=1, C=2, H=2, W=2 => flattened size = 8
             // channel 0: [1,2,3,4] => mean=2.5, normalized non-zero

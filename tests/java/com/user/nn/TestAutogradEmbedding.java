@@ -1,16 +1,15 @@
 package com.user.nn;
 import com.user.nn.core.*;
-import com.user.nn.optim.*;
+import com.user.nn.layers.*;
 
 public class TestAutogradEmbedding {
     public static void main(String[] args) {
         System.out.println("Running TestAutogradEmbedding...");
         
-        NN lib = new NN();
         // 5 embeddings, dim 3
         int numE = 5;
         int dim = 3;
-        NN.Embedding emb = new NN.Embedding(lib, numE, dim);
+        Embedding emb = new Embedding(numE, dim);
         
         // Input indices: [2, 1] (shape [2])
         Tensor indices = Torch.tensor(new float[]{2f, 1f}, 2);

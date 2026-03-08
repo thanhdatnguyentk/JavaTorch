@@ -13,7 +13,7 @@ Write-Host "Project root: $($pwd)"
 if (!(Test-Path bin)) { New-Item -ItemType Directory -Path bin | Out-Null }
 
 Write-Host "Compiling library sources..."
-javac --add-modules jdk.incubator.vector -d bin -cp "lib/*" src\com\user\nn\core\*.java src\com\user\nn\optim\*.java src\com\user\nn\dataloaders\*.java src\com\user\nn\models\*.java src\com\user\nn\models\cv\*.java src\com\user\nn\models\generative\*.java src\com\user\nn\metrics\*.java src\com\user\nn\examples\*.java
+javac --add-modules jdk.incubator.vector -d bin -cp "lib/*" src\com\user\nn\core\*.java src\com\user\nn\layers\*.java src\com\user\nn\activations\*.java src\com\user\nn\containers\*.java src\com\user\nn\norm\*.java src\com\user\nn\pooling\*.java src\com\user\nn\rnn\*.java src\com\user\nn\attention\*.java src\com\user\nn\losses\*.java src\com\user\nn\optim\*.java src\com\user\nn\dataloaders\*.java src\com\user\nn\models\*.java src\com\user\nn\models\cv\*.java src\com\user\nn\models\generative\*.java src\com\user\nn\metrics\*.java src\com\user\nn\examples\*.java
 if ($LASTEXITCODE -ne 0) { Write-Error "Compilation of sources failed."; exit 1 }
 
 Write-Host "Compiling test runners..."

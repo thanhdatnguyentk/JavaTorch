@@ -40,12 +40,12 @@ public class TrainResNetCifar10 {
         NN lib = new NN();
         // Create ResNet-18 for CIFAR-10
         System.out.println("Creating ResNet-18 model...");
-        ResNet model = ResNet.resnet18(lib, 10, 32, 32);
+        ResNet model = ResNet.resnet18(10, 32, 32);
         
         System.out.println("Total parameters: " + model.countParameters());
 
         // Kaiming initialization (simplified)
-        for (NN.Parameter p : model.parameters()) {
+        for (Parameter p : model.parameters()) {
             Tensor t = p.getTensor();
             if (t.dim() >= 2) {
                 float scale = (float) Math.sqrt(2.0 / t.numel());
@@ -104,7 +104,7 @@ public class TrainResNetCifar10 {
 
                     optimizer.zero_grad();
                     Tensor logits = model.forward(xBatch);
-                    Tensor loss = NN.F.cross_entropy_tensor(logits, batchLabels);
+                    Tensor loss = Functional.cross_entropy_tensor(logits, batchLabels);
                     loss.backward();
                     optimizer.step();
 

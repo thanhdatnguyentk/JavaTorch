@@ -43,12 +43,11 @@ public class TrainLeNet {
         System.out.println("Train: " + trainImages.length + " images, Test: " + testImages.length + " images");
 
         // --- Build model ---
-        NN lib = new NN();
-        LeNet model = new LeNet(lib);
+        LeNet model = new LeNet();
 
         // Initialize parameters
         long seed = 42L;
-        for (NN.Parameter p : model.parameters()) {
+        for (Parameter p : model.parameters()) {
             Tensor t = p.getTensor();
             float scale = (float) Math.sqrt(2.0 / t.numel());
             Random rng = new Random(seed++);
@@ -116,7 +115,7 @@ public class TrainLeNet {
 
                     optimizer.zero_grad();
                     Tensor logits = model.forward(xBatch);
-                    Tensor loss = NN.F.cross_entropy_tensor(logits, batchLabels);
+                    Tensor loss = Functional.cross_entropy_tensor(logits, batchLabels);
 
                     loss.backward();
                     optimizer.step();

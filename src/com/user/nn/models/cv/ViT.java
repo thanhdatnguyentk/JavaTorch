@@ -1,14 +1,12 @@
 package com.user.nn.models.cv;
 
 import com.user.nn.core.*;
-import com.user.nn.core.NN.Module;
-import com.user.nn.core.NN.Linear;
-import com.user.nn.core.NN.LayerNorm;
-import com.user.nn.core.NN.TransformerEncoderLayer;
-import com.user.nn.core.NN.Conv2d;
-import com.user.nn.core.NN.Parameter;
+import com.user.nn.core.Module;
+import com.user.nn.layers.Linear;
+import com.user.nn.layers.Conv2d;
+import com.user.nn.norm.LayerNorm;
+import com.user.nn.attention.TransformerEncoderLayer;
 import java.util.List;
-import java.util.Arrays;
 
 /**
  * Vision Transformer (ViT) implementation for image classification.
@@ -26,7 +24,7 @@ public class ViT extends Module {
     public LayerNorm norm;
     public Linear head;
 
-    public ViT(NN outer, int imgSize, int patchSize, int inChannels, int numClasses, 
+    public ViT(int imgSize, int patchSize, int inChannels, int numClasses, 
                int embedDim, int depth, int numHeads, int mlpDim, float dropout) {
         this.imgSize = imgSize;
         this.patchSize = patchSize;
@@ -34,7 +32,7 @@ public class ViT extends Module {
         this.numPatches = (imgSize / patchSize) * (imgSize / patchSize);
 
         // 1. Patch Embedding: uses a Conv2d trick
-        this.patchEmbed = new Conv2d(outer, inChannels, embedDim, patchSize, patchSize, imgSize, imgSize, patchSize, 0, true);
+        this.patchEmbed = new Conv2d(inChannels, embedDim, patchSize, patchSize, imgSize, imgSize, patchSize, 0, true);
         addModule("patchEmbed", patchEmbed);
 
         // 2. Learnable Class Token and Positional Embedding
@@ -46,13 +44,13 @@ public class ViT extends Module {
         // 3. Transformer Encoder Blocks
         this.blocks = new Module[depth];
         for (int i = 0; i < depth; i++) {
-            blocks[i] = new TransformerEncoderLayer(outer, embedDim, numHeads, mlpDim, dropout);
+            blocks[i] = new TransformerEncoderLayer(embedDim, numHeads, mlpDim, dropout);
             addModule("block" + i, blocks[i]);
         }
 
         // 4. Global Norm and Classification Head
-        this.norm = new LayerNorm(outer, embedDim);
-        this.head = new Linear(outer, embedDim, numClasses, true);
+        this.norm = new LayerNorm(embedDim);
+        this.head = new Linear(embedDim, numClasses, true);
         addModule("norm", norm);
         addModule("head", head);
     }

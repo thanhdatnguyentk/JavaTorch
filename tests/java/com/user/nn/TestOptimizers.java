@@ -1,5 +1,6 @@
 package com.user.nn;
 import com.user.nn.core.*;
+import com.user.nn.layers.*;
 import com.user.nn.optim.*;
 
 /**
@@ -26,7 +27,7 @@ public class TestOptimizers {
     // Minimize f(x) = x0^2 + x1^2 with plain SGD
     private static boolean testSGDNoMomentum() {
         try {
-            NN.Linear layer = new NN.Linear(new NN(), 2, 1, false); // no bias
+            Linear layer = new Linear(2, 1, false); // no bias
             Tensor w = layer.weight.getTensor();
             w.data[0] = 5f;
             w.data[1] = -3f;
@@ -55,7 +56,7 @@ public class TestOptimizers {
     // Minimize with SGD + momentum
     private static boolean testSGDWithMomentum() {
         try {
-            NN.Linear layer = new NN.Linear(new NN(), 2, 1, false);
+            Linear layer = new Linear(2, 1, false);
             Tensor w = layer.weight.getTensor();
             w.data[0] = 5f;
             w.data[1] = -3f;
@@ -82,7 +83,7 @@ public class TestOptimizers {
     // Minimize with Adam
     private static boolean testAdam() {
         try {
-            NN.Linear layer = new NN.Linear(new NN(), 2, 1, false);
+            Linear layer = new Linear(2, 1, false);
             Tensor w = layer.weight.getTensor();
             w.data[0] = 5f;
             w.data[1] = -3f;

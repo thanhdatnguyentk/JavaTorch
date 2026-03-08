@@ -1,20 +1,21 @@
 package com.user.nn;
 import com.user.nn.core.*;
-import com.user.nn.optim.*;
+import com.user.nn.layers.*;
+import com.user.nn.containers.*;
+import com.user.nn.activations.*;
 
 public class TestContainers {
     public static void main(String[] args) {
-        NN lib = new NN();
         // Test Sequential
-        NN.Sequential seq = new NN.Sequential();
-        NN.Linear l1 = new NN.Linear(lib, 4, 3, true);
-        NN.ReLU r = new NN.ReLU();
+        Sequential seq = new Sequential();
+        Linear l1 = new Linear(4, 3, true);
+        ReLU r = new ReLU();
         seq.add(l1);
         seq.add(r);
 
         // Input
-        NN.Mat in = lib.mat_alloc(2, 4);
-        lib.mat_fill(in, 1.0f);
+        NN.Mat in = NN.mat_alloc(2, 4);
+        NN.mat_fill(in, 1.0f);
 
         NN.Mat out = seq.forward(in);
         if (out.rows != 2 || out.cols != 3) {
@@ -23,7 +24,7 @@ public class TestContainers {
         }
 
         // Test ModuleList and ModuleDict basic API
-        NN.ModuleList ml = new NN.ModuleList();
+        ModuleList ml = new ModuleList();
         ml.add(l1);
         try {
             ml.get(0);
@@ -32,7 +33,7 @@ public class TestContainers {
             System.exit(2);
         }
 
-        NN.ModuleDict md = new NN.ModuleDict();
+        ModuleDict md = new ModuleDict();
         md.put("layer", l1);
         if (md.getModule("layer") == null) { System.err.println("ModuleDict put/get failed"); System.exit(3); }
 

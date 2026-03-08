@@ -1,6 +1,11 @@
 package com.user.nn.examples;
 
 import com.user.nn.core.*;
+import com.user.nn.core.Module;
+import com.user.nn.containers.*;
+import com.user.nn.layers.*;
+import com.user.nn.activations.*;
+import com.user.nn.losses.*;
 import com.user.nn.dataloaders.MnistLoader;
 import com.user.nn.dataloaders.Data;
 import com.user.nn.optim.*;
@@ -14,19 +19,19 @@ import java.util.*;
  */
 public class TrainGANMnist {
 
-    public static class Generator extends NN.Module {
-        public NN.Sequential model;
+    public static class Generator extends Module {
+        public Sequential model;
 
-        public Generator(NN nn, int latentDim) {
-            model = new NN.Sequential(
-                new NN.Linear(nn, latentDim, 256, true),
-                new NN.LeakyReLU(0.2f),
-                new NN.Linear(nn, 256, 512, true),
-                new NN.LeakyReLU(0.2f),
-                new NN.Linear(nn, 512, 1024, true),
-                new NN.LeakyReLU(0.2f),
-                new NN.Linear(nn, 1024, 784, true),
-                new NN.Tanh()
+        public Generator(int latentDim) {
+            model = new Sequential(
+                new Linear(latentDim, 256, true),
+                new LeakyReLU(0.2f),
+                new Linear(256, 512, true),
+                new LeakyReLU(0.2f),
+                new Linear(512, 1024, true),
+                new LeakyReLU(0.2f),
+                new Linear(1024, 784, true),
+                new Tanh()
             );
             addModule("model", model);
         }
@@ -37,19 +42,19 @@ public class TrainGANMnist {
         }
     }
 
-    public static class Discriminator extends NN.Module {
-        public NN.Sequential model;
+    public static class Discriminator extends Module {
+        public Sequential model;
 
-        public Discriminator(NN nn) {
-            model = new NN.Sequential(
-                new NN.Linear(nn, 784, 512, true),
-                new NN.LeakyReLU(0.2f),
-                new NN.Dropout(0.3f),
-                new NN.Linear(nn, 512, 256, true),
-                new NN.LeakyReLU(0.2f),
-                new NN.Dropout(0.3f),
-                new NN.Linear(nn, 256, 1, true),
-                new NN.Sigmoid()
+        public Discriminator() {
+            model = new Sequential(
+                new Linear(784, 512, true),
+                new LeakyReLU(0.2f),
+                new Dropout(0.3f),
+                new Linear(512, 256, true),
+                new LeakyReLU(0.2f),
+                new Dropout(0.3f),
+                new Linear(256, 1, true),
+                new Sigmoid()
             );
             addModule("model", model);
         }
@@ -86,8 +91,8 @@ public class TrainGANMnist {
         Data.DataLoader loader = new Data.DataLoader(dataset, batchSize, true, 2);
         
         NN nn = new NN();
-        Generator G = new Generator(nn, latentDim);
-        Discriminator D = new Discriminator(nn);
+        Generator G = new Generator(latentDim);
+        Discriminator D = new Discriminator();
         
         // Move to GPU
         G.toGPU();
@@ -100,7 +105,7 @@ public class TrainGANMnist {
         com.user.nn.optim.Scheduler.StepLR gSched = new com.user.nn.optim.Scheduler.StepLR(gOpt, 10, 0.5f);
         com.user.nn.optim.Scheduler.StepLR dSched = new com.user.nn.optim.Scheduler.StepLR(dOpt, 10, 0.5f);
 
-        NN.BCELoss criterion = new NN.BCELoss();
+        BCELoss criterion = new BCELoss();
         
         Random rand = new Random();
         

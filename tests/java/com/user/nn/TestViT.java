@@ -6,7 +6,6 @@ import java.util.Arrays;
 
 public class TestViT {
     public static void main(String[] args) {
-        NN nn = new NN();
         
         int imgSize = 32;
         int patchSize = 4;
@@ -16,7 +15,7 @@ public class TestViT {
         int mlpDim = 128;
         
         System.out.println("Initializing ViT...");
-        ViT model = new ViT(nn, imgSize, patchSize, 3, 10, embedDim, depth, numHeads, mlpDim, 0.1f);
+        ViT model = new ViT(imgSize, patchSize, 3, 10, embedDim, depth, numHeads, mlpDim, 0.1f);
         model.to(Tensor.Device.GPU);
         model.train();
 
