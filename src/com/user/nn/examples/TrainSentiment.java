@@ -103,42 +103,34 @@ public class TrainSentiment {
             
             float avgLoss = totalLoss / numBatches;
             float trainAcc = accMetric.compute();
-            float testAcc = evaluate(model, testEntries, vocab, tokenizer, maxLen, accMetric);
+            
+            Data.Dataset testDataset = new Data.Dataset() {
+                @Override
+                public int len() { return testEntries.size(); }
+
+                @Override
+                public Tensor[] get(int index) {
+                    MovieCommentLoader.Entry entry = testEntries.get(index);
+                    List<String> tokens = tokenizer.tokenize(entry.text);
+                    float[] xData = new float[maxLen];
+                    for (int j = 0; j < maxLen; j++) {
+                        if (j < tokens.size()) xData[j] = vocab.getId(tokens.get(j));
+                        else xData[j] = 0;
+                    }
+                    Tensor x = Torch.tensor(xData, maxLen);
+                    Tensor y = Torch.tensor(new float[] { entry.label }, 1);
+                    return new Tensor[] { x, y };
+                }
+            };
+            Data.DataLoader testLoader = new Data.DataLoader(testDataset, 64, false, 1);
+            
+            float testAcc = Evaluator.evaluate(model, testLoader, accMetric);
             
             System.out.printf("Epoch %d/%d - loss: %.4f - train_acc: %.2f%% - test_acc: %.2f%%%n",
                 epoch + 1, epochs, avgLoss, trainAcc * 100, testAcc * 100);
+                
+            testLoader.shutdown();
         }
     }
 
-    private static float evaluate(SentimentModel model, List<MovieCommentLoader.Entry> data, 
-                                 Data.Vocabulary vocab, Data.BasicTokenizer tokenizer, int maxLen, Accuracy metric) {
-        metric.reset();
-        int testBatchSize = 64;
-        model.eval();
-        Torch.set_grad_enabled(false);
-        for (int i = 0; i < data.size(); i += testBatchSize) {
-            try (MemoryScope scope = new MemoryScope()) {
-                int end = Math.min(i + testBatchSize, data.size());
-                int bs = end - i;
-                float[] xData = new float[bs * maxLen];
-                int[] yLabels = new int[bs];
-                for (int j = 0; j < bs; j++) {
-                    MovieCommentLoader.Entry e = data.get(i + j);
-                    List<String> tokens = tokenizer.tokenize(e.text);
-                    for (int k = 0; k < maxLen; k++) {
-                       if (k < tokens.size()) xData[j * maxLen + k] = vocab.getId(tokens.get(k));
-                       else xData[j * maxLen + k] = 0;
-                    }
-                    yLabels[j] = e.label;
-                }
-                Tensor xBatch = Torch.tensor(xData, bs, maxLen);
-                xBatch.toGPU();
-                Tensor out = model.forward(xBatch);
-                metric.update(out, yLabels);
-            }
-        }
-        Torch.set_grad_enabled(true);
-        model.train();
-        return metric.compute();
-    }
 }

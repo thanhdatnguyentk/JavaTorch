@@ -160,6 +160,23 @@ public class TrainIris {
 
         Accuracy accMetric = new Accuracy();
         int epochs = 2000;
+        
+        Data.Dataset testDataset = new Data.Dataset() {
+            @Override
+            public int len() {
+                return testN;
+            }
+
+            @Override
+            public Tensor[] get(int index) {
+                Tensor x = Torch.tensor(data[numTrain + index], 1, 4);
+                Tensor y = Torch.tensor(new float[] { labelsData[numTrain + index] }, 1, 1);
+                x = Torch.reshape(x, 4);
+                y = Torch.reshape(y, 1);
+                return new Tensor[] { x, y };
+            }
+        };
+        Data.DataLoader testLoader = new Data.DataLoader(testDataset, 16, false, 1);
 
         for (int e = 0; e < epochs; e++) {
             float epochLoss = 0.0f;
@@ -206,13 +223,16 @@ public class TrainIris {
 
             if (e % 100 == 0) {
                 float trainAcc = accMetric.compute();
-                float testAcc = evaluate(model, XtestMat, YtestArr, accMetric);
+                float testAcc = Evaluator.evaluate(model, testLoader, accMetric);
                 System.out.println(String.format("Epoch %d loss=%.6f train_acc=%.4f test_acc=%.4f", e, epochLoss / batchCount, trainAcc, testAcc));
             }
         }
 
-        float finalAcc = evaluate(model, XtestMat, YtestArr, accMetric);
+        float finalAcc = Evaluator.evaluate(model, testLoader, accMetric);
         System.out.println("Final test accuracy=" + finalAcc);
+        
+        trainLoader.shutdown();
+        testLoader.shutdown();
     }
 
     static void downloadIfMissing(String urlStr, File dest) throws IOException {
@@ -236,14 +256,5 @@ public class TrainIris {
         if (s.startsWith("Iris-versicolor"))
             return 1;
         return 2;
-    }
-
-    static float evaluate(NN.Module model, NN.Mat X, int[] Y, Accuracy metric) {
-        model.eval();
-        metric.reset();
-        Tensor out = model.forward(Torch.fromMat(X));
-        metric.update(out, Y);
-        model.train();
-        return metric.compute();
     }
 }

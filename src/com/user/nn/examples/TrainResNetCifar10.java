@@ -4,19 +4,18 @@ import com.user.nn.core.*;
 import com.user.nn.optim.*;
 import com.user.nn.dataloaders.*;
 import com.user.nn.metrics.*;
+import com.user.nn.models.cv.ResNet;
 import java.io.*;
 import java.util.*;
-import jcuda.runtime.JCuda;
 
 /**
- * Train a CNN on CIFAR-10 using pure Java framework with autograd and
- * optim.Adam.
+ * Train ResNet-18 on CIFAR-10.
+ * Demonstrates the power of ResNet with skip connections and BatchNorm.
  */
-public class TrainCifar10 {
+public class TrainResNetCifar10 {
 
     public static void main(String[] args) throws Exception {
-        MixedPrecision.enable(); // Opt-in to Tensor Cores (FP16)
-
+        MixedPrecision.enable(); // Enable FP16 (Tensor Cores)
 
         System.out.println("Preparing CIFAR-10 data...");
         Cifar10Loader.prepareData();
@@ -39,43 +38,37 @@ public class TrainCifar10 {
         int[] testLabels = (int[]) testBatch[1];
 
         NN lib = new NN();
-        NN.Sequential model = new NN.Sequential();
-        model.add(new NN.Conv2d(lib, 3, 16, 3, 3, 32, 32, 1, 1, true));
-        model.add(new NN.ReLU());
-        model.add(new NN.MaxPool2d(2, 2, 2, 2, 0, 0, 16, 32, 32));
-        model.add(new NN.Conv2d(lib, 16, 32, 3, 3, 16, 16, 1, 1, true));
-        model.add(new NN.ReLU());
-        model.add(new NN.MaxPool2d(2, 2, 2, 2, 0, 0, 32, 16, 16));
+        // Create ResNet-18 for CIFAR-10
+        System.out.println("Creating ResNet-18 model...");
+        ResNet model = ResNet.resnet18(lib, 10, 32, 32);
+        
+        System.out.println("Total parameters: " + model.countParameters());
 
-        int flattenSize = 32 * 8 * 8; 
-        model.add(new NN.Linear(lib, flattenSize, 128, true));
-        model.add(new NN.ReLU());
-        model.add(new NN.Dropout(0.3f));
-        model.add(new NN.Linear(lib, 128, 10, true));
-
-        long seed = 123L;
+        // Kaiming initialization (simplified)
         for (NN.Parameter p : model.parameters()) {
             Tensor t = p.getTensor();
-            float scale = (float) Math.sqrt(2.0 / t.numel());
-            Random rng = new Random(seed++);
-            for (int i = 0; i < t.data.length; i++) {
-                t.data[i] = (float) (rng.nextGaussian() * scale);
+            if (t.dim() >= 2) {
+                float scale = (float) Math.sqrt(2.0 / t.numel());
+                Random rng = new Random();
+                for (int i = 0; i < t.data.length; i++) {
+                    t.data[i] = (float) (rng.nextGaussian() * scale);
+                }
             }
             t.requires_grad = true;
         }
 
         float lr = 0.001f;
-        int epochs = 100; 
-        int batchSize = 128;
+        int epochs = 2; 
+        int batchSize = 64; // Reduced batch size for ResNet-18 on 3050 (4GB-8GB VRAM)
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), lr);
 
         // Initialize GPU Memory Pool based on model size
         GpuMemoryPool.autoInit(model);
 
         // Move to GPU
-        System.out.println("Moving model to GPU...");
+        System.out.println("Moving ResNet to GPU...");
         model.toGPU();
-        System.out.println("Model moved to GPU");
+        System.out.println("Model ready on GPU.");
 
         final int N = trainImages.length;
         Data.Dataset trainDataset = new Data.Dataset() {
@@ -98,15 +91,14 @@ public class TrainCifar10 {
             accMetric.reset();
             model.train();
 
+            long startTime = System.currentTimeMillis();
+
             for (Tensor[] batch : loader) {
                 try (MemoryScope scope = new MemoryScope()) {
                     Tensor xBatch = batch[0];
-                    scope.track(xBatch);
-                    scope.track(batch[1]);
-                    
                     xBatch.toGPU();
+                    
                     int bs = xBatch.shape[0];
-
                     int[] batchLabels = new int[bs];
                     for (int i = 0; i < bs; i++) batchLabels[i] = (int) batch[1].data[i];
 
@@ -120,20 +112,22 @@ public class TrainCifar10 {
                     numBatches++;
                     accMetric.update(logits, batchLabels);
 
-                    if (numBatches % 20 == 0) {
+                    if (numBatches % 10 == 0) {
                         System.out.printf("  Epoch %d batch %d/%d  loss=%.4f%n",
                                 epoch + 1, numBatches, N / batchSize, loss.data[0]);
+                        System.out.flush();
                     }
                 }
             }
 
+            long endTime = System.currentTimeMillis();
             float trainAcc = accMetric.compute();
             float avgLoss = epochLoss / numBatches;
             
+            // Evaluation
             Data.Dataset testDataset = new Data.Dataset() {
                 @Override
                 public int len() { return testImages.length; }
-
                 @Override
                 public Tensor[] get(int index) {
                     Tensor x = Torch.tensor(testImages[index], 3, 32, 32);
@@ -141,15 +135,14 @@ public class TrainCifar10 {
                     return new Tensor[] { x, y };
                 }
             };
-            Data.DataLoader testLoader = new Data.DataLoader(testDataset, 256, false, 2);
-            
+            Data.DataLoader testLoader = new Data.DataLoader(testDataset, 128, false, 2);
             float testAcc = Evaluator.evaluate(model, testLoader, accMetric);
-            System.out.printf("Epoch %d/%d  avg_loss=%.4f  train_acc=%.4f  test_acc=%.4f%n",
-                    epoch + 1, epochs, avgLoss, trainAcc, testAcc);
+            
+            System.out.printf("Epoch %d/%d  avg_loss=%.4f  train_acc=%.4f  test_acc=%.4f  time=%dms%n",
+                    epoch + 1, epochs, avgLoss, trainAcc, testAcc, (endTime - startTime));
                     
             testLoader.shutdown();
         }
         loader.shutdown();
     }
-
 }

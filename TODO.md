@@ -1,6 +1,6 @@
 # ML_framework — TODO
 
-Last updated: 2026-03-07
+Last updated: 2026-03-08
 
 ## Current progress (completed)
 - Core `nn` Module/Parameter system and containers (`Sequential`, `ModuleDict`, etc).
@@ -34,6 +34,12 @@ Last updated: 2026-03-07
   - `TrainCifar10.java`
   - **`TrainSentiment.java`** (Real movie review dataset using LSTM)
 - Comprehensive test suite (40 tests) including `TestBatch4`, `TestDropout`, and full GPU compatibility verification.
+- ✅ **Phase 15: Computer Vision Deepening (NEW ✅)**:
+  - **Tensor.cat & Tensor.narrow**: Fully implemented with Autograd and GPU acceleration.
+  - **VGG**: Configurable VGG11-19 architectures with optional BatchNorm.
+  - **ResNet**: ResNet-18/34 with `BasicBlock` and skip connection support (Torch.add autograd).
+  - **Global Avg Pooling**: `adaptive_avg_pool2d` implemented in `NN.F`.
+  - **Evaluator**: Centralized evaluation class using DataLoader.
 - ✅ **GPU Compatibility Audit**: Fully audited all mathematical and neural network operations for device-aware logic and automatic synchronization.
 
 ---
@@ -42,7 +48,8 @@ Last updated: 2026-03-07
 
 ### Nhóm 1: Mở rộng Kiến trúc (Architectural Expansion)
 1. **RNN & LSTM (HOÀN THÀNH ✅)**
-2. **Transformer Blocks (PHẦN TIẾP THEO 🔲)**
+2. **Vision Models (HOÀN THÀNH ✅)**: VGG, ResNet.
+3. **Transformer Blocks (PHẦN TIẾP THEO 🔲)**
    - Triển khai `MultiheadAttention`.
    - Nâng cấp `Softmax` hỗ trợ `dim`.
    - `TransformerEncoderLayer`.
@@ -53,8 +60,14 @@ Last updated: 2026-03-07
 3. **GPU & cuDNN Optimization (HOÀN THÀNH ✅)**
    - ✅ **Phase 14**: Kernel Fusion, CUDA Streams, Arena Memory Pool, và Custom PTX Kernels.
    - ✅ **GPU Compatibility Audit**: Tự động đồng bộ hóa và nhận diện thiết bị.
-4. **GPU Backward Kernels (PHẦN TIẾP THEO 🔲)**:
-   - Chuyển đổi các hàm Backward sang cuDNN để giảm thiểu CPU sync.
+   - ✅ **Phase 15 (Backward)**: Đã chuyển đổi Conv2d Backward sang cuDNN (BackwardData, BackwardFilter, BackwardBias).
+
+### Nhóm 3: PHẦN TIẾP THEO 🔲
+1. **Transformer Blocks**:
+   - Triển khai `MultiheadAttention`.
+   - Nâng cấp `Softmax` hỗ trợ `dim`.
+   - `TransformerEncoderLayer`.
+2. **GPU MaxPool Backward**: Chuyển đổi pooling backward sang cuDNN.
 
 ---
 **Steps to Begin:**

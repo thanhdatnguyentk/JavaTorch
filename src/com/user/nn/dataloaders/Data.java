@@ -134,7 +134,7 @@ public class Data {
 
         @Override
         public boolean hasNext() {
-            return !batchQueue.isEmpty();
+            return currentIdx < indices.length || !batchQueue.isEmpty();
         }
 
         @Override
@@ -142,12 +142,15 @@ public class Data {
             if (!hasNext())
                 throw new NoSuchElementException();
             try {
-                Future<Tensor[]> futureBatch = batchQueue.poll();
+                Future<Tensor[]> futureBatch = batchQueue.take();
                 Tensor[] batch = futureBatch.get(); // blocks if computation is not done yet
                 // Top up the prefetch queue
                 prefetch();
                 return batch;
-            } catch (InterruptedException | ExecutionException e) {
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Data loader interrupted", e);
+            } catch (ExecutionException e) {
                 throw new RuntimeException("Error during data loading", e);
             }
         }

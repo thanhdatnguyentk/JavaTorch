@@ -135,44 +135,31 @@ public class TrainFashionMNIST {
 
             float trainAcc = trainAccMetric.compute();
             float avgLoss = epochLoss / numBatches;
-            float testAcc = evaluate(model, testImages, testLabels, testAccMetric);
+
+            Data.Dataset testDataset = new Data.Dataset() {
+                @Override
+                public int len() { return testImages.length; }
+
+                @Override
+                public Tensor[] get(int index) {
+                    Tensor x = Torch.tensor(testImages[index], 784);
+                    Tensor y = Torch.tensor(new float[] { testLabels[index] }, 1);
+                    return new Tensor[] { x, y };
+                }
+            };
+            Data.DataLoader testLoader = new Data.DataLoader(testDataset, 256, false, 2);
+
+            float testAcc = Evaluator.evaluate(model, testLoader, testAccMetric);
 
             System.out.printf("Epoch %d/%d  avg_loss=%.4f  train_acc=%.4f  test_acc=%.4f%n",
                     epoch + 1, epochs, avgLoss, trainAcc, testAcc);
+                    
+            if (epoch == epochs - 1) {
+                System.out.printf("%nFinal test accuracy: %.2f%%%n", testAcc * 100);
+            }
+            testLoader.shutdown();
         }
 
         trainLoader.shutdown();
-        float finalAcc = evaluate(model, testImages, testLabels, testAccMetric);
-        System.out.printf("%nFinal test accuracy: %.2f%%%n", finalAcc * 100);
-    }
-
-    static float evaluate(NN.Module model, float[][] images, int[] labels, Accuracy metric) {
-        metric.reset();
-        int N = images.length;
-        int dim = 784;
-        int evalBatch = 256;
-
-        for (int start = 0; start < N; start += evalBatch) {
-            try (MemoryScope scope = new MemoryScope()) {
-                int bs = Math.min(evalBatch, N - start);
-                float[] data = new float[bs * dim];
-                for (int i = 0; i < bs; i++)
-                    System.arraycopy(images[start + i], 0, data, i * dim, dim);
-                Tensor x = Torch.tensor(data, bs, dim);
-                x.toGPU();
-
-                int[] batchLabels = new int[bs];
-                for (int i = 0; i < bs; i++) batchLabels[i] = labels[start + i];
-
-                model.eval();
-                Torch.set_grad_enabled(false);
-                Tensor out = model.forward(x);
-                Torch.set_grad_enabled(true);
-                model.train();
-
-                metric.update(out, batchLabels);
-            }
-        }
-        return metric.compute();
     }
 }

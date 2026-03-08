@@ -83,7 +83,7 @@ public class TrainLeNet {
 
             @Override
             public Tensor[] get(int index) {
-                Tensor x = Torch.tensor(trainImages[index], 784);
+                Tensor x = Torch.tensor(trainImages[index], 1, 28, 28);
                 Tensor y = Torch.tensor(new float[] { trainLabels[index] }, 1);
                 return new Tensor[] { x, y };
             }
@@ -106,12 +106,9 @@ public class TrainLeNet {
                     scope.track(xBatch);
                     scope.track(batch[1]);
 
-                    // Reshape flat [batchSize, 784] to [batchSize, 1, 28, 28] for Conv2d
-                    int bs = xBatch.shape[0];
-                    xBatch.shape = new int[]{bs, 1, 28, 28};
-                    
                     xBatch.toGPU();
 
+                    int bs = xBatch.shape[0];
                     int[] batchLabels = new int[bs];
                     for (int i = 0; i < bs; i++) {
                         batchLabels[i] = (int) batch[1].data[i];
@@ -137,41 +134,28 @@ public class TrainLeNet {
 
             float trainAcc = trainAccMetric.compute();
             float avgLoss = epochLoss / numBatches;
-            float testAcc = evaluate(model, testImages, testLabels, testAccMetric);
+            
+            Data.Dataset testDataset = new Data.Dataset() {
+                @Override
+                public int len() { return testImages.length; }
+
+                @Override
+                public Tensor[] get(int index) {
+                    Tensor x = Torch.tensor(testImages[index], 1, 28, 28);
+                    Tensor y = Torch.tensor(new float[] { testLabels[index] }, 1);
+                    return new Tensor[] { x, y };
+                }
+            };
+            Data.DataLoader testLoader = new Data.DataLoader(testDataset, 256, false, 2);
+            
+            float testAcc = Evaluator.evaluate(model, testLoader, testAccMetric);
 
             System.out.printf("Epoch %d/%d  avg_loss=%.4f  train_acc=%.4f  test_acc=%.4f%n",
                     epoch + 1, epochs, avgLoss, trainAcc, testAcc);
+                    
+            testLoader.shutdown();
         }
-    }
-
-    private static float evaluate(LeNet model, float[][] images, int[] labels, Accuracy accMetric) {
-        model.eval();
-        accMetric.reset();
-        int batchSize = 256;
-        int n = images.length;
-        int numBatches = (int) Math.ceil((double) n / batchSize);
-
-        for (int b = 0; b < numBatches; b++) {
-            try (MemoryScope scope = new MemoryScope()) {
-                int start = b * batchSize;
-                int end = Math.min(start + batchSize, n);
-                int bs = end - start;
-                
-                float[] flatBatch = new float[bs * 784];
-                int[] batchLabels = new int[bs];
-                for (int i = 0; i < bs; i++) {
-                    System.arraycopy(images[start + i], 0, flatBatch, i * 784, 784);
-                    batchLabels[i] = labels[start + i];
-                }
-                
-                Tensor xBatch = Torch.tensor(flatBatch, bs, 1, 28, 28); // Reshaped for Conv2d
-                scope.track(xBatch);
-                xBatch.toGPU();
-
-                Tensor logits = model.forward(xBatch);
-                accMetric.update(logits, batchLabels);
-            }
-        }
-        return accMetric.compute();
+        
+        trainLoader.shutdown();
     }
 }

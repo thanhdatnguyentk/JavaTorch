@@ -8,6 +8,8 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Random;
+import static jcuda.runtime.JCuda.cudaMemcpy;
+import static jcuda.runtime.cudaMemcpyKind.cudaMemcpyDeviceToDevice;
 
 public class NN {
     public static class Mat {
@@ -1223,7 +1225,7 @@ public class NN {
 
         @Override
         public Tensor forward(Tensor x) {
-            if (x.shape.length != 4) throw new IllegalArgumentException("BatchNorm2d requires 4D tensor [batch, C, H, W]");
+            if (x.shape.length != 4) throw new IllegalArgumentException("BatchNorm2d requires 4D tensor [batch, C, H, W], got " + java.util.Arrays.toString(x.shape));
             if (x.shape[1] != numFeatures) throw new IllegalArgumentException("BatchNorm2d channel mismatch: expected " + numFeatures + " got " + x.shape[1]);
             
             int batch = x.shape[0];
@@ -1294,9 +1296,12 @@ public class NN {
                 out.grad_fn = new Tensor.GradFn(x, weight != null ? weight.getTensor() : null, bias != null ? bias.getTensor() : null) {
                     public void apply(Tensor outGrad) {
                         if (outGrad.isGPU()) outGrad.toCPU();
+                        if (x.isGPU()) x.toCPU();
                         Tensor gx = new Tensor(x.shape);
                         Tensor wt = weight != null ? weight.getTensor() : null;
+                        if (wt != null && wt.isGPU()) wt.toCPU();
                         Tensor bt = bias != null ? bias.getTensor() : null;
+                        if (bt != null && bt.isGPU()) bt.toCPU();
                         
                         float[] dGamma = wt != null && wt.requires_grad ? new float[c] : null;
                         float[] dBeta = bt != null && bt.requires_grad ? new float[c] : null;
@@ -1405,7 +1410,7 @@ public class NN {
 
             Tensor wt = this.weight.getTensor();
             Tensor bt = this.bias != null ? this.bias.getTensor() : null;
-            Tensor out = new Tensor(batch, outSize);
+            Tensor out = new Tensor(batch, outChannels, outH, outW);
             float[][] colAll = null;
 
             if (x.isGPU()) {
@@ -1458,18 +1463,78 @@ public class NN {
                     }
                 }
             }
-            final float[][] colAllFinal = colAll;
-
-            // Autograd backward
             if (Torch.is_grad_enabled() && (x.requires_grad || wt.requires_grad || (bt != null && bt.requires_grad))) {
                 out.requires_grad = true;
+                final boolean wasGPU = x.isGPU();
                 out.grad_fn = new Tensor.GradFn(x, weight.getTensor(), bias == null ? null : bias.getTensor()) {
                     public void apply(Tensor outGrad) {
-                        float[][] localColAll = colAllFinal;
-                        if (localColAll == null) {
-                            // Recompute im2col if we were on GPU
+                        if (wasGPU) {
+                            // ========== GPU backward using cuDNN ==========
+                            // Ensure tensors are on GPU for cuDNN operations
+                            if (!outGrad.isGPU()) outGrad.toGPU();
+                            if (!x.isGPU()) x.toGPU();
+                            if (!wt.isGPU()) wt.toGPU();
+
+                            // Prepare transposed weights for cuDNN: [outC, inC, kH, kW]
+                            int ksz2 = inChannels * kernelH * kernelW;
+                            Tensor wtT = new Tensor(new int[]{outChannels, ksz2});
+                            wtT.toGPU();
+                            CUDAOps.transpose(wt, wtT);
+
+                            // Gradient w.r.t. weight
+                            if (wt.requires_grad) {
+                                // cuDNN produces dw in [outC, inC, kH, kW] layout
+                                Tensor dwCudnn = new Tensor(new int[]{outChannels, inChannels, kernelH, kernelW});
+                                dwCudnn.toGPU();
+                                
+                                CUDAOps.conv2dBackwardFilter(x, outGrad, dwCudnn,
+                                    inChannels, inH, inW, kernelH, kernelW,
+                                    outChannels, outH, outW, padH, padW, strideH, strideW);
+                                
+                                // Transpose from [outC, ksz] back to [ksz, outC] (our weight layout)
+                                Tensor dwFlat = new Tensor(new int[]{outChannels, ksz2});
+                                dwFlat.toGPU();
+                                // Copy dwCudnn data -> dwFlat (same data, just reshape)
+                                cudaMemcpy(dwFlat.getDevicePointer(), dwCudnn.getDevicePointer(),
+                                    (long) outChannels * ksz2 * jcuda.Sizeof.FLOAT, cudaMemcpyDeviceToDevice);
+                                dwFlat.markDirtyOnGPU();
+                                
+                                Tensor gw = new Tensor(wt.shape); // [ksz, outC]
+                                gw.toGPU();
+                                CUDAOps.transpose(dwFlat, gw);
+                                
+                                dwCudnn.close();
+                                dwFlat.close();
+                                wt.backwardStep(gw);
+                            }
+
+                            // Gradient w.r.t. bias
+                            if (bt != null && bt.requires_grad) {
+                                Tensor gb = new Tensor(new int[]{outChannels});
+                                gb.toGPU();
+                                CUDAOps.conv2dBackwardBias(outGrad, gb, outChannels, outH, outW);
+                                bt.backwardStep(gb);
+                            }
+
+                            // Gradient w.r.t. input
+                            if (x.requires_grad) {
+                                Tensor gx = new Tensor(x.shape);
+                                gx.toGPU();
+                                CUDAOps.conv2dBackwardData(outGrad, wtT, gx,
+                                    inChannels, inH, inW, kernelH, kernelW,
+                                    outChannels, outH, outW, padH, padW, strideH, strideW);
+                                x.backwardStep(gx);
+                            }
+
+                            wtT.close();
+                        } else {
+                            // ========== CPU backward (fallback) ==========
+                            outGrad.toCPU();
                             x.toCPU();
-                            localColAll = new float[batch][];
+                            wt.toCPU();
+
+                            // Recompute im2col on CPU
+                            float[][] localColAll = new float[batch][];
                             for (int b = 0; b < batch; b++) {
                                 float[] col = new float[outH * outW * ksz];
                                 int colIdx = 0;
@@ -1492,70 +1557,63 @@ public class NN {
                                 }
                                 localColAll[b] = col;
                             }
-                        }
 
-                        // outGrad: [batch, outC * outH * outW]
-                        // Gradient w.r.t. weight: sum_b col[b]^T * dOut[b]
-                        if (wt.requires_grad) {
-                            Tensor gw = new Tensor(wt.shape);
-                            for (int b = 0; b < batch; b++) {
-                                float[] col = localColAll[b];
-                                // For each (k, oc): gw[k][oc] += sum_pos col[pos*ksz+k] * dOut[b,
-                                // oc*outH*outW+pos]
-                                for (int pos = 0; pos < outH * outW; pos++) {
-                                    for (int oc = 0; oc < outChannels; oc++) {
-                                        float dVal = outGrad.data[b * outSize + (oc * outH * outW + pos)];
-                                        int colBase = pos * ksz;
-                                        for (int k = 0; k < ksz; k++) {
-                                            gw.data[k * outChannels + oc] += col[colBase + k] * dVal;
+                            if (wt.requires_grad) {
+                                Tensor gw = new Tensor(wt.shape);
+                                for (int b = 0; b < batch; b++) {
+                                    float[] col = localColAll[b];
+                                    for (int pos = 0; pos < outH * outW; pos++) {
+                                        for (int oc = 0; oc < outChannels; oc++) {
+                                            float dVal = outGrad.data[b * outSize + (oc * outH * outW + pos)];
+                                            int colBase = pos * ksz;
+                                            for (int k = 0; k < ksz; k++) {
+                                                gw.data[k * outChannels + oc] += col[colBase + k] * dVal;
+                                            }
                                         }
                                     }
                                 }
+                                wt.backwardStep(gw);
                             }
-                            wt.backwardStep(gw);
-                        }
 
-                        // Gradient w.r.t. bias: sum over batch and spatial
-                        if (bt != null && bt.requires_grad) {
-                            Tensor gb = new Tensor(bt.shape);
-                            for (int b = 0; b < batch; b++) {
-                                for (int oc = 0; oc < outChannels; oc++) {
-                                    for (int pos = 0; pos < outH * outW; pos++) {
-                                        gb.data[oc] += outGrad.data[b * outSize + (oc * outH * outW + pos)];
+                            if (bt != null && bt.requires_grad) {
+                                Tensor gb = new Tensor(bt.shape);
+                                for (int b = 0; b < batch; b++) {
+                                    for (int oc = 0; oc < outChannels; oc++) {
+                                        for (int pos = 0; pos < outH * outW; pos++) {
+                                            gb.data[oc] += outGrad.data[b * outSize + (oc * outH * outW + pos)];
+                                        }
                                     }
                                 }
+                                bt.backwardStep(gb);
                             }
-                            bt.backwardStep(gb);
-                        }
 
-                        // Gradient w.r.t. input: col2im
-                        if (x.requires_grad) {
-                            Tensor gx = new Tensor(x.shape);
-                            for (int b = 0; b < batch; b++) {
-                                // dCol[pos*ksz+k] = sum_oc dOut[b, oc*outH*outW+pos] * wt[k, oc]
-                                for (int pos = 0; pos < outH * outW; pos++) {
-                                    int oh = pos / outW;
-                                    int ow = pos % outW;
-                                    for (int ic = 0; ic < inChannels; ic++) {
-                                        for (int kh = 0; kh < kernelH; kh++) {
-                                            for (int kw = 0; kw < kernelW; kw++) {
-                                                int ih = oh * strideH - padH + kh;
-                                                int iw2 = ow * strideW - padW + kw;
-                                                if (ih >= 0 && ih < inH && iw2 >= 0 && iw2 < inW) {
-                                                    int kIdx = ic * kernelH * kernelW + kh * kernelW + kw;
-                                                    float dColVal = 0f;
-                                                    for (int oc = 0; oc < outChannels; oc++) {
-                                                        dColVal += outGrad.data[b * outSize + (oc * outH * outW + pos)]
-                                                                * wt.data[kIdx * outChannels + oc];
+                            if (x.requires_grad) {
+                                Tensor gx = new Tensor(x.shape);
+                                for (int b = 0; b < batch; b++) {
+                                    for (int pos = 0; pos < outH * outW; pos++) {
+                                        int oh = pos / outW;
+                                        int ow = pos % outW;
+                                        for (int ic = 0; ic < inChannels; ic++) {
+                                            for (int kh = 0; kh < kernelH; kh++) {
+                                                for (int kw = 0; kw < kernelW; kw++) {
+                                                    int ih = oh * strideH - padH + kh;
+                                                    int iw2 = ow * strideW - padW + kw;
+                                                    if (ih >= 0 && ih < inH && iw2 >= 0 && iw2 < inW) {
+                                                        int kIdx = ic * kernelH * kernelW + kh * kernelW + kw;
+                                                        float dColVal = 0f;
+                                                        for (int oc = 0; oc < outChannels; oc++) {
+                                                            dColVal += outGrad.data[b * outSize + (oc * outH * outW + pos)]
+                                                                    * wt.data[kIdx * outChannels + oc];
+                                                        }
+                                                        gx.data[b * inSize + (ic * inH * inW + ih * inW + iw2)] += dColVal;
                                                     }
-                                                    gx.data[b * inSize + (ic * inH * inW + ih * inW + iw2)] += dColVal;
                                                 }
                                             }
                                         }
                                     }
                                 }
+                                x.backwardStep(gx);
                             }
-                            x.backwardStep(gx);
                         }
                     }
                 };
@@ -1635,7 +1693,7 @@ public class NN {
             int outSize = outChannels * outH * outW;
             Tensor wt = this.weight.getTensor();
             Tensor bt = this.bias != null ? this.bias.getTensor() : null;
-            Tensor out = new Tensor(batch, outSize);
+            Tensor out = new Tensor(batch, outChannels, outH, outW);
             x.toCPU();
             wt.toCPU();
             for (int b = 0; b < batch; b++) {
@@ -1757,7 +1815,7 @@ public class NN {
             int outH = (inH + 2 * padH - kernelH) / strideH + 1;
             int outW = (inW + 2 * padW - kernelW) / strideW + 1;
             int outSize = inC * outH * outW;
-            Tensor out = new Tensor(batch, outSize);
+            Tensor out = new Tensor(batch, inC, outH, outW);
 
             if (x.isGPU()) {
                 out.toGPU();
@@ -1838,7 +1896,7 @@ public class NN {
             int outH = (inH + 2 * padH - kernelH) / strideH + 1;
             int outW = (inW + 2 * padW - kernelW) / strideW + 1;
             int outSize = inC * outH * outW;
-            Tensor out = new Tensor(batch, outSize);
+            Tensor out = new Tensor(batch, inC, outH, outW);
             // Track counts for backward
             int[] counts = new int[batch * outSize];
             for (int b = 0; b < batch; b++) {
@@ -1919,7 +1977,7 @@ public class NN {
             int outH = inH + 2 * padH;
             int outW = inW + 2 * padW;
             int outSize = inC * outH * outW;
-            Tensor out = new Tensor(batch, outSize);
+            Tensor out = new Tensor(batch, inC, outH, outW);
             if (x.isGPU()) out.toGPU();
             for (int b = 0; b < batch; b++) {
                 for (int c = 0; c < inC; c++) {

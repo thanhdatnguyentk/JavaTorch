@@ -2,6 +2,8 @@ package com.user.nn.core;
 
 import jcuda.Pointer;
 import jcuda.jcudnn.*;
+import java.io.File;
+import java.util.*;
 import static jcuda.jcudnn.JCudnn.*;
 import static jcuda.jcudnn.cudnnStatus.*;
 import static jcuda.jcudnn.cudnnDataType.*;
@@ -63,7 +65,37 @@ public class CUDAOps {
             
             try {
                 module = new CUmodule();
-                cuModuleLoad(module, "bin/kernels.ptx");
+                // Try multiple paths to find kernels.ptx
+                File ptxFile = null;
+                String[] candidates = {
+                    "bin/kernels.ptx",
+                    "kernels.ptx",
+                    System.getProperty("user.dir") + "/bin/kernels.ptx",
+                    System.getProperty("user.dir") + "\\bin\\kernels.ptx"
+                };
+                // Also try relative to the classpath
+                String cp = System.getProperty("java.class.path");
+                if (cp != null) {
+                    for (String p : cp.split(File.pathSeparator)) {
+                        File f = new File(p);
+                        if (f.isDirectory()) {
+                            File candidate = new File(f, "kernels.ptx");
+                            if (candidate.exists()) { ptxFile = candidate; break; }
+                        }
+                    }
+                }
+                if (ptxFile == null) {
+                    for (String path : candidates) {
+                        File f = new File(path);
+                        if (f.exists()) { ptxFile = f; break; }
+                    }
+                }
+                if (ptxFile != null && ptxFile.exists()) {
+                    cuModuleLoad(module, ptxFile.getAbsolutePath());
+                    System.out.println("[CUDAOps] Loaded PTX kernels from: " + ptxFile.getAbsolutePath());
+                } else {
+                    System.err.println("Warning: kernels.ptx not found. Searched: " + java.util.Arrays.toString(candidates));
+                }
                 
                 addFunction = new CUfunction();
                 cuModuleGetFunction(addFunction, module, "add_tensors");
@@ -422,6 +454,173 @@ public class CUDAOps {
     }
 
     /**
+     * Conv2d Backward Data using cuDNN.
+     * Computes gradient w.r.t. input: dx = conv_backward_data(dy, w)
+     * @param dy output gradient [batch, outC, outH, outW]
+     * @param weight filter weights in cuDNN layout [outC, inC, kH, kW]
+     * @param dx output: gradient w.r.t input [batch, inC, inH, inW]
+     */
+    public static void conv2dBackwardData(Tensor dy, Tensor weight, Tensor dx,
+                                           int inC, int inH, int inW,
+                                           int kH, int kW,
+                                           int outC, int outH, int outW,
+                                           int padH, int padW, int strideH, int strideW) {
+        init();
+        int batch = dy.shape[0];
+
+        cudnnTensorDescriptor dxDesc = new cudnnTensorDescriptor();
+        cudnnTensorDescriptor dyDesc = new cudnnTensorDescriptor();
+        cudnnFilterDescriptor wDesc = new cudnnFilterDescriptor();
+        cudnnConvolutionDescriptor convDesc = new cudnnConvolutionDescriptor();
+
+        cudnnCreateTensorDescriptor(dxDesc);
+        cudnnSetTensor4dDescriptor(dxDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, inC, inH, inW);
+
+        cudnnCreateTensorDescriptor(dyDesc);
+        cudnnSetTensor4dDescriptor(dyDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, outC, outH, outW);
+
+        cudnnCreateFilterDescriptor(wDesc);
+        cudnnSetFilter4dDescriptor(wDesc, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NCHW, outC, inC, kH, kW);
+
+        cudnnCreateConvolutionDescriptor(convDesc);
+        cudnnSetConvolution2dDescriptor(convDesc, padH, padW, strideH, strideW, 1, 1, CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT);
+
+        if (MixedPrecision.isEnabled()) {
+            cudnnSetConvolutionMathType(convDesc, CUDNN_TENSOR_OP_MATH_ALLOW_CONVERSION);
+        }
+
+        int algo = jcuda.jcudnn.cudnnConvolutionBwdDataAlgo.CUDNN_CONVOLUTION_BWD_DATA_ALGO_1;
+
+        long[] workspaceSizeInBytes = {0};
+        cudnnGetConvolutionBackwardDataWorkspaceSize(cudnnHandle, wDesc, dyDesc, convDesc, dxDesc, algo, workspaceSizeInBytes);
+
+        Pointer workspace = new Pointer();
+        if (workspaceSizeInBytes[0] > 0) {
+            cudaMalloc(workspace, workspaceSizeInBytes[0]);
+        }
+
+        Pointer pAlpha = Pointer.to(new float[]{1.0f});
+        Pointer pBeta = Pointer.to(new float[]{0.0f});
+
+        cudnnConvolutionBackwardData(cudnnHandle,
+            pAlpha, wDesc, weight.getDevicePointer(),
+            dyDesc, dy.getDevicePointer(),
+            convDesc, algo, workspace, workspaceSizeInBytes[0],
+            pBeta, dxDesc, dx.getDevicePointer());
+
+        if (workspaceSizeInBytes[0] > 0) {
+            cudaFree(workspace);
+        }
+
+        cudnnDestroyTensorDescriptor(dxDesc);
+        cudnnDestroyTensorDescriptor(dyDesc);
+        cudnnDestroyFilterDescriptor(wDesc);
+        cudnnDestroyConvolutionDescriptor(convDesc);
+
+        dx.markDirtyOnGPU();
+    }
+
+    /**
+     * Conv2d Backward Filter using cuDNN.
+     * Computes gradient w.r.t. weights: dw = conv_backward_filter(x, dy)
+     * @param x input tensor [batch, inC, inH, inW]
+     * @param dy output gradient [batch, outC, outH, outW]
+     * @param dw output: gradient w.r.t filter [outC, inC, kH, kW] in cuDNN layout
+     */
+    public static void conv2dBackwardFilter(Tensor x, Tensor dy, Tensor dw,
+                                             int inC, int inH, int inW,
+                                             int kH, int kW,
+                                             int outC, int outH, int outW,
+                                             int padH, int padW, int strideH, int strideW) {
+        init();
+        int batch = x.shape[0];
+
+        cudnnTensorDescriptor xDesc = new cudnnTensorDescriptor();
+        cudnnTensorDescriptor dyDesc = new cudnnTensorDescriptor();
+        cudnnFilterDescriptor dwDesc = new cudnnFilterDescriptor();
+        cudnnConvolutionDescriptor convDesc = new cudnnConvolutionDescriptor();
+
+        cudnnCreateTensorDescriptor(xDesc);
+        cudnnSetTensor4dDescriptor(xDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, inC, inH, inW);
+
+        cudnnCreateTensorDescriptor(dyDesc);
+        cudnnSetTensor4dDescriptor(dyDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, outC, outH, outW);
+
+        cudnnCreateFilterDescriptor(dwDesc);
+        cudnnSetFilter4dDescriptor(dwDesc, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NCHW, outC, inC, kH, kW);
+
+        cudnnCreateConvolutionDescriptor(convDesc);
+        cudnnSetConvolution2dDescriptor(convDesc, padH, padW, strideH, strideW, 1, 1, CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT);
+
+        if (MixedPrecision.isEnabled()) {
+            cudnnSetConvolutionMathType(convDesc, CUDNN_TENSOR_OP_MATH_ALLOW_CONVERSION);
+        }
+
+        int algo = jcuda.jcudnn.cudnnConvolutionBwdFilterAlgo.CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1;
+
+        long[] workspaceSizeInBytes = {0};
+        cudnnGetConvolutionBackwardFilterWorkspaceSize(cudnnHandle, xDesc, dyDesc, convDesc, dwDesc, algo, workspaceSizeInBytes);
+
+        Pointer workspace = new Pointer();
+        if (workspaceSizeInBytes[0] > 0) {
+            cudaMalloc(workspace, workspaceSizeInBytes[0]);
+        }
+
+        Pointer pAlpha = Pointer.to(new float[]{1.0f});
+        Pointer pBeta = Pointer.to(new float[]{0.0f});
+
+        cudnnConvolutionBackwardFilter(cudnnHandle,
+            pAlpha, xDesc, x.getDevicePointer(),
+            dyDesc, dy.getDevicePointer(),
+            convDesc, algo, workspace, workspaceSizeInBytes[0],
+            pBeta, dwDesc, dw.getDevicePointer());
+
+        if (workspaceSizeInBytes[0] > 0) {
+            cudaFree(workspace);
+        }
+
+        cudnnDestroyTensorDescriptor(xDesc);
+        cudnnDestroyTensorDescriptor(dyDesc);
+        cudnnDestroyFilterDescriptor(dwDesc);
+        cudnnDestroyConvolutionDescriptor(convDesc);
+
+        dw.markDirtyOnGPU();
+    }
+
+    /**
+     * Conv2d Backward Bias using cuDNN.
+     * Computes gradient w.r.t. bias: db = sum over batch and spatial dims of dy
+     * @param dy output gradient [batch, outC, outH, outW]
+     * @param db output: gradient w.r.t bias [1, outC, 1, 1]
+     */
+    public static void conv2dBackwardBias(Tensor dy, Tensor db,
+                                           int outC, int outH, int outW) {
+        init();
+        int batch = dy.shape[0];
+
+        cudnnTensorDescriptor dyDesc = new cudnnTensorDescriptor();
+        cudnnTensorDescriptor dbDesc = new cudnnTensorDescriptor();
+
+        cudnnCreateTensorDescriptor(dyDesc);
+        cudnnSetTensor4dDescriptor(dyDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, outC, outH, outW);
+
+        cudnnCreateTensorDescriptor(dbDesc);
+        cudnnSetTensor4dDescriptor(dbDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, outC, 1, 1);
+
+        Pointer pAlpha = Pointer.to(new float[]{1.0f});
+        Pointer pBeta = Pointer.to(new float[]{0.0f});
+
+        cudnnConvolutionBackwardBias(cudnnHandle,
+            pAlpha, dyDesc, dy.getDevicePointer(),
+            pBeta, dbDesc, db.getDevicePointer());
+
+        cudnnDestroyTensorDescriptor(dyDesc);
+        cudnnDestroyTensorDescriptor(dbDesc);
+
+        db.markDirtyOnGPU();
+    }
+
+    /**
      * Max Pooling 2D Forward using cuDNN
      */
     public static void maxPool2dForward(Tensor x, Tensor out,
@@ -493,6 +692,54 @@ public class CUDAOps {
                                            n, m, pAlpha, a.getDevicePointer(), m, 
                                            pBeta, new Pointer(), n, 
                                            out.getDevicePointer(), n);
+        out.markDirtyOnGPU();
+    }
+
+    /**
+     * GPU-accelerated concat using cudaMemcpyDeviceToDevice.
+     */
+    public static void concat(java.util.List<Tensor> tensors, Tensor out, int dim) {
+        init();
+        int[] outShape = out.shape;
+        int outerSize = 1;
+        for (int i = 0; i < dim; i++) outerSize *= outShape[i];
+        int totalDimSize = outShape[dim];
+        int innerSize = 1;
+        for (int i = dim + 1; i < outShape.length; i++) innerSize *= outShape[i];
+
+        int currentOffset = 0;
+        for (Tensor t : tensors) {
+            int tDimSize = t.shape[dim];
+            for (int i = 0; i < outerSize; i++) {
+                long srcByteOff = (long) i * tDimSize * innerSize * 4;
+                long dstByteOff = (long) (i * totalDimSize + currentOffset) * innerSize * 4;
+                cudaMemcpy(out.getDevicePointer().withByteOffset(dstByteOff),
+                           t.getDevicePointer().withByteOffset(srcByteOff),
+                           (long) tDimSize * innerSize * 4, cudaMemcpyDeviceToDevice);
+            }
+            currentOffset += tDimSize;
+        }
+        out.markDirtyOnGPU();
+    }
+
+    /**
+     * GPU-accelerated narrow using cudaMemcpyDeviceToDevice.
+     */
+    public static void narrow(Tensor input, Tensor out, int dim, int start, int length) {
+        init();
+        int outerSize = 1;
+        for (int i = 0; i < dim; i++) outerSize *= input.shape[i];
+        int innerSize = 1;
+        for (int i = dim + 1; i < input.shape.length; i++) innerSize *= input.shape[i];
+        int oldDimSize = input.shape[dim];
+
+        for (int i = 0; i < outerSize; i++) {
+            long srcByteOff = (long) (i * oldDimSize + start) * innerSize * 4;
+            long dstByteOff = (long) i * length * innerSize * 4;
+            cudaMemcpy(out.getDevicePointer().withByteOffset(dstByteOff),
+                           input.getDevicePointer().withByteOffset(srcByteOff),
+                           (long) length * innerSize * 4, cudaMemcpyDeviceToDevice);
+        }
         out.markDirtyOnGPU();
     }
 

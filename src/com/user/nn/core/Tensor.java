@@ -66,12 +66,28 @@ public class Tensor implements AutoCloseable {
 
     public Tensor reshape(int... newShape) {
         this.toCPU();
+        int totalNumel = numel();
+        int[] ns = newShape.clone();
+        int minusOneIdx = -1;
+        int product = 1;
+        for (int i = 0; i < ns.length; i++) {
+            if (ns[i] == -1) {
+                if (minusOneIdx != -1) throw new IllegalArgumentException("reshape: multiple -1");
+                minusOneIdx = i;
+            } else {
+                product *= ns[i];
+            }
+        }
+        if (minusOneIdx != -1) {
+            if (product == 0 || totalNumel % product != 0) throw new IllegalArgumentException("reshape: incompatible -1");
+            ns[minusOneIdx] = totalNumel / product;
+        }
+        
         int n = 1;
-        for (int s : newShape)
-            n *= s;
-        if (n != numel())
-            throw new IllegalArgumentException("reshape: incompatible shape");
-        Tensor result = new Tensor(this.data, newShape);
+        for (int s : ns) n *= s;
+        if (n != totalNumel)
+            throw new IllegalArgumentException("reshape: incompatible shape, expected " + totalNumel + " got " + n);
+        Tensor result = new Tensor(this.data, ns);
         if (Torch.is_grad_enabled() && this.requires_grad) {
             result.requires_grad = true;
             result.grad_fn = new GradFn(this) {

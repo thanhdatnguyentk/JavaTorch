@@ -650,6 +650,7 @@ public class Torch {
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(x) {
                 public void apply(Tensor outGrad) {
+                    outGrad.toCPU();
                     Tensor gx = new Tensor(x.shape);
                     for (int b = 0; b < batch; b++) {
                         for (int c = 0; c < inC; c++) {
@@ -1189,6 +1190,8 @@ public class Torch {
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(a) {
                 public void apply(Tensor outGrad) {
+                    a.toCPU();
+                    outGrad.toCPU();
                     Tensor ga = new Tensor(a.shape);
                     for (int i = 0; i < ga.data.length; i++) {
                         ga.data[i] = a.data[i] > 0 ? outGrad.data[i] : 0f;
@@ -2530,7 +2533,6 @@ public class Torch {
         int totalDimSize = 0;
         boolean anyGPU = false;
         for (Tensor t : tensors) {
-            t.toCPU();
             totalDimSize += t.shape[dim];
             if (t.isGPU()) anyGPU = true;
         }
@@ -2540,23 +2542,29 @@ public class Torch {
         Tensor res = new Tensor(newShape);
         if (anyGPU) res.toGPU();
 
-        int outerSize = 1;
-        for (int i = 0; i < dim; i++)
-            outerSize *= baseShape[i];
-        int innerSize = 1;
-        for (int i = dim + 1; i < baseShape.length; i++)
-            innerSize *= baseShape[i];
+        if (anyGPU) {
+            // Ensure all are on GPU for the fast operation
+            for (Tensor t : tensors) t.toGPU();
+            CUDAOps.concat(tensors, res, dim);
+        } else {
+            int outerSize = 1;
+            for (int i = 0; i < dim; i++)
+                outerSize *= baseShape[i];
+            int innerSize = 1;
+            for (int i = dim + 1; i < baseShape.length; i++)
+                innerSize *= baseShape[i];
 
-        int currentOffset = 0;
-        for (Tensor t : tensors) {
-            int tDimSize = t.shape[dim];
-            for (int i = 0; i < outerSize; i++) {
-                System.arraycopy(
-                        t.data, i * tDimSize * innerSize,
-                        res.data, (i * totalDimSize + currentOffset) * innerSize,
-                        tDimSize * innerSize);
+            int currentOffset = 0;
+            for (Tensor t : tensors) {
+                int tDimSize = t.shape[dim];
+                for (int i = 0; i < outerSize; i++) {
+                    System.arraycopy(
+                            t.data, i * tDimSize * innerSize,
+                            res.data, (i * totalDimSize + currentOffset) * innerSize,
+                            tDimSize * innerSize);
+                }
+                currentOffset += tDimSize;
             }
-            currentOffset += tDimSize;
         }
 
         if (is_grad_enabled()) {
@@ -2590,7 +2598,6 @@ public class Torch {
     // narrow(input, dim, start, length): Returns a new tensor that is a narrowed
     // version of input tensor.
     public static Tensor narrow(Tensor input, int dim, int start, int length) {
-        input.toCPU();
         if (dim < 0)
             dim += input.shape.length;
         int[] newShape = input.shape.clone();
@@ -2605,8 +2612,6 @@ public class Torch {
         for (int i = dim + 1; i < input.shape.length; i++)
             innerSize *= input.shape[i];
 
-        int oldDimSize = input.shape[dim];
-
         final int finalDim = dim;
         final int finalStart = start;
         final int finalLength = length;
@@ -2614,12 +2619,16 @@ public class Torch {
         final int finalOuterSize = outerSize;
         final int finalOldDimSize = input.shape[dim];
 
-        for (int i = 0; i < outerSize; i++) {
-            // Copy a block for each outer index
-            System.arraycopy(
-                    input.data, (i * finalOldDimSize + finalStart) * finalInnerSize,
-                    out.data, (i * finalLength) * finalInnerSize,
-                    finalLength * finalInnerSize);
+        if (input.isGPU()) {
+            CUDAOps.narrow(input, out, dim, start, length);
+        } else {
+            for (int i = 0; i < outerSize; i++) {
+                // Copy a block for each outer index
+                System.arraycopy(
+                        input.data, (i * finalOldDimSize + finalStart) * finalInnerSize,
+                        out.data, (i * finalLength) * finalInnerSize,
+                        finalLength * finalInnerSize);
+            }
         }
 
         if (is_grad_enabled() && input.requires_grad) {
@@ -2627,12 +2636,26 @@ public class Torch {
             out.grad_fn = new Tensor.GradFn(input) {
                 public void apply(Tensor outGrad) {
                     Tensor grad = new Tensor(input.shape);
+                    if (outGrad.isGPU()) {
+                        grad.toGPU();
+                        // Zero grad on GPU
+                        CUDAOps.mul(grad, 0.0f, grad); // Simple way to zero
+                        // Put back gradients into the right place
+                        // We need a way to add narrowed grad back. 
+                        // For now, let's keep sub-optimal copy or optimize later.
+                        // Actually, narrow backward is basically putting a smaller tensor into a larger one.
+                        // We can use a custom "scatter" or "assign_narrow" kernel.
+                        // For now, use CPU fallback to be safe.
+                        outGrad.toCPU();
+                    }
+                    
                     for (int i = 0; i < finalOuterSize; i++) {
                         System.arraycopy(
                                 outGrad.data, (i * finalLength) * finalInnerSize,
                                 grad.data, (i * finalOldDimSize + finalStart) * finalInnerSize,
                                 finalLength * finalInnerSize);
                     }
+                    if (input.isGPU()) grad.toGPU();
                     input.backwardStep(grad);
                 }
             };
