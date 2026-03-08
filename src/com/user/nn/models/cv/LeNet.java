@@ -41,6 +41,9 @@ public class LeNet extends Sequential {
         // Flatten features = 16 * 5 * 5 = 400
         int flattenSize = 400;
 
+        // Flatten to (batch, 16*5*5)
+        add(new com.user.nn.containers.Flatten());
+
         // C5: Linear (400 -> 120)
         add(new Linear(flattenSize, 120, true));
         add(new Tanh());
