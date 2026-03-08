@@ -107,7 +107,13 @@ public class GpuMemoryPool {
     public static synchronized void init(long sizeBytes) {
         if (initialized) return;
         poolBase = new Pointer();
-        cudaMalloc(poolBase, sizeBytes);
+        try {
+            cudaMalloc(poolBase, sizeBytes);
+        } catch (Exception e) {
+            poolBase = null;
+            System.err.println("[GpuMemoryPool] cudaMalloc failed for " + (sizeBytes / (1024 * 1024)) + " MB: " + e.getMessage());
+            return;
+        }
         poolSizeBytes = sizeBytes;
         currentOffset = 0;
         initialized = true;

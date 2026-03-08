@@ -59,11 +59,15 @@ public class MovieCommentLoader {
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestProperty("User-Agent", "Mozilla/5.0");
         
-        try (InputStream in = conn.getInputStream();
-             FileOutputStream out = new FileOutputStream(target)) {
-            byte[] buf = new byte[8192];
-            int n;
-            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+        try {
+            try (InputStream in = conn.getInputStream();
+                 FileOutputStream out = new FileOutputStream(target)) {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            }
+        } finally {
+            conn.disconnect();
         }
         System.out.println("Downloaded " + target.getName() + " size: " + target.length());
     }

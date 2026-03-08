@@ -108,6 +108,18 @@ public class Tensor implements AutoCloseable {
         return new Tensor(this.data, this.shape);
     }
 
+    /**
+     * Return a tensor detached from the current computation graph.
+     * The returned tensor will not require gradients and has no grad_fn.
+     */
+    public Tensor detach() {
+        Tensor t = this.clone();
+        if (this.device == Device.GPU) t.toGPU();
+        t.requires_grad = false;
+        t.grad_fn = null;
+        return t;
+    }
+
     // Autograd support
     public static abstract class GradFn {
         public final Tensor[] dependencies;
@@ -135,6 +147,11 @@ public class Tensor implements AutoCloseable {
         }
     }
 
+    /** Zero out accumulated gradient for this tensor. */
+    public void zero_grad() {
+        this.grad = null;
+    }
+
     // backward entry point (assumes this is a scalar or user provided)
     public void backward() {
         if (!this.requires_grad)
@@ -149,6 +166,29 @@ public class Tensor implements AutoCloseable {
         for (int i = 0; i < gradInit.data.length; i++)
             gradInit.data[i] = 1f;
         this.grad = gradInit; // Root gradient is 1.0
+
+        // Iterate in reverse topological order (root -> leaves)
+        for (int i = topo.size() - 1; i >= 0; i--) {
+            Tensor t = topo.get(i);
+            if (t.grad_fn != null && t.grad != null) {
+                t.grad_fn.apply(t.grad);
+            }
+        }
+    }
+
+    /**
+     * Backward with a provided initial gradient tensor (for non-scalar roots).
+     */
+    public void backward(Tensor grad) {
+        if (!this.requires_grad)
+            throw new IllegalStateException("backward() called on tensor that does not require grad");
+
+        // Topological sort
+        java.util.List<Tensor> topo = new java.util.ArrayList<>();
+        java.util.Set<Tensor> visited = new java.util.HashSet<>();
+        buildTopo(this, visited, topo);
+
+        this.grad = grad.clone();
 
         // Iterate in reverse topological order (root -> leaves)
         for (int i = topo.size() - 1; i >= 0; i--) {
@@ -263,6 +303,8 @@ public class Tensor implements AutoCloseable {
     public Tensor unsqueeze(int dim) {
         if (dim < 0)
             dim += shape.length + 1;
+        if (dim < 0 || dim > shape.length)
+            throw new IndexOutOfBoundsException("unsqueeze dim " + dim + " out of range for tensor with " + shape.length + " dimensions");
         int[] ns = new int[shape.length + 1];
         for (int i = 0; i < ns.length; i++)
             ns[i] = (i == dim) ? 1 : 0;
@@ -391,7 +433,10 @@ public class Tensor implements AutoCloseable {
         }
     }
 
-    public Tensor expand(int... newShape) {
-        return Torch.expand(this, newShape);
+    public float item() {
+        this.toCPU();
+        if (numel() != 1) 
+            throw new IllegalStateException("item() can only be called on singleton tensors (numel=" + numel() + ")");
+        return data[0];
     }
 }

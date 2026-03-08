@@ -41,12 +41,36 @@ public class CUDAOps {
     private static CUfunction mulFunction;
     private static CUfunction addScalarFunction;
     private static CUfunction mulScalarFunction;
+    private static CUfunction reluBackwardFunction;
+    private static CUfunction leakyReluForwardFunction;
+    private static CUfunction leakyReluBackwardFunction;
+    private static CUfunction sigmoidBackwardFunction;
+    private static CUfunction tanhBackwardFunction;
+    private static CUfunction bceForwardFunction;
+    private static CUfunction bceBackwardFunction;
+    private static CUfunction bceLogitsForwardFunction;
+    private static CUfunction bceLogitsBackwardFunction;
+    private static CUfunction expFunction;
+    private static CUfunction logFunction;
     
     // CUDA Streams for pipelining
     private static cudaStream_t computeStream;
     private static cudaStream_t transferStream;
     
     private static boolean initialized = false;
+
+    /**
+     * Quick check whether CUDA/cuDNN/cuBLAS initialization succeeded or is
+     * available on this system. Returns true if initialization can be performed.
+     */
+    public static boolean isAvailable() {
+        try {
+            init();
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
 
     public static synchronized void init() {
         if (!initialized) {
@@ -111,6 +135,39 @@ public class CUDAOps {
                 
                 mulScalarFunction = new CUfunction();
                 cuModuleGetFunction(mulScalarFunction, module, "mul_scalar");
+                
+                reluBackwardFunction = new CUfunction();
+                cuModuleGetFunction(reluBackwardFunction, module, "relu_backward");
+                
+                leakyReluForwardFunction = new CUfunction();
+                cuModuleGetFunction(leakyReluForwardFunction, module, "leaky_relu_forward");
+                
+                leakyReluBackwardFunction = new CUfunction();
+                cuModuleGetFunction(leakyReluBackwardFunction, module, "leaky_relu_backward");
+                
+                sigmoidBackwardFunction = new CUfunction();
+                cuModuleGetFunction(sigmoidBackwardFunction, module, "sigmoid_backward");
+                
+                tanhBackwardFunction = new CUfunction();
+                cuModuleGetFunction(tanhBackwardFunction, module, "tanh_backward");
+                
+                bceForwardFunction = new CUfunction();
+                cuModuleGetFunction(bceForwardFunction, module, "bce_forward");
+                
+                bceBackwardFunction = new CUfunction();
+                cuModuleGetFunction(bceBackwardFunction, module, "bce_backward");
+                
+                bceLogitsForwardFunction = new CUfunction();
+                cuModuleGetFunction(bceLogitsForwardFunction, module, "bce_logits_forward");
+                
+                bceLogitsBackwardFunction = new CUfunction();
+                cuModuleGetFunction(bceLogitsBackwardFunction, module, "bce_logits_backward");
+                
+                expFunction = new CUfunction();
+                cuModuleGetFunction(expFunction, module, "exp_kernel");
+                
+                logFunction = new CUfunction();
+                cuModuleGetFunction(logFunction, module, "log_kernel");
             } catch (Exception e) {
                 System.err.println("Warning: Could not load custom PTX kernels. GPU element-wise operations may fail.");
                 e.printStackTrace();
@@ -712,6 +769,353 @@ public class CUDAOps {
         out.markDirtyOnGPU();
     }
 
+    public static void sigmoidForward(Tensor x, Tensor out) {
+        init();
+        int n = x.numel();
+        cudnnTensorDescriptor desc = new cudnnTensorDescriptor();
+        cudnnCreateTensorDescriptor(desc);
+        cudnnSetTensor4dDescriptor(desc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, n, 1, 1);
+        jcuda.jcudnn.cudnnActivationDescriptor actDesc = new jcuda.jcudnn.cudnnActivationDescriptor();
+        cudnnCreateActivationDescriptor(actDesc);
+        cudnnSetActivationDescriptor(actDesc, CUDNN_ACTIVATION_SIGMOID, CUDNN_PROPAGATE_NAN, 0.0);
+        Pointer pAlpha = Pointer.to(new float[]{1.0f});
+        Pointer pBeta = Pointer.to(new float[]{0.0f});
+        cudnnActivationForward(cudnnHandle, actDesc, pAlpha, desc, x.getDevicePointer(), pBeta, desc, out.getDevicePointer());
+        cudnnDestroyTensorDescriptor(desc);
+        cudnnDestroyActivationDescriptor(actDesc);
+        out.markDirtyOnGPU();
+    }
+
+    public static void tanhForward(Tensor x, Tensor out) {
+        init();
+        int n = x.numel();
+        cudnnTensorDescriptor desc = new cudnnTensorDescriptor();
+        cudnnCreateTensorDescriptor(desc);
+        cudnnSetTensor4dDescriptor(desc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, n, 1, 1);
+        jcuda.jcudnn.cudnnActivationDescriptor actDesc = new jcuda.jcudnn.cudnnActivationDescriptor();
+        cudnnCreateActivationDescriptor(actDesc);
+        cudnnSetActivationDescriptor(actDesc, CUDNN_ACTIVATION_TANH, CUDNN_PROPAGATE_NAN, 0.0);
+        Pointer pAlpha = Pointer.to(new float[]{1.0f});
+        Pointer pBeta = Pointer.to(new float[]{0.0f});
+        cudnnActivationForward(cudnnHandle, actDesc, pAlpha, desc, x.getDevicePointer(), pBeta, desc, out.getDevicePointer());
+        cudnnDestroyTensorDescriptor(desc);
+        cudnnDestroyActivationDescriptor(actDesc);
+        out.markDirtyOnGPU();
+    }
+
+    public static void reluBackward(Tensor x, Tensor dy, Tensor dx) {
+        init();
+        int n = x.numel();
+        // Fallback to CPU implementation if kernel not available
+        if (reluBackwardFunction == null) {
+            x.toCPU(); dy.toCPU(); dx.toCPU();
+            for (int i = 0; i < n; i++) {
+                dx.data[i] = (x.data[i] > 0f) ? dy.data[i] : 0f;
+            }
+            if (x.isGPU() || dy.isGPU()) dx.toGPU(); else dx.markDirtyOnCPU();
+            return;
+        }
+        Pointer px = Pointer.to(x.getDevicePointer());
+        Pointer pdy = Pointer.to(dy.getDevicePointer());
+        Pointer pdx = Pointer.to(dx.getDevicePointer());
+        Pointer pn = Pointer.to(new int[]{n});
+        Pointer kernelParameters = Pointer.to(px, pdy, pdx, pn);
+        int blockSizeX = 256;
+        int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
+        try {
+            cuLaunchKernel(reluBackwardFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kernelParameters, null);
+            dx.markDirtyOnGPU();
+        } catch (Throwable t) {
+            // Fallback to CPU implementation if GPU kernel fails at runtime
+            x.toCPU(); dy.toCPU(); dx.toCPU();
+            for (int i = 0; i < n; i++) {
+                dx.data[i] = (x.data[i] > 0f) ? dy.data[i] : 0f;
+            }
+            if (x.isGPU() || dy.isGPU()) dx.toGPU(); else dx.markDirtyOnCPU();
+        }
+    }
+
+    public static void leakyReluForward(Tensor x, Tensor out, float negativeSlope) {
+        init();
+        int n = x.numel();
+        if (leakyReluForwardFunction == null) {
+            x.toCPU(); out.toCPU();
+            for (int i = 0; i < n; i++) {
+                float v = x.data[i];
+                out.data[i] = (v > 0f) ? v : v * negativeSlope;
+            }
+            if (x.isGPU()) out.toGPU(); else out.markDirtyOnCPU();
+            return;
+        }
+        if (x != out) {
+            cudaMemcpy(out.getDevicePointer(), x.getDevicePointer(), (long) x.numel() * jcuda.Sizeof.FLOAT, cudaMemcpyDeviceToDevice);
+        }
+        Pointer pout = Pointer.to(out.getDevicePointer());
+        Pointer ps = Pointer.to(new float[]{negativeSlope});
+        Pointer pn = Pointer.to(new int[]{n});
+        Pointer kernelParameters = Pointer.to(pout, ps, pn);
+        int blockSizeX = 256;
+        int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
+        try {
+            cuLaunchKernel(leakyReluForwardFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kernelParameters, null);
+            out.markDirtyOnGPU();
+        } catch (Throwable t) {
+            x.toCPU(); out.toCPU();
+            for (int i = 0; i < n; i++) {
+                float v = x.data[i];
+                out.data[i] = (v > 0f) ? v : v * negativeSlope;
+            }
+            if (x.isGPU()) out.toGPU(); else out.markDirtyOnCPU();
+        }
+    }
+
+    public static void leakyReluBackward(Tensor x, Tensor dy, Tensor dx, float negativeSlope) {
+        init();
+        int n = x.numel();
+        if (leakyReluBackwardFunction == null) {
+            x.toCPU(); dy.toCPU(); dx.toCPU();
+            for (int i = 0; i < n; i++) {
+                dx.data[i] = (x.data[i] > 0f) ? dy.data[i] : dy.data[i] * negativeSlope;
+            }
+            if (x.isGPU() || dy.isGPU()) dx.toGPU(); else dx.markDirtyOnCPU();
+            return;
+        }
+        Pointer px = Pointer.to(x.getDevicePointer());
+        Pointer pdy = Pointer.to(dy.getDevicePointer());
+        Pointer pdx = Pointer.to(dx.getDevicePointer());
+        Pointer ps = Pointer.to(new float[]{negativeSlope});
+        Pointer pn = Pointer.to(new int[]{n});
+        Pointer kernelParameters = Pointer.to(px, pdy, pdx, ps, pn);
+        int blockSizeX = 256;
+        int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
+        try {
+            cuLaunchKernel(leakyReluBackwardFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kernelParameters, null);
+            dx.markDirtyOnGPU();
+        } catch (Throwable t) {
+            x.toCPU(); dy.toCPU(); dx.toCPU();
+            for (int i = 0; i < n; i++) {
+                dx.data[i] = (x.data[i] > 0f) ? dy.data[i] : dy.data[i] * negativeSlope;
+            }
+            if (x.isGPU() || dy.isGPU()) dx.toGPU(); else dx.markDirtyOnCPU();
+        }
+    }
+
+    public static void sigmoidBackward(Tensor y, Tensor dy, Tensor dx) {
+        init();
+        int n = y.numel();
+        if (sigmoidBackwardFunction == null) {
+            y.toCPU(); dy.toCPU(); dx.toCPU();
+            for (int i = 0; i < n; i++) {
+                dx.data[i] = dy.data[i] * y.data[i] * (1f - y.data[i]);
+            }
+            if (y.isGPU() || dy.isGPU()) dx.toGPU(); else dx.markDirtyOnCPU();
+            return;
+        }
+        Pointer py = Pointer.to(y.getDevicePointer());
+        Pointer pdy = Pointer.to(dy.getDevicePointer());
+        Pointer pdx = Pointer.to(dx.getDevicePointer());
+        Pointer pn = Pointer.to(new int[]{n});
+        Pointer kernelParameters = Pointer.to(py, pdy, pdx, pn);
+        int blockSizeX = 256;
+        int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
+        try {
+            cuLaunchKernel(sigmoidBackwardFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kernelParameters, null);
+            dx.markDirtyOnGPU();
+        } catch (Throwable t) {
+            y.toCPU(); dy.toCPU(); dx.toCPU();
+            for (int i = 0; i < n; i++) {
+                dx.data[i] = dy.data[i] * y.data[i] * (1f - y.data[i]);
+            }
+            if (y.isGPU() || dy.isGPU()) dx.toGPU(); else dx.markDirtyOnCPU();
+        }
+    }
+
+    public static void tanhBackward(Tensor y, Tensor dy, Tensor dx) {
+        init();
+        int n = y.numel();
+        if (tanhBackwardFunction == null) {
+            y.toCPU(); dy.toCPU(); dx.toCPU();
+            for (int i = 0; i < n; i++) {
+                dx.data[i] = dy.data[i] * (1f - y.data[i] * y.data[i]);
+            }
+            if (y.isGPU() || dy.isGPU()) dx.toGPU(); else dx.markDirtyOnCPU();
+            return;
+        }
+        Pointer py = Pointer.to(y.getDevicePointer());
+        Pointer pdy = Pointer.to(dy.getDevicePointer());
+        Pointer pdx = Pointer.to(dx.getDevicePointer());
+        Pointer pn = Pointer.to(new int[]{n});
+        Pointer kernelParameters = Pointer.to(py, pdy, pdx, pn);
+        int blockSizeX = 256;
+        int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
+        try {
+            cuLaunchKernel(tanhBackwardFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kernelParameters, null);
+            dx.markDirtyOnGPU();
+        } catch (Throwable t) {
+            y.toCPU(); dy.toCPU(); dx.toCPU();
+            for (int i = 0; i < n; i++) {
+                dx.data[i] = dy.data[i] * (1f - y.data[i] * y.data[i]);
+            }
+            if (y.isGPU() || dy.isGPU()) dx.toGPU(); else dx.markDirtyOnCPU();
+        }
+    }
+
+    public static void bceForward(Tensor input, Tensor target, Tensor out) {
+        init();
+        int n = input.numel();
+        if (bceForwardFunction == null) {
+            boolean wasGPU = input.isGPU() || target.isGPU();
+            input.toCPU(); target.toCPU(); out.toCPU();
+            for (int i = 0; i < n; i++) {
+                float h = Math.max(1e-12f, Math.min(1f - 1e-12f, input.data[i]));
+                float y = target.data[i];
+                out.data[i] = -(y * (float) Math.log(h) + (1f - y) * (float) Math.log(1f - h));
+            }
+            if (wasGPU) { input.toGPU(); target.toGPU(); out.toGPU(); } else { out.markDirtyOnCPU(); }
+            return;
+        }
+        Pointer pi = Pointer.to(input.getDevicePointer());
+        Pointer pt = Pointer.to(target.getDevicePointer());
+        Pointer pout = Pointer.to(out.getDevicePointer());
+        Pointer pn = Pointer.to(new int[]{n});
+        Pointer kernelParameters = Pointer.to(pi, pt, pout, pn);
+        int blockSizeX = 256;
+        int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
+        try {
+            cuLaunchKernel(bceForwardFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kernelParameters, null);
+            out.markDirtyOnGPU();
+        } catch (Throwable t) {
+            boolean wasGPU = input.isGPU() || target.isGPU();
+            input.toCPU(); target.toCPU(); out.toCPU();
+            for (int i = 0; i < n; i++) {
+                float h = Math.max(1e-12f, Math.min(1f - 1e-12f, input.data[i]));
+                float y = target.data[i];
+                out.data[i] = -(y * (float) Math.log(h) + (1f - y) * (float) Math.log(1f - h));
+            }
+            if (wasGPU) { input.toGPU(); target.toGPU(); out.toGPU(); } else { out.markDirtyOnCPU(); }
+        }
+    }
+
+    public static void bceBackward(Tensor input, Tensor target, Tensor dx) {
+        init();
+        int n = input.numel();
+        if (bceBackwardFunction == null) {
+            boolean wasGPU = input.isGPU() || target.isGPU();
+            input.toCPU(); target.toCPU(); dx.toCPU();
+            for (int i = 0; i < n; i++) {
+                float h = Math.max(1e-12f, Math.min(1f - 1e-12f, input.data[i]));
+                float y = target.data[i];
+                dx.data[i] = ((h - y) / (h * (1f - h) + 1e-12f));
+            }
+            if (wasGPU) { input.toGPU(); target.toGPU(); dx.toGPU(); } else { dx.markDirtyOnCPU(); }
+            return;
+        }
+        Pointer pi = Pointer.to(input.getDevicePointer());
+        Pointer pt = Pointer.to(target.getDevicePointer());
+        Pointer pdx = Pointer.to(dx.getDevicePointer());
+        Pointer pn = Pointer.to(new int[]{n});
+        Pointer kernelParameters = Pointer.to(pi, pt, pdx, pn);
+        int blockSizeX = 256;
+        int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
+        try {
+            cuLaunchKernel(bceBackwardFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kernelParameters, null);
+            dx.markDirtyOnGPU();
+        } catch (Throwable t) {
+            boolean wasGPU = input.isGPU() || target.isGPU();
+            input.toCPU(); target.toCPU(); dx.toCPU();
+            for (int i = 0; i < n; i++) {
+                float h = Math.max(1e-12f, Math.min(1f - 1e-12f, input.data[i]));
+                float y = target.data[i];
+                dx.data[i] = ((h - y) / (h * (1f - h) + 1e-12f));
+            }
+            if (wasGPU) { input.toGPU(); target.toGPU(); dx.toGPU(); } else { dx.markDirtyOnCPU(); }
+        }
+    }
+
+    public static void bceLogitsForward(Tensor input, Tensor target, Tensor out) {
+        init();
+        int n = input.numel();
+        if (bceLogitsForwardFunction == null) {
+            boolean wasGPU = input.isGPU() || target.isGPU();
+            input.toCPU(); target.toCPU(); out.toCPU();
+            for (int i = 0; i < n; i++) {
+                float x = input.data[i];
+                float y = target.data[i];
+                if (x > 0) {
+                    out.data[i] = x * (1 - y) + (float) Math.log(1 + Math.exp(-x));
+                } else {
+                    out.data[i] = -x * y + (float) Math.log(1 + Math.exp(x));
+                }
+            }
+            if (wasGPU) { input.toGPU(); target.toGPU(); out.toGPU(); } else { out.markDirtyOnCPU(); }
+            return;
+        }
+        Pointer pi = Pointer.to(input.getDevicePointer());
+        Pointer pt = Pointer.to(target.getDevicePointer());
+        Pointer pout = Pointer.to(out.getDevicePointer());
+        Pointer pn = Pointer.to(new int[]{n});
+        Pointer kernelParameters = Pointer.to(pi, pt, pout, pn);
+        int blockSizeX = 256;
+        int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
+        try {
+            cuLaunchKernel(bceLogitsForwardFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kernelParameters, null);
+            out.markDirtyOnGPU();
+        } catch (Throwable t) {
+            boolean wasGPU = input.isGPU() || target.isGPU();
+            input.toCPU(); target.toCPU(); out.toCPU();
+            for (int i = 0; i < n; i++) {
+                float x = input.data[i];
+                float y = target.data[i];
+                if (x > 0) {
+                    out.data[i] = x * (1 - y) + (float) Math.log(1 + Math.exp(-x));
+                } else {
+                    out.data[i] = -x * y + (float) Math.log(1 + Math.exp(x));
+                }
+            }
+            if (wasGPU) { input.toGPU(); target.toGPU(); out.toGPU(); } else { out.markDirtyOnCPU(); }
+        }
+    }
+
+    public static void bceLogitsBackward(Tensor input, Tensor target, Tensor dx) {
+        init();
+        int n = input.numel();
+        Pointer pi = Pointer.to(input.getDevicePointer());
+        Pointer pt = Pointer.to(target.getDevicePointer());
+        Pointer pdx = Pointer.to(dx.getDevicePointer());
+        Pointer pn = Pointer.to(new int[]{n});
+        Pointer kernelParameters = Pointer.to(pi, pt, pdx, pn);
+        int blockSizeX = 256;
+        int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
+        cuLaunchKernel(bceLogitsBackwardFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kernelParameters, null);
+        dx.markDirtyOnGPU();
+    }
+
+    public static void exp(Tensor a, Tensor out) {
+        init();
+        int n = a.numel();
+        Pointer pa = Pointer.to(a.getDevicePointer());
+        Pointer pout = Pointer.to(out.getDevicePointer());
+        Pointer pn = Pointer.to(new int[]{n});
+        Pointer kernelParameters = Pointer.to(pa, pout, pn);
+        int blockSizeX = 256;
+        int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
+        cuLaunchKernel(expFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kernelParameters, null);
+        out.markDirtyOnGPU();
+    }
+
+    public static void log(Tensor a, Tensor out) {
+        init();
+        int n = a.numel();
+        Pointer pa = Pointer.to(a.getDevicePointer());
+        Pointer pout = Pointer.to(out.getDevicePointer());
+        Pointer pn = Pointer.to(new int[]{n});
+        Pointer kernelParameters = Pointer.to(pa, pout, pn);
+        int blockSizeX = 256;
+        int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
+        cuLaunchKernel(logFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kernelParameters, null);
+        out.markDirtyOnGPU();
+    }
+
     /**
      * Transpose on GPU using cuBLAS sgeam
      * a: [m, n] -> out: [n, m]
@@ -776,6 +1180,51 @@ public class CUDAOps {
                            input.getDevicePointer().withByteOffset(srcByteOff),
                            (long) length * innerSize * 4, cudaMemcpyDeviceToDevice);
         }
+        out.markDirtyOnGPU();
+    }
+
+    public static void reduceSum(Tensor a, Tensor out) {
+        init();
+        int na = a.numel();
+        int nout = out.numel();
+        cudnnTensorDescriptor aDesc = new cudnnTensorDescriptor();
+        cudnnTensorDescriptor outDesc = new cudnnTensorDescriptor();
+        cudnnCreateTensorDescriptor(aDesc);
+        cudnnCreateTensorDescriptor(outDesc);
+        cudnnSetTensor4dDescriptor(aDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, na, 1, 1);
+        cudnnSetTensor4dDescriptor(outDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, nout, 1, 1);
+
+        cudnnReduceTensorDescriptor reduceDesc = new cudnnReduceTensorDescriptor();
+        cudnnCreateReduceTensorDescriptor(reduceDesc);
+        cudnnSetReduceTensorDescriptor(reduceDesc, 
+            jcuda.jcudnn.cudnnReduceTensorOp.CUDNN_REDUCE_TENSOR_ADD, 
+            CUDNN_DATA_FLOAT, 
+            CUDNN_PROPAGATE_NAN, 
+            jcuda.jcudnn.cudnnReduceTensorIndices.CUDNN_REDUCE_TENSOR_NO_INDICES, 
+            jcuda.jcudnn.cudnnIndicesType.CUDNN_32BIT_INDICES);
+
+        long[] workspaceSizeInBytes = {0};
+        cudnnGetReductionWorkspaceSize(cudnnHandle, reduceDesc, aDesc, outDesc, workspaceSizeInBytes);
+        Pointer workspace = new Pointer();
+        if (workspaceSizeInBytes[0] > 0) {
+            cudaMalloc(workspace, workspaceSizeInBytes[0]);
+        }
+
+        Pointer pAlpha = Pointer.to(new float[]{1.0f});
+        Pointer pBeta = Pointer.to(new float[]{0.0f});
+
+        cudnnReduceTensor(cudnnHandle, reduceDesc, 
+            null, 0, // Indices not used
+            workspace, workspaceSizeInBytes[0], 
+            pAlpha, aDesc, a.getDevicePointer(), 
+            pBeta, outDesc, out.getDevicePointer());
+
+        if (workspaceSizeInBytes[0] > 0) {
+            cudaFree(workspace);
+        }
+        cudnnDestroyTensorDescriptor(aDesc);
+        cudnnDestroyTensorDescriptor(outDesc);
+        cudnnDestroyReduceTensorDescriptor(reduceDesc);
         out.markDirtyOnGPU();
     }
 

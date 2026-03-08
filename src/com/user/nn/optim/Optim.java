@@ -29,13 +29,16 @@ public class Optim {
 
         /** Perform a single optimization step. */
         public abstract void step();
+
+        public abstract float getLearningRate();
+        public abstract void setLearningRate(float lr);
     }
 
     /**
      * Stochastic Gradient Descent (SGD) with optional momentum.
      */
     public static class SGD extends Optimizer {
-        private final float lr;
+        private float lr;
         private final float momentum;
 
         // Stores velocity for momentum per parameter
@@ -84,6 +87,12 @@ public class Optim {
                 t.markDirtyOnCPU();
             }
         }
+
+        @Override
+        public float getLearningRate() { return lr; }
+
+        @Override
+        public void setLearningRate(float lr) { this.lr = lr; }
     }
 
     /**
@@ -102,6 +111,11 @@ public class Optim {
         public Adam(List<NN.Parameter> params, float lr) {
             this(params, lr, 0.9f, 0.999f, 1e-8f);
         }
+
+            // Convenience constructor without eps (uses default eps)
+            public Adam(List<NN.Parameter> params, float lr, float beta1, float beta2) {
+                this(params, lr, beta1, beta2, 1e-8f);
+            }
 
         public Adam(List<NN.Parameter> params, float lr, float beta1, float beta2, float eps) {
             super(params);
@@ -146,5 +160,11 @@ public class Optim {
                 t.markDirtyOnCPU();
             }
         }
+
+        @Override
+        public float getLearningRate() { return lr; }
+
+        @Override
+        public void setLearningRate(float lr) { this.lr = lr; }
     }
 }

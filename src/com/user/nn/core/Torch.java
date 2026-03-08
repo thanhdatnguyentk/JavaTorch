@@ -513,7 +513,11 @@ public class Torch {
 
     // reductions
     public static float sum(Tensor a) {
-        a.toCPU();
+        if (a.isGPU()) {
+            Tensor out = new Tensor(1).toGPU();
+            CUDAOps.reduceSum(a, out);
+            return out.data[0];
+        }
         float s = 0f;
         for (float v : a.data)
             s += v;
@@ -522,6 +526,36 @@ public class Torch {
 
     public static float mean(Tensor a) {
         return sum(a) / a.numel();
+    }
+
+    public static Tensor sum_tensor(Tensor a) {
+        Tensor out = new Tensor(1);
+        if (a.isGPU()) {
+            out.toGPU();
+            CUDAOps.reduceSum(a, out);
+        } else {
+            float s = 0f;
+            for (float v : a.data) s += v;
+            out.data[0] = s;
+        }
+        if (is_grad_enabled() && a.requires_grad) {
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(a) {
+                public void apply(Tensor gradOutput) {
+                    // Gradient of sum is ones of shape a * gradOutput.item()
+                    Tensor ga = ones(a.shape);
+                    if (a.isGPU()) ga.toGPU();
+                    ga = mul(ga, gradOutput.item());
+                    a.backwardStep(ga);
+                }
+            };
+        }
+        return out;
+    }
+
+    public static Tensor mean_tensor(Tensor a) {
+        Tensor s = sum_tensor(a);
+        return mul(s, 1.0f / a.numel());
     }
 
     // --- Batch 3: Pooling and Padding ---
@@ -1319,11 +1353,14 @@ public class Torch {
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(a) {
                 public void apply(Tensor outGrad) {
-                    a.toCPU();
-                    outGrad.toCPU();
                     Tensor ga = new Tensor(a.shape);
-                    for (int i = 0; i < ga.data.length; i++) {
-                        ga.data[i] = a.data[i] > 0 ? outGrad.data[i] : 0f;
+                    if (a.isGPU()) {
+                        ga.toGPU();
+                        CUDAOps.reluBackward(a, outGrad, ga);
+                    } else {
+                        for (int i = 0; i < ga.data.length; i++) {
+                            ga.data[i] = a.data[i] > 0 ? outGrad.data[i] : 0f;
+                        }
                     }
                     a.backwardStep(ga);
                 }
@@ -1333,20 +1370,28 @@ public class Torch {
     }
 
     public static Tensor sigmoid(Tensor a) {
-        a.toCPU();
         Tensor out = new Tensor(a.shape);
-        for (int i = 0; i < a.data.length; i++)
-            out.data[i] = (float) (1.0 / (1.0 + Math.exp(-a.data[i])));
-        if (a.isGPU()) out.toGPU();
+        if (a.isGPU()) {
+            out.toGPU();
+            CUDAOps.sigmoidForward(a, out);
+        } else {
+            for (int i = 0; i < a.data.length; i++)
+                out.data[i] = (float) (1.0 / (1.0 + Math.exp(-a.data[i])));
+        }
 
         if (is_grad_enabled() && a.requires_grad) {
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(a) {
                 public void apply(Tensor outGrad) {
                     Tensor ga = new Tensor(a.shape);
-                    for (int i = 0; i < ga.data.length; i++) {
-                        float o = out.data[i]; // sigmoid output
-                        ga.data[i] = outGrad.data[i] * o * (1 - o);
+                    if (a.isGPU()) {
+                        ga.toGPU();
+                        CUDAOps.sigmoidBackward(out, outGrad, ga);
+                    } else {
+                        for (int i = 0; i < ga.data.length; i++) {
+                            float o = out.data[i]; // sigmoid output
+                            ga.data[i] = outGrad.data[i] * o * (1 - o);
+                        }
                     }
                     a.backwardStep(ga);
                 }
@@ -1356,20 +1401,60 @@ public class Torch {
     }
 
     public static Tensor tanh(Tensor a) {
-        a.toCPU();
         Tensor out = new Tensor(a.shape);
-        for (int i = 0; i < a.data.length; i++)
-            out.data[i] = (float) Math.tanh(a.data[i]);
-        if (a.isGPU()) out.toGPU();
+        if (a.isGPU()) {
+            out.toGPU();
+            CUDAOps.tanhForward(a, out);
+        } else {
+            for (int i = 0; i < a.data.length; i++)
+                out.data[i] = (float) Math.tanh(a.data[i]);
+        }
 
         if (is_grad_enabled() && a.requires_grad) {
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(a) {
                 public void apply(Tensor outGrad) {
                     Tensor ga = new Tensor(a.shape);
-                    for (int i = 0; i < ga.data.length; i++) {
-                        float o = out.data[i]; // tanh output
-                        ga.data[i] = outGrad.data[i] * (1 - o * o);
+                    if (a.isGPU()) {
+                        ga.toGPU();
+                        CUDAOps.tanhBackward(out, outGrad, ga);
+                    } else {
+                        for (int i = 0; i < ga.data.length; i++) {
+                            float o = out.data[i]; // tanh output
+                            ga.data[i] = outGrad.data[i] * (1 - o * o);
+                        }
+                    }
+                    a.backwardStep(ga);
+                }
+            };
+        }
+        return out;
+    }
+
+    public static Tensor leaky_relu(Tensor a, float negativeSlope) {
+        Tensor out = new Tensor(a.shape);
+        if (a.isGPU()) {
+            out.toGPU();
+            CUDAOps.leakyReluForward(a, out, negativeSlope);
+        } else {
+            for (int i = 0; i < a.data.length; i++) {
+                float v = a.data[i];
+                out.data[i] = v > 0 ? v : v * negativeSlope;
+            }
+        }
+
+        if (is_grad_enabled() && a.requires_grad) {
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(a) {
+                public void apply(Tensor outGrad) {
+                    Tensor ga = new Tensor(a.shape);
+                    if (a.isGPU()) {
+                        ga.toGPU();
+                        CUDAOps.leakyReluBackward(a, outGrad, ga, negativeSlope);
+                    } else {
+                        for (int i = 0; i < ga.data.length; i++) {
+                            ga.data[i] = (a.data[i] > 0 ? 1f : negativeSlope) * outGrad.data[i];
+                        }
                     }
                     a.backwardStep(ga);
                 }

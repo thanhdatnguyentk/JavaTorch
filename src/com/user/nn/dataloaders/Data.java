@@ -24,6 +24,29 @@ public class Data {
     }
 
     /**
+     * Simple in-memory dataset backed by a float[][] array where each row is a
+     * sample. Returns a single-tensor sample (e.g., image vector) by default.
+     */
+    public static class BaseDataset implements Dataset {
+        private final float[][] data;
+
+        public BaseDataset(float[][] data) {
+            this.data = data;
+        }
+
+        @Override
+        public int len() {
+            return data.length;
+        }
+
+        @Override
+        public Tensor[] get(int index) {
+            float[] row = data[index];
+            return new Tensor[]{ Torch.tensor(row, row.length) };
+        }
+    }
+
+    /**
      * A multithreaded data loader.
      * Yields batches of data, collated by stacking individual samples.
      */
@@ -213,6 +236,18 @@ public class Data {
                     result.add(t);
             }
             return result;
+        }
+    }
+
+    /**
+     * Small wrapper for batch data.
+     */
+    public static class Batch {
+        public Tensor images;
+        public Tensor labels;
+        public Batch(Tensor[] tensors) {
+            this.images = tensors[0];
+            if (tensors.length > 1) this.labels = tensors[1];
         }
     }
 }

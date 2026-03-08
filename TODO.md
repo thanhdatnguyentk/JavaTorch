@@ -50,6 +50,13 @@ Last updated: 2026-03-08
   - **Evaluator**: Centralized evaluation class using DataLoader.
 - ✅ **GPU Compatibility Audit**: Fully audited all mathematical and neural network operations for device-aware logic and automatic synchronization.
 - ✅ **GPU Conv2d Backward**: Full cuDNN implementation for BackwardData, BackwardFilter, and BackwardBias.
+- ✅ **Phase 4: Generative Models & Advanced GPU Ops (NEW ✅)**:
+- **GAN & VAE**: Full implementations with GPU-accelerated training loops.
+- **GPU Activations**: ReLU, LeakyReLU, Sigmoid, Tanh kernels (Forward/Backward).
+- **GPU BCE Loss**: Custom kernels for Binary Cross Entropy (logits and probs).
+- **Differentiable Reductions**: `sum_tensor` and `mean_tensor` with full GPU autograd.
+- **Serialization (Checkpoints)**: ✅ Implemented `model.save()` and `model.load()` using binary DataStreams.
+- **LR Schedulers**: ✅ Added `Scheduler` system with `StepLR`.
 
 ---
 
@@ -58,9 +65,9 @@ Last updated: 2026-03-08
 ### Nhóm 1: Mở rộng Kiến trúc (Architectural Expansion)
 1. **Transformer Blocks (HOÀN THÀNH ✅)**
 2. **Vision Transformer (ViT) (HOÀN THÀNH ✅)**
-3. **Generative Models (PHẦN TIẾP THEO 🔲)**:
-   - Triển khai **GAN** (Generative Adversarial Networks).
-   - **VAE** (Variational Autoencoders).
+3. **Generative Models (HOÀN THÀNH ✅)**:
+   - Triển khai **GAN** (Generative Adversarial Networks) trên MNIST.
+   - **VAE** (Variational Autoencoders) trên MNIST.
 
 ### Nhóm 2: Tối ưu hóa Hệ thống (System Optimization)
 1. **GPU MaxPool Backward**: Chuyển đổi pooling backward sang cuDNN.

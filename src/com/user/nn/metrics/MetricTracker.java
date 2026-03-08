@@ -22,7 +22,7 @@ public class MetricTracker {
 
     public float getAverage(String name) {
         int count = counts.getOrDefault(name, 0);
-        return count == 0 ? 0f : runningSums.get(name) / count;
+        return count == 0 ? 0f : runningSums.getOrDefault(name, 0f) / count;
     }
 
     public void reset() {

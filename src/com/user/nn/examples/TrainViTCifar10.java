@@ -2,6 +2,7 @@ package com.user.nn.examples;
 
 import com.user.nn.core.*;
 import com.user.nn.optim.*;
+import com.user.nn.optim.*;
 import com.user.nn.dataloaders.*;
 import com.user.nn.metrics.*;
 import com.user.nn.models.cv.ViT;
@@ -67,13 +68,32 @@ public class TrainViTCifar10 {
         };
 
         Data.DataLoader loader = new Data.DataLoader(trainDataset, batchSize, true, 4);
+        
+        // --- 1. Move Test Loader Out of Epoch Loop ---
+        Data.Dataset testDataset = new Data.Dataset() {
+            @Override
+            public int len() { return 2000; } // Only evaluate on subset for speed in example
+            @Override
+            public Tensor[] get(int index) {
+                Tensor x = Torch.tensor(testImages[index], 3, 32, 32);
+                Tensor y = Torch.tensor(new float[] { testLabels[index] }, 1);
+                return new Tensor[] { x, y };
+            }
+        };
+        Data.DataLoader testLoader = new Data.DataLoader(testDataset, 128, false, 2);
+        
         Accuracy accMetric = new Accuracy();
+        
+        // --- 4. Add Optimizer Scheduler ---
+        Scheduler.StepLR scheduler = new Scheduler.StepLR(optimizer, 5, 0.5f); // Half LR every 5 epochs
 
         System.out.println("Starting Training Loop...");
         for (int epoch = 0; epoch < epochs; epoch++) {
             float epochLoss = 0f;
             int numBatches = 0;
             accMetric.reset();
+            
+            // Ensure training mode
             model.train();
 
             long epochStart = System.currentTimeMillis();
@@ -97,8 +117,8 @@ public class TrainViTCifar10 {
                     accMetric.update(logits, batchLabels);
 
                     if (numBatches % 20 == 0) {
-                        System.out.printf("  [Epoch %d/%d] Batch %d/%d | Loss: %.4f | Acc: %.4f%n",
-                                epoch + 1, epochs, numBatches, N / batchSize, loss.data[0], accMetric.compute());
+                        System.out.printf("  [Epoch %d/%d] Batch %d/%d | Loss: %.4f | Acc: %.4f | LR: %.6f%n",
+                                epoch + 1, epochs, numBatches, N / batchSize, loss.data[0], accMetric.compute(), optimizer.getLearningRate());
                     }
                 }
             }
@@ -107,26 +127,24 @@ public class TrainViTCifar10 {
             float trainAcc = accMetric.compute();
             float avgLoss = epochLoss / numBatches;
             
-            // Evaluation
-            Data.Dataset testDataset = new Data.Dataset() {
-                @Override
-                public int len() { return 2000; } // Only evaluate on subset for speed in example
-                @Override
-                public Tensor[] get(int index) {
-                    Tensor x = Torch.tensor(testImages[index], 3, 32, 32);
-                    Tensor y = Torch.tensor(new float[] { testLabels[index] }, 1);
-                    return new Tensor[] { x, y };
-                }
-            };
-            Data.DataLoader testLoader = new Data.DataLoader(testDataset, 128, false, 2);
-            
+            // --- 2. Quản lý trạng thái Evaluator rõ ràng ---
+            model.eval(); // Explicit eval mode
             float testAcc = Evaluator.evaluate(model, testLoader, accMetric);
+            
             System.out.printf(">>> Epoch %d/%d | Loss: %.4f | Train Acc: %.4f | Test Acc: %.4f | Time: %dms%n",
                     epoch + 1, epochs, avgLoss, trainAcc, testAcc, (epochEnd - epochStart));
-                    
-            testLoader.shutdown();
+            
+            // Step Scheduler
+            scheduler.step();
         }
+        
         loader.shutdown();
+        testLoader.shutdown();
+        
+        // --- 3. Tích hợp Checkpointing (Model Saving) ---
+        System.out.println("Saving model...");
+        model.save("vit_cifar10.bin");
+        
         System.out.println("Training Complete!");
     }
 }

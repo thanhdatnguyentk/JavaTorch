@@ -38,8 +38,14 @@ public class MemoryScope implements AutoCloseable {
 
     @Override
     public void close() {
+        RuntimeException firstException = null;
         for (int i = trackedTensors.size() - 1; i >= 0; i--) {
-            trackedTensors.get(i).close();
+            try {
+                trackedTensors.get(i).close();
+            } catch (RuntimeException e) {
+                if (firstException == null) firstException = e;
+                else firstException.addSuppressed(e);
+            }
         }
         trackedTensors.clear();
         
@@ -49,5 +55,6 @@ public class MemoryScope implements AutoCloseable {
         }
         
         currentScope.set(parent);
+        if (firstException != null) throw firstException;
     }
 }

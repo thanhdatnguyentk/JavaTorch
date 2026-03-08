@@ -53,9 +53,13 @@ public class Cifar10Loader {
         File file = new File(DATA_DIR + "cifar-10-batches-bin/" + filename);
         try (BufferedInputStream bis = new BufferedInputStream(new FileInputStream(file))) {
             for (int i = 0; i < numImages; i++) {
-                labels[i] = bis.read();
+                int labelByte = bis.read();
+                if (labelByte == -1) throw new EOFException("Unexpected EOF at image " + i);
+                labels[i] = labelByte;
                 for (int j = 0; j < imageSize; j++) {
-                    images[i][j] = bis.read() / 255.0f;
+                    int pixelByte = bis.read();
+                    if (pixelByte == -1) throw new EOFException("Truncated image data at image " + i + ", pixel " + j);
+                    images[i][j] = pixelByte / 255.0f;
                 }
             }
         }

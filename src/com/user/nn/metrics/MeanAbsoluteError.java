@@ -11,7 +11,9 @@ public class MeanAbsoluteError implements Metric {
 
     @Override
     public void update(Tensor preds, Tensor targets) {
-        if (preds.data.length != targets.data.length) {
+        preds.toCPU();
+        targets.toCPU();
+        if (preds.numel() != targets.numel()) {
             throw new IllegalArgumentException("Predictions and targets must have same total elements.");
         }
         for (int i = 0; i < preds.data.length; i++) {

@@ -250,6 +250,55 @@ public class NN {
             return out;
         }
 
+        public void zero_grad() {
+            for (Parameter p : parameters()) {
+                p.getTensor().grad = null;
+            }
+        }
+
+        public void save(String path) throws IOException {
+            try (DataOutputStream dos = new DataOutputStream(new FileOutputStream(path))) {
+                List<Parameter> allParams = parameters();
+                dos.writeInt(allParams.size());
+                for (Parameter p : allParams) {
+                    Tensor t = p.getTensor();
+                    boolean wasGPU = t.isGPU();
+                    if (wasGPU) t.toCPU();
+                    dos.writeInt(t.shape.length);
+                    for (int s : t.shape) dos.writeInt(s);
+                    dos.writeInt(t.data.length);
+                    for (float v : t.data) dos.writeFloat(v);
+                    if (wasGPU) t.toGPU();
+                }
+            }
+        }
+
+        public void load(String path) throws IOException {
+            try (DataInputStream dis = new DataInputStream(new FileInputStream(path))) {
+                List<Parameter> allParams = parameters();
+                int count = dis.readInt();
+                if (count != allParams.size()) {
+                    throw new IOException("Parameter count mismatch: file has " + count + ", model has " + allParams.size());
+                }
+                for (Parameter p : allParams) {
+                    int dims = dis.readInt();
+                    int[] shape = new int[dims];
+                    for (int i = 0; i < dims; i++) shape[i] = dis.readInt();
+                    int dataLen = dis.readInt();
+                    float[] data = new float[dataLen];
+                    for (int i = 0; i < dataLen; i++) data[i] = dis.readFloat();
+                    
+                    Tensor t = p.getTensor();
+                    if (t.data.length != dataLen) {
+                        throw new IOException("Parameter data length mismatch");
+                    }
+                    System.arraycopy(data, 0, t.data, 0, dataLen);
+                    t.markDirtyOnCPU();
+                    if (t.isGPU()) t.toGPU();
+                }
+            }
+        }
+
         public long countParameters() {
             long total = 0;
             for (Parameter p : parameters()) {
@@ -295,6 +344,12 @@ public class NN {
         private final List<Module> list = new ArrayList<>();
 
         public Sequential() {
+        }
+
+        public Sequential(Module... modules) {
+            for (Module m : modules) {
+                add(m);
+            }
         }
 
         public void add(Module m) {
@@ -640,30 +695,9 @@ public class NN {
 
         /** Autograd-aware MSE loss returning scalar Tensor. */
         public static Tensor mse_loss_tensor(Tensor pred, Tensor target) {
-            pred.toCPU();
-            target.toCPU();
-            int n = pred.numel();
-            Tensor out = new Tensor(1);
-            float sum = 0f;
-            for (int i = 0; i < n; i++) {
-                float d = pred.data[i] - target.data[i];
-                sum += d * d;
-            }
-            out.data[0] = sum / n;
-            if (pred.requires_grad) {
-                out.requires_grad = true;
-                out.grad_fn = new Tensor.GradFn(pred) {
-                    public void apply(Tensor outGrad) {
-                        Tensor g = new Tensor(pred.shape);
-                        float scale = 2f * outGrad.data[0] / n;
-                        for (int i = 0; i < n; i++) {
-                            g.data[i] = (pred.data[i] - target.data[i]) * scale;
-                        }
-                        pred.backwardStep(g);
-                    }
-                };
-            }
-            return out;
+            Tensor diff = Torch.sub(pred, target);
+            Tensor sq = Torch.mul(diff, diff);
+            return Torch.mean_tensor(sq);
         }
 
         /** Huber loss (smooth L1). Quadratic for |error|<delta, linear otherwise. */
@@ -726,10 +760,42 @@ public class NN {
             return out;
         }
 
-        /** Binary Cross Entropy Loss. Input (probs) and target should be same shape. */
         public static Tensor binary_cross_entropy(Tensor input, Tensor target) {
             int n = input.data.length;
-            Tensor out = new Tensor(1);
+                Tensor out = new Tensor(1);
+                if (input.isGPU() && target.isGPU()) {
+                    out = new Tensor(1).toGPU();
+                    Tensor bceOut = new Tensor(input.shape).toGPU();
+                    CUDAOps.bceForward(input, target, bceOut);
+                    // sum and place result into out tensor
+                    bceOut.toCPU();
+                    float total = 0f;
+                    for (int i = 0; i < n; i++) total += bceOut.data[i];
+                    out.toCPU();
+                    out.data[0] = total / n;
+                    out.toGPU();
+                    if (input.requires_grad) {
+                        out.requires_grad = true;
+                        out.grad_fn = new Tensor.GradFn(input) {
+                            public void apply(Tensor outGrad) {
+                                outGrad.toCPU();
+                                float scale = outGrad.data[0] / n;
+                                input.toCPU(); target.toCPU();
+                                Tensor g = new Tensor(input.shape);
+                                for (int i = 0; i < n; i++) {
+                                    float h = Math.max(1e-12f, Math.min(1f - 1e-12f, input.data[i]));
+                                    float y = target.data[i];
+                                    g.data[i] = ((h - y) / (h * (1f - h) + 1e-12f)) * scale;
+                                }
+                                input.toGPU(); target.toGPU(); g.toGPU();
+                                input.backwardStep(g);
+                            }
+                        };
+                    }
+                    return out;
+                }
+            input.toCPU();
+            target.toCPU();
             float total = 0f;
             for (int i = 0; i < n; i++) {
                 float h = input.data[i];
@@ -756,10 +822,34 @@ public class NN {
             return out;
         }
 
-        /** BCE With Logits Loss (combined sigmoid + BCELoss for stability). */
         public static Tensor binary_cross_entropy_with_logits(Tensor input, Tensor target) {
             int n = input.data.length;
             Tensor out = new Tensor(1);
+            if (input.isGPU() && target.isGPU()) {
+                out = new Tensor(1).toGPU();
+                Tensor bceOut = new Tensor(input.shape).toGPU();
+                CUDAOps.bceLogitsForward(input, target, bceOut);
+                Tensor s = Torch.sum_tensor(bceOut);
+                float val = s.toCPU().data[0] / n;
+                out.toCPU();
+                out.data[0] = val;
+                out.markDirtyOnGPU();
+                if (input.requires_grad) {
+                    out.requires_grad = true;
+                    out.grad_fn = new Tensor.GradFn(input) {
+                        public void apply(Tensor outGrad) {
+                            float scale = outGrad.data[0] / n;
+                            Tensor gx = new Tensor(input.shape).toGPU();
+                            CUDAOps.bceLogitsBackward(input, target, gx);
+                            CUDAOps.mul(gx, scale, gx);
+                            input.backwardStep(gx);
+                        }
+                    };
+                }
+                return out;
+            }
+            input.toCPU();
+            target.toCPU();
             float total = 0f;
             for (int i = 0; i < n; i++) {
                 float x = input.data[i];
@@ -906,26 +996,7 @@ public class NN {
 
         @Override
         public Tensor forward(Tensor x) {
-            x.toCPU();
-            Tensor out = new Tensor(x.shape);
-            for (int i = 0; i < x.data.length; i++) {
-                float v = x.data[i];
-                out.data[i] = v > 0 ? v : negativeSlope * v;
-            }
-            if (x.isGPU()) out.toGPU();
-            if (Torch.is_grad_enabled() && x.requires_grad) {
-                out.requires_grad = true;
-                out.grad_fn = new Tensor.GradFn(x) {
-                    public void apply(Tensor outGrad) {
-                        Tensor gx = new Tensor(x.shape);
-                        for (int i = 0; i < gx.data.length; i++) {
-                            gx.data[i] = (x.data[i] > 0 ? 1f : negativeSlope) * outGrad.data[i];
-                        }
-                        x.backwardStep(gx);
-                    }
-                };
-            }
-            return out;
+            return Torch.leaky_relu(x, negativeSlope);
         }
     }
 
