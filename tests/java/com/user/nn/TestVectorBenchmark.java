@@ -1,4 +1,4 @@
-package com.user.nn.examples;
+package com.user.nn;
 
 import com.user.nn.core.*;
 

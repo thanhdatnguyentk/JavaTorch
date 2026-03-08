@@ -167,7 +167,7 @@ tests/
 - Learning rate schedulers
 - JUnit integration
 
-## Test Suite (37 tests)
+## Test Suite (40 tests)
 
 | Test | Coverage |
 |------|----------|
@@ -199,10 +199,13 @@ tests/
 | TestRNN | RNN/LSTM Forward + Backpropagation Through Time |
 | TestAutogradEmbedding | Embedding layer autograd |
 | TestDropout | Training/Eval configurations and Dropout |
+| TestViT | **Vision Transformer (ViT)** Functional Verification on GPU |
+| TestVectorBenchmark | **SIMD (AVX2/512)** Matmul Benchmark |
 | TestBatch1 | Combined batch 1 tests |
 | TestBatch2 | Combined batch 2 tests |
 | TestBatch3 | Combined batch 3 tests |
 | TestBatch4 | Combined batch 4 tests |
+| TestGPUBenchmark | Full GPU pipeline benchmark |
 
 ---
 

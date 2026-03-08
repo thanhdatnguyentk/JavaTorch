@@ -75,7 +75,9 @@ public class TestConvPool {
         // Convert back to Mat for comparison
         NN.Mat jOut = new NN.Mat();
         jOut.rows = tout.shape[0];
-        jOut.cols = tout.shape[1];
+        int cSize = 1;
+        for (int i = 1; i < tout.shape.length; i++) cSize *= tout.shape[i];
+        jOut.cols = cSize;
         jOut.es = new float[jOut.rows * jOut.cols];
         System.arraycopy(tout.data, 0, jOut.es, 0, jOut.es.length);
 
@@ -111,8 +113,10 @@ public class TestConvPool {
         // check shape
         int outH = (inH + 2 * 0 - 2) / 2 + 1;
         int outW = (inW + 2 * 0 - 2) / 2 + 1;
-        if (pOut.shape[1] != inC * outH * outW) {
-            System.err.println("MaxPool shape mismatch");
+        int pCSize = 1;
+        for (int i = 1; i < pOut.shape.length; i++) pCSize *= pOut.shape[i];
+        if (pCSize != inC * outH * outW) {
+            System.err.println("MaxPool shape mismatch: " + pCSize + " vs " + (inC * outH * outW));
             System.exit(9);
         }
 

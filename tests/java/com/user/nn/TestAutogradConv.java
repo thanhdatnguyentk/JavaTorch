@@ -40,10 +40,12 @@ public class TestAutogradConv {
             x.requires_grad = true;
 
             Tensor out = conv.forward(x);
-            int outH = (inH - kh) / 1 + 1; // 2
-            int outW = (inW - kw) / 1 + 1; // 2
+            int outH = (inH + 2 * 0 - kh) / 1 + 1; // 2
+            int outW = (inW + 2 * 0 - kw) / 1 + 1; // 2
             check(out.shape[0] == 1, "Conv2d batch size");
-            check(out.shape[1] == outC * outH * outW, "Conv2d output size");
+            int outSize = 1;
+            for (int i = 1; i < out.shape.length; i++) outSize *= out.shape[i];
+            check(outSize == outC * outH * outW, "Conv2d output size");
 
             Tensor loss = Torch.sumTensor(out);
             loss.backward();
@@ -83,7 +85,9 @@ public class TestAutogradConv {
 
             Tensor out = pool.forward(x);
             int outH = 2, outW = 2;
-            check(out.shape[1] == inC * outH * outW, "MaxPool output size");
+            int outSize = 1;
+            for (int i = 1; i < out.shape.length; i++) outSize *= out.shape[i];
+            check(outSize == inC * outH * outW, "MaxPool output size");
 
             Tensor loss = Torch.sumTensor(out);
             loss.backward();
@@ -118,7 +122,9 @@ public class TestAutogradConv {
 
             Tensor out = pool.forward(x);
             int outH = 2, outW = 2;
-            check(out.shape[1] == inC * outH * outW, "AvgPool output size");
+            int outSize = 1;
+            for (int i = 1; i < out.shape.length; i++) outSize *= out.shape[i];
+            check(outSize == inC * outH * outW, "AvgPool output size");
             // All inputs are 1, kernel=2x2, so avg=1.0
             for (int i = 0; i < out.data.length; i++) {
                 check(Math.abs(out.data[i] - 1.0f) < 1e-5f, "AvgPool out[" + i + "]");
@@ -152,7 +158,9 @@ public class TestAutogradConv {
 
             Tensor out = pad.forward(x);
             int outH = 4, outW = 4;
-            check(out.shape[1] == inC * outH * outW, "ZeroPad output size");
+            int outSize = 1;
+            for (int i = 1; i < out.shape.length; i++) outSize *= out.shape[i];
+            check(outSize == inC * outH * outW, "ZeroPad output size");
             // Check padded values are 0 and inner values are correct
             check(out.data[0] == 0f, "ZeroPad corner is 0");
             check(out.data[5] == 1f, "ZeroPad inner (1,1) = 1");
@@ -189,10 +197,14 @@ public class TestAutogradConv {
             x.requires_grad = true;
 
             Tensor out = deconv.forward(x);
-            // outH = (2-1)*2 - 0 + 3 + 1 = 6, outW = 6
+            // outH = (2-1)*2 - 0 + 3 + 1 = 6, outW = 6 -> Wait, stride=2, k=3, pad=0, opad=1
+            // Pytorch: (2-1)*2 - 2*0 + 3 + 1 = 2-2+3+1 = 6? No, (L-1)*S - 2*P + K + OP
+            // (2-1)*2 - 0 + 3 + 1 = 6. Correct.
             int outH = 6, outW = 6;
             check(out.shape[0] == 1, "ConvTranspose2d batch size");
-            check(out.shape[1] == outC * outH * outW, "ConvTranspose2d output size = " + out.shape[1]);
+            int outSize = 1;
+            for (int i = 1; i < out.shape.length; i++) outSize *= out.shape[i];
+            check(outSize == outC * outH * outW, "ConvTranspose2d output size = " + outSize);
 
             Tensor loss = Torch.sumTensor(out);
             loss.backward();
