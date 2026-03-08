@@ -198,6 +198,11 @@ public class NN {
             }
         }
 
+        public void to(Tensor.Device device) {
+            if (device == Tensor.Device.GPU) toGPU();
+            else toCPU();
+        }
+
         public void toGPU() {
             for (Parameter p : params.values()) {
                 p.toGPU();
@@ -2294,77 +2299,81 @@ public class NN {
         @Override
         public Tensor forward(Tensor x) {
             x.toCPU();
-            // x: [batch, normalizedSize]
-            int batch = x.shape[0];
-            int D = normalizedSize;
-            Tensor gamma = this.weight.getTensor();
+            final int[] originalShape = x.shape;
+            final int D = normalizedSize;
+            final int numel = x.numel();
+            final int outer = numel / D;
+            final float fEps = eps;
+            
+            final Tensor gamma = this.weight.getTensor();
             gamma.toCPU();
-            Tensor beta = this.bias.getTensor();
+            final Tensor beta = this.bias.getTensor();
             beta.toCPU();
- 
-            float[] means = new float[batch];
-            float[] vars = new float[batch];
-            Tensor out = new Tensor(batch, D);
-            if (x.isGPU()) out.toGPU();
 
-            for (int b = 0; b < batch; b++) {
+            final float[] means = new float[outer];
+            final float[] vars = new float[outer];
+            Tensor out = new Tensor(originalShape);
+
+            for (int i = 0; i < outer; i++) {
                 float sum = 0f;
                 for (int d = 0; d < D; d++)
-                    sum += x.data[b * D + d];
-                means[b] = sum / D;
+                    sum += x.data[i * D + d];
+                means[i] = sum / D;
                 float vsum = 0f;
                 for (int d = 0; d < D; d++) {
-                    float diff = x.data[b * D + d] - means[b];
+                    float diff = x.data[i * D + d] - means[i];
                     vsum += diff * diff;
                 }
-                vars[b] = vsum / D;
-                float invStd = 1f / (float) Math.sqrt(vars[b] + eps);
+                vars[i] = vsum / D;
+                float invStd = 1f / (float) Math.sqrt(vars[i] + fEps);
                 for (int d = 0; d < D; d++) {
-                    float norm = (x.data[b * D + d] - means[b]) * invStd;
-                    out.data[b * D + d] = gamma.data[d] * norm + beta.data[d];
+                    float norm = (x.data[i * D + d] - means[i]) * invStd;
+                    out.data[i * D + d] = gamma.data[d] * norm + beta.data[d];
                 }
             }
+            if (x.isGPU()) out.toGPU();
 
             if (Torch.is_grad_enabled() && (x.requires_grad || gamma.requires_grad || beta.requires_grad)) {
                 out.requires_grad = true;
                 out.grad_fn = new Tensor.GradFn(x, weight.getTensor(), bias.getTensor()) {
                     public void apply(Tensor outGrad) {
+                        outGrad.toCPU(); x.toCPU();
                         if (beta.requires_grad) {
                             Tensor gb = new Tensor(beta.shape);
-                            for (int b = 0; b < batch; b++)
+                            for (int i = 0; i < outer; i++)
                                 for (int d = 0; d < D; d++)
-                                    gb.data[d] += outGrad.data[b * D + d];
+                                    gb.data[d] += outGrad.data[i * D + d];
                             beta.backwardStep(gb);
                         }
                         if (gamma.requires_grad) {
                             Tensor gg = new Tensor(gamma.shape);
-                            for (int b = 0; b < batch; b++) {
-                                float invStd = 1f / (float) Math.sqrt(vars[b] + eps);
+                            for (int i = 0; i < outer; i++) {
+                                float invStd = 1f / (float) Math.sqrt(vars[i] + fEps);
                                 for (int d = 0; d < D; d++) {
-                                    float norm = (x.data[b * D + d] - means[b]) * invStd;
-                                    gg.data[d] += outGrad.data[b * D + d] * norm;
+                                    float norm = (x.data[i * D + d] - means[i]) * invStd;
+                                    gg.data[d] += outGrad.data[i * D + d] * norm;
                                 }
                             }
                             gamma.backwardStep(gg);
                         }
                         if (x.requires_grad) {
                             Tensor gx = new Tensor(x.shape);
-                            for (int b = 0; b < batch; b++) {
-                                float invStd = 1f / (float) Math.sqrt(vars[b] + eps);
+                            for (int i = 0; i < outer; i++) {
+                                float invStd = 1f / (float) Math.sqrt(vars[i] + fEps);
                                 // dxhat = outGrad * gamma
                                 float[] dxhat = new float[D];
                                 for (int d = 0; d < D; d++)
-                                    dxhat[d] = outGrad.data[b * D + d] * gamma.data[d];
+                                    dxhat[d] = outGrad.data[i * D + d] * gamma.data[d];
                                 // compute sum(dxhat) and sum(dxhat * xhat)
                                 float sumDxhat = 0f, sumDxhatXhat = 0f;
                                 for (int d = 0; d < D; d++) {
-                                    float xhat = (x.data[b * D + d] - means[b]) * invStd;
+                                    float xhat = (x.data[i * D + d] - means[i]) * invStd;
                                     sumDxhat += dxhat[d];
                                     sumDxhatXhat += dxhat[d] * xhat;
                                 }
                                 for (int d = 0; d < D; d++) {
-                                    float xhat = (x.data[b * D + d] - means[b]) * invStd;
-                                    gx.data[b * D + d] = invStd / D * (D * dxhat[d] - sumDxhat - xhat * sumDxhatXhat);
+                                    float xhat = (x.data[i * D + d] - means[i]) * invStd;
+                                    gx.data[i * D + d] = invStd / D * (D * dxhat[d] - sumDxhat - xhat * sumDxhatXhat);
                                 }
                             }
                             x.backwardStep(gx);
@@ -2737,6 +2746,116 @@ public class NN {
                 outputs.add(h);
             }
             return Torch.stack(outputs, batchFirst ? 1 : 0);
+        }
+    }
+
+    // --- MultiheadAttention ---
+    public static class MultiheadAttention extends Module {
+        public int embedDim;
+        public int numHeads;
+        public int headDim;
+        public Linear q_proj;
+        public Linear k_proj;
+        public Linear v_proj;
+        public Linear out_proj;
+        public float dropout;
+
+        public MultiheadAttention(NN outer, int embedDim, int numHeads) {
+            this(outer, embedDim, numHeads, 0.0f);
+        }
+
+        public MultiheadAttention(NN outer, int embedDim, int numHeads, float dropout) {
+            this.embedDim = embedDim;
+            this.numHeads = numHeads;
+            this.headDim = embedDim / numHeads;
+            this.dropout = dropout;
+            if (headDim * numHeads != embedDim)
+                throw new IllegalArgumentException("embedDim must be divisible by numHeads");
+
+            this.q_proj = new Linear(outer, embedDim, embedDim, true);
+            this.k_proj = new Linear(outer, embedDim, embedDim, true);
+            this.v_proj = new Linear(outer, embedDim, embedDim, true);
+            this.out_proj = new Linear(outer, embedDim, embedDim, true);
+            addModule("q_proj", q_proj);
+            addModule("k_proj", k_proj);
+            addModule("v_proj", v_proj);
+            addModule("out_proj", out_proj);
+        }
+
+        @Override public Tensor forward(Tensor x) {
+            return forward(x, x, x, null);
+        }
+
+        public Tensor forward(Tensor query, Tensor key, Tensor value, Tensor mask) {
+            int n = query.shape[0]; 
+            int l = query.shape[1]; 
+            
+            // 1. Projects
+            Tensor q = q_proj.forward(query); 
+            Tensor k = k_proj.forward(key);   
+            Tensor v = v_proj.forward(value); 
+            
+            // 2. Reshape & Transpose -> [N, numHeads, L, headDim]
+            q = Torch.transpose(q.reshape(n, l, numHeads, headDim), 1, 2);
+            k = Torch.transpose(k.reshape(n, key.shape[1], numHeads, headDim), 1, 2);
+            v = Torch.transpose(v.reshape(n, value.shape[1], numHeads, headDim), 1, 2);
+            
+            // Flat heads into batch for BMM: [N*numHeads, L, headDim]
+            q = q.reshape(n * numHeads, l, headDim);
+            k = k.reshape(n * numHeads, key.shape[1], headDim);
+            v = v.reshape(n * numHeads, value.shape[1], headDim);
+            
+            // 3. Attention = softmax( (q @ k.T) / sqrt(d_k) ) @ v
+            Tensor kt = Torch.transpose(k, 1, 2); 
+            Tensor attn = Torch.bmm(q, kt); 
+            attn = Torch.div(attn, (float)Math.sqrt(headDim));
+            
+            if (mask != null) attn = Torch.add(attn, mask);
+            
+            attn = Torch.softmax(attn, -1);
+            
+            Tensor out = Torch.bmm(attn, v); 
+            
+            // 4. Concat heads & Project back
+            out = Torch.transpose(out.reshape(n, numHeads, l, headDim), 1, 2); 
+            out = out.reshape(n, l, embedDim);
+            
+            return out_proj.forward(out);
+        }
+    }
+
+    // --- TransformerEncoderLayer ---
+    public static class TransformerEncoderLayer extends Module {
+        public MultiheadAttention self_attn;
+        public Linear linear1, linear2;
+        public LayerNorm norm1, norm2;
+        public float dropoutP;
+
+        public TransformerEncoderLayer(NN outer, int d_model, int nhead, int dim_feedforward, float dropout) {
+            this.self_attn = new MultiheadAttention(outer, d_model, nhead, dropout);
+            this.linear1 = new Linear(outer, d_model, dim_feedforward, true);
+            this.linear2 = new Linear(outer, dim_feedforward, d_model, true);
+            this.norm1 = new LayerNorm(outer, d_model);
+            this.norm2 = new LayerNorm(outer, d_model);
+            this.dropoutP = dropout;
+            addModule("self_attn", self_attn);
+            addModule("linear1", linear1);
+            addModule("linear2", linear2);
+            addModule("norm1", norm1);
+            addModule("norm2", norm2);
+        }
+
+        @Override public Tensor forward(Tensor x) {
+            // Self-attention (Pre-norm)
+            Tensor x1 = norm1.forward(x);
+            Tensor attn_out = self_attn.forward(x1);
+            x = Torch.add(x, attn_out);
+
+            // Feed Forward (Pre-norm)
+            Tensor x2 = norm2.forward(x);
+            Tensor mlp_out = linear2.forward(Torch.relu(linear1.forward(x2)));
+            x = Torch.add(x, mlp_out);
+            return x;
         }
     }
 }

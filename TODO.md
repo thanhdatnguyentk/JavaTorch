@@ -19,12 +19,18 @@ Last updated: 2026-03-08
   - `DataLoader` with Multi-worker threading.
   - Java Vector API (SIMD) integration (AVX2/AVX-512).
   - **GPU Acceleration**: ✅ JCuda + JCublas + JCudnn (Conv2d, MaxPool2d, ReLU).
-- **Phase 14: GPU Zero-Overhead Pipeline (NEW ✅)**:
+- ✅ **Phase 14: GPU Zero-Overhead Pipeline (NEW ✅)**:
   - **Kernel Fusion**: `Conv2d + Bias + ReLU` single-call execution.
   - **CUDA Streams**: Asynchronous Compute/Transfer pipelining.
   - **Arena Memory Pool**: `GpuMemoryPool` with auto-parameter detection.
   - **Custom PTX**: Native GPU kernels for Add/Sub/Mul (0 CPU Fallback).
   - **MemoryScope**: Automated ephemeral memory tracking and reset.
+- **Phase 16: Transformers & Vision Transformer (ViT) (NEW ✅)**:
+  - **MultiheadAttention**: Full implementation with batched matrix multiplication (`bmm`).
+  - **TransformerEncoderLayer**: Pre-norm architecture with LayerNorm and FeedForward.
+  - **ViT (Vision Transformer)**: Complete architecture with patch embedding, learnable tokens, and positional embeddings.
+  - **ND Transpose & Expand**: Generalized tensor operations to support Transformer rank-4 shapes.
+  - **Robust reduceSumToShape**: Fixed broadcasting bugs in the autograd engine.
 - **Model Training Features**:
   - `model.train()` and `model.eval()` module states.
   - `NN.Dropout(p)` with inverted dropout scaling capability.
@@ -33,6 +39,7 @@ Last updated: 2026-03-08
   - `TrainFashionMNIST.java`
   - `TrainCifar10.java`
   - **`TrainSentiment.java`** (Real movie review dataset using LSTM)
+  - **`TestViT.java`** (Functional verification of ViT on GPU)
 - Comprehensive test suite (40 tests) including `TestBatch4`, `TestDropout`, and full GPU compatibility verification.
 - ✅ **Phase 15: Computer Vision Deepening (NEW ✅)**:
   - **Tensor.cat & Tensor.narrow**: Fully implemented with Autograd and GPU acceleration.
@@ -41,35 +48,25 @@ Last updated: 2026-03-08
   - **Global Avg Pooling**: `adaptive_avg_pool2d` implemented in `NN.F`.
   - **Evaluator**: Centralized evaluation class using DataLoader.
 - ✅ **GPU Compatibility Audit**: Fully audited all mathematical and neural network operations for device-aware logic and automatic synchronization.
+- ✅ **GPU Conv2d Backward**: Full cuDNN implementation for BackwardData, BackwardFilter, and BackwardBias.
 
 ---
 
 ## Roadmap: Next Priorities
 
 ### Nhóm 1: Mở rộng Kiến trúc (Architectural Expansion)
-1. **RNN & LSTM (HOÀN THÀNH ✅)**
-2. **Vision Models (HOÀN THÀNH ✅)**: VGG, ResNet.
-3. **Transformer Blocks (PHẦN TIẾP THEO 🔲)**
-   - Triển khai `MultiheadAttention`.
-   - Nâng cấp `Softmax` hỗ trợ `dim`.
-   - `TransformerEncoderLayer`.
+1. **Transformer Blocks (HOÀN THÀNH ✅)**
+2. **Vision Transformer (ViT) (HOÀN THÀNH ✅)**
+3. **Generative Models (PHẦN TIẾP THEO 🔲)**:
+   - Triển khai **GAN** (Generative Adversarial Networks).
+   - **VAE** (Variational Autoencoders).
 
-### Nhóm 2: Tối ưu hóa Hệ thống (System Optimization) (HOÀN THÀNH ✅)
-1. **DataLoader & Dataset API (HOÀN THÀNH ✅)**
-2. **Vectorization (SIMD) (HOÀN THÀNH ✅)**
-3. **GPU & cuDNN Optimization (HOÀN THÀNH ✅)**
-   - ✅ **Phase 14**: Kernel Fusion, CUDA Streams, Arena Memory Pool, và Custom PTX Kernels.
-   - ✅ **GPU Compatibility Audit**: Tự động đồng bộ hóa và nhận diện thiết bị.
-   - ✅ **Phase 15 (Backward)**: Đã chuyển đổi Conv2d Backward sang cuDNN (BackwardData, BackwardFilter, BackwardBias).
-
-### Nhóm 3: PHẦN TIẾP THEO 🔲
-1. **Transformer Blocks**:
-   - Triển khai `MultiheadAttention`.
-   - Nâng cấp `Softmax` hỗ trợ `dim`.
-   - `TransformerEncoderLayer`.
-2. **GPU MaxPool Backward**: Chuyển đổi pooling backward sang cuDNN.
+### Nhóm 2: Tối ưu hóa Hệ thống (System Optimization)
+1. **GPU MaxPool Backward**: Chuyển đổi pooling backward sang cuDNN.
+2. **GPU Transpose (ND)**: Implement ND transpose kernel to avoid CPU synchronization for 3D/4D tensors.
+3. **Automated Mixed Precision (AMP)**: Support FP16 training to save VRAM and increase speed on Tensor Cores.
 
 ---
 **Steps to Begin:**
-- Xây dựng **Transformer**: Cập nhật Softmax-dim và MultiheadAttention.
-- Nâng cấp GPU: Chuyển đổi các hàm Backward (Grad) sang cuDNN.
+- Xây dựng **Generative Models**: Bắt đầu với GAN trên MNIST.
+- Nâng cấp GPU: Tiếp tục chuyển đổi các hàm Backward còn lại sang cuDNN.

@@ -288,6 +288,42 @@ public class CUDAOps {
         
         out.markDirtyOnGPU();
     }
+
+    /**
+     * Batched matrix multiplication: out = a @ b
+     * a: [B, m, k], b: [B, k, n] -> out: [B, m, n]
+     */
+    public static void bmm(Tensor a, Tensor b, Tensor out) {
+        init();
+        if (a.dim() != 3 || b.dim() != 3) {
+            throw new IllegalArgumentException("bmm supports 3D tensors [B, M, K] and [B, K, N]");
+        }
+        int bSize = a.shape[0];
+        int m = a.shape[1];
+        int k = a.shape[2];
+        if (b.shape[1] != k) throw new IllegalArgumentException("bmm k dimension mismatch: " + k + " vs " + b.shape[1]);
+        int n = b.shape[2];
+        
+        Pointer pA = a.getDevicePointer();
+        Pointer pB = b.getDevicePointer();
+        Pointer pC = out.getDevicePointer();
+
+        Pointer pAlpha = Pointer.to(new float[]{1.0f});
+        Pointer pBeta = Pointer.to(new float[]{0.0f});
+
+        long strideA = (long)m * k;
+        long strideB = (long)k * n;
+        long strideC = (long)m * n;
+
+        // Row-major trick: row-major a(m,k) * b(k,n) = c(m,n) is col-major b'(n,k) * a'(k,m) = c'(n,m)
+        cublasSgemmStridedBatched(cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N,
+                                  n, m, k,
+                                  pAlpha, pB, n, strideB,
+                                  pA, k, strideA,
+                                  pBeta, pC, n, strideC,
+                                  bSize);
+        out.markDirtyOnGPU();
+    }
     
     /**
      * Convolution 2D Forward using cuDNN

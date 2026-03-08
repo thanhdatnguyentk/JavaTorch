@@ -6,6 +6,9 @@ import java.util.Random;
 import jdk.incubator.vector.FloatVector;
 import jdk.incubator.vector.VectorSpecies;
 
+import static jcuda.runtime.JCuda.*;
+import static jcuda.runtime.cudaMemcpyKind.*;
+
 public class Torch {
     public static String defaultDtype = "float32";
     public static PrintOptions printOptions = new PrintOptions();
@@ -283,11 +286,24 @@ public class Torch {
     }
 
     public static Tensor mul(Tensor a, float scalar) {
+        if (a.isGPU()) {
+            Tensor out = new Tensor(a.shape);
+            out.toGPU();
+            CUDAOps.mul(a, scalar, out);
+            if (is_grad_enabled() && a.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn(a) {
+                    public void apply(Tensor outGrad) {
+                        a.backwardStep(mul(outGrad, scalar));
+                    }
+                };
+            }
+            return out;
+        }
         a.toCPU();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = a.data[i] * scalar;
-        if (a.isGPU()) out.toGPU();
         if (is_grad_enabled() && a.requires_grad) {
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(a) {
@@ -302,9 +318,58 @@ public class Torch {
         return out;
     }
 
+    public static Tensor div(Tensor a, float scalar) {
+        return mul(a, 1.0f / scalar);
+    }
+
     public static Tensor sub(Tensor a, float scalar) {
         return add(a, -scalar);
     }
+
+    // permute dims
+    public static Tensor permute(Tensor a, int... dims) {
+        int ndOrigin = a.shape.length;
+        if (dims.length != ndOrigin) throw new IllegalArgumentException("permute dims length mismatch");
+        
+        // Check if it's already in order
+        boolean same = true;
+        for (int i = 0; i < dims.length; i++) if (dims[i] != i) same = false;
+        if (same) return a.clone();
+
+        // One-time generic transpose using the coordinate logic
+        a.toCPU();
+        int[] outShape = new int[ndOrigin];
+        for (int i = 0; i < ndOrigin; i++) outShape[i] = a.shape[dims[i]];
+        
+        Tensor out = new Tensor(outShape);
+        int[] aStrides = computeStrides(a.shape);
+        int[] outStrides = computeStrides(outShape);
+        
+        for (int i = 0; i < a.numel(); i++) {
+            int[] coords = getCoords(i, aStrides);
+            int[] newCoords = new int[ndOrigin];
+            for (int d = 0; d < ndOrigin; d++) newCoords[d] = coords[dims[d]];
+            
+            int outIdx = getIndex(newCoords, outStrides);
+            out.data[outIdx] = a.data[i];
+        }
+        
+        if (a.isGPU()) out.toGPU();
+        
+        if (is_grad_enabled() && a.requires_grad) {
+            // Gradient of permute(dims) is permute(inverse_dims)
+            int[] invDims = new int[ndOrigin];
+            for (int i = 0; i < ndOrigin; i++) invDims[dims[i]] = i;
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(a) {
+                public void apply(Tensor gradOutput) {
+                    a.backwardStep(permute(gradOutput, invDims));
+                }
+            };
+        }
+        return out;
+    }
+
 
     public static Tensor sub(float scalar, Tensor a) {
         a.toCPU();
@@ -402,60 +467,28 @@ public class Torch {
     // Reduce outGrad (of shape grad.shape) to targetShape by summing broadcasted
     // dims
     private static Tensor reduceSumToShape(Tensor grad, int[] targetShape) {
-        grad.toCPU();
-        // if shapes equal just return grad.clone()
         if (java.util.Arrays.equals(grad.shape, targetShape))
-            return grad.clone();
-        int gnd = grad.shape.length;
-        int tnd = targetShape.length;
-        int nout = Math.max(gnd, tnd);
-        int[] g2 = new int[nout];
-        int[] t2 = new int[nout];
-        for (int i = 0; i < nout; i++) {
-            int ig = i - (nout - gnd);
-            g2[i] = ig >= 0 ? grad.shape[ig] : 1;
-            int it = i - (nout - tnd);
-            t2[i] = it >= 0 ? targetShape[it] : 1;
-        }
-        int[] outShape = targetShape.clone();
-        Tensor out = new Tensor(outShape);
-        int[] gStr = computeStrides(g2);
-        int[] outStr = computeStrides(outShape);
-        int total = 1;
-        for (int s : grad.shape)
-            total *= s;
-        for (int idx = 0; idx < total; idx++) {
-            int rem = idx;
-            int[] coord = new int[nout];
+            return grad;
+        grad.toCPU();
+        Tensor out = new Tensor(targetShape);
+        int gn = grad.shape.length, tn = targetShape.length;
+        int nout = Math.max(gn, tn);
+        int[] gs2 = new int[nout], ts2 = new int[nout];
+        java.util.Arrays.fill(gs2, 1);
+        java.util.Arrays.fill(ts2, 1);
+        System.arraycopy(grad.shape, 0, gs2, nout - gn, gn);
+        System.arraycopy(targetShape, 0, ts2, nout - tn, tn);
+        int[] gStr = computeStrides(gs2);
+        int[] tStr = computeStrides(ts2);
+        int total = grad.numel();
+        for (int i = 0; i < total; i++) {
+            int rem = i, outLinear = 0;
             for (int d = 0; d < nout; d++) {
-                coord[d] = rem / gStr[d];
-                rem = rem % gStr[d];
+                int c = rem / gStr[d];
+                rem %= gStr[d];
+                if (ts2[d] != 1) outLinear += c * tStr[d];
             }
-            int outOff = 0;
-            for (int d = 0; d < nout; d++) {
-                int c = (t2[d] == 1) ? 0 : coord[d];
-                int targetDim = d - (nout - outShape.length);
-                if (targetDim < 0) {
-                    /* ignored */ }
-                outOff += c * (d < outStr.length ? outStr[d - (nout - outShape.length)] : 0);
-            }
-            // compute out linear index properly by mapping coordinates to out shape
-            // simpler implementation: compute out coordinate array
-            int[] outCoord = new int[outShape.length];
-            int oidx = 0;
-            for (int d = 0; d < outShape.length; d++) {
-                int srcDim = d + (nout - outShape.length);
-                int c = coord[srcDim];
-                if (outShape[d] == 1)
-                    outCoord[d] = 0;
-                else
-                    outCoord[d] = c;
-            }
-            int outLinear = 0;
-            int[] outStr2 = computeStrides(outShape);
-            for (int d = 0; d < outShape.length; d++)
-                outLinear += outCoord[d] * outStr2[d];
-            out.data[outLinear] += grad.data[idx];
+            out.data[outLinear] += grad.data[i];
         }
         if (grad.isGPU()) out.toGPU();
         return out;
@@ -854,22 +887,35 @@ public class Torch {
     }
 
     public static Tensor transpose(Tensor a, int dim0, int dim1) {
-        if (a.shape.length != 2)
-            throw new IllegalArgumentException("transpose only supports 2D currently");
+        int nd = a.shape.length;
+        if (dim0 < 0) dim0 += nd;
+        if (dim1 < 0) dim1 += nd;
+        if (dim0 == dim1) return a.clone();
+        
+        int[] outShape = a.shape.clone();
+        outShape[dim0] = a.shape[dim1];
+        outShape[dim1] = a.shape[dim0];
         
         a.toCPU();
-        int r = a.shape[0], c = a.shape[1];
-        Tensor out = new Tensor(c, r);
+        Tensor out = new Tensor(outShape);
+        int[] aStrides = computeStrides(a.shape);
+        int[] outStrides = computeStrides(outShape);
+        
+        for (int i = 0; i < a.numel(); i++) {
+            int[] coords = getCoords(i, aStrides);
+            int tmp = coords[dim0];
+            coords[dim0] = coords[dim1];
+            coords[dim1] = tmp;
+            out.data[getIndex(coords, outStrides)] = a.data[i];
+        }
         if (a.isGPU()) out.toGPU();
-        for (int i = 0; i < r; i++)
-            for (int j = 0; j < c; j++)
-                out.data[j * r + i] = a.data[i * c + j];
 
         if (is_grad_enabled() && a.requires_grad) {
+            final int fDim0 = dim0, fDim1 = dim1;
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(a) {
                 public void apply(Tensor gradOutput) {
-                    a.backwardStep(transpose(gradOutput, dim0, dim1));
+                    a.backwardStep(transpose(gradOutput, fDim0, fDim1));
                 }
             };
         }
@@ -882,16 +928,53 @@ public class Torch {
     }
 
     public static Tensor matmul(Tensor a, Tensor b) {
-        if (a.shape.length != 2 || b.shape.length != 2)
-            throw new IllegalArgumentException("matmul supports 2D tensors");
+        if (a.shape.length == 3 && b.shape.length == 3) {
+            return bmm(a, b);
+        }
+        if (a.shape.length != 2 || b.shape.length != 2) {
+             // Basic support for [..., M, K] @ [K, N]
+             if (a.shape.length > 2 && b.shape.length == 2) {
+                 int[] batch = java.util.Arrays.copyOf(a.shape, a.shape.length - 2);
+                 int m = a.shape[a.shape.length - 2];
+                 int k = a.shape[a.shape.length - 1];
+                 int n = b.shape[1];
+                 if (k != b.shape[0]) throw new IllegalArgumentException("matmul mismatch");
+                 
+                 int bProd = 1; for(int s : batch) bProd *= s;
+                 Tensor aFlat = a.reshape(bProd, m, k);
+                 // We don't have expand() yet, but we can do a loop of matmuls or a custom tile
+                 // Let's use the CPU fallback if not on GPU, or a GPU loop
+                 Tensor outFlat = new Tensor(bProd, m, n);
+                 if (a.isGPU() || b.isGPU()) outFlat.toGPU();
+                 
+                 for (int i = 0; i < bProd; i++) {
+                     Tensor ai = narrow(aFlat, 0, i, 1).reshape(m, k);
+                     Tensor ci = matmul(ai, b);
+                     if (outFlat.isGPU()) {
+                         // CUDA copy ci -> outFlat[i]
+                         cudaMemcpy(outFlat.getDevicePointer().withByteOffset((long)i*m*n*4), ci.getDevicePointer(), (long)m*n*4, cudaMemcpyDeviceToDevice);
+                     } else {
+                         System.arraycopy(ci.data, 0, outFlat.data, i * m * n, m * n);
+                     }
+                 }
+                 int[] outShape = new int[a.shape.length];
+                 System.arraycopy(a.shape, 0, outShape, 0, a.shape.length-2);
+                 outShape[a.shape.length-2] = m;
+                 outShape[a.shape.length-1] = n;
+                 return outFlat.reshape(outShape);
+             }
+             throw new IllegalArgumentException("matmul supports 2D or 3D/batched cases");
+        }
+        
         int m = a.shape[0], k = a.shape[1], n = b.shape[1];
-        if (k != b.shape[0])
-            throw new IllegalArgumentException("matmul shape mismatch");
+        if (k != b.shape[0]) throw new IllegalArgumentException("matmul shape mismatch");
 
         // GPU Path
         if (a.device == Tensor.Device.GPU || b.device == Tensor.Device.GPU) {
+            if (!a.isGPU()) a.toGPU();
+            if (!b.isGPU()) b.toGPU();
             Tensor out = new Tensor(m, n);
-            out.toGPU(); // Ensure output is pre-allocated on GPU
+            out.toGPU();
             CUDAOps.matmul(a, b, out);
             
             if (is_grad_enabled() && (a.requires_grad || b.requires_grad)) {
@@ -961,6 +1044,95 @@ public class Torch {
         return out;
     }
 
+    public static Tensor bmm(Tensor a, Tensor b) {
+        if (a.shape.length != 3 || b.shape.length != 3) {
+            throw new IllegalArgumentException("bmm supports 3D tensors [B, M, K] and [B, K, N]");
+        }
+        int bSize = a.shape[0];
+        int m = a.shape[1], k = a.shape[2];
+        if (b.shape[0] != bSize || b.shape[1] != k) {
+            throw new IllegalArgumentException("bmm shape mismatch: a=" + java.util.Arrays.toString(a.shape) + " b=" + java.util.Arrays.toString(b.shape));
+        }
+        int n = b.shape[2];
+
+        // GPU Path
+        if (a.device == Tensor.Device.GPU || b.device == Tensor.Device.GPU) {
+            if (!a.isGPU()) a.toGPU();
+            if (!b.isGPU()) b.toGPU();
+            Tensor out = new Tensor(bSize, m, n);
+            out.toGPU();
+            CUDAOps.bmm(a, b, out);
+            
+            if (is_grad_enabled() && (a.requires_grad || b.requires_grad)) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn(a, b) {
+                    public void apply(Tensor outGrad) {
+                        if (a.requires_grad) {
+                            // dA = dC @ B.T
+                            Tensor bt = transpose(b, 1, 2);
+                            Tensor ga = bmm(outGrad, bt);
+                            a.backwardStep(ga);
+                        }
+                        if (b.requires_grad) {
+                            // dB = A.T @ dC
+                            Tensor at = transpose(a, 1, 2);
+                            Tensor gb = bmm(at, outGrad);
+                            b.backwardStep(gb);
+                        }
+                    }
+                };
+            }
+            return out;
+        }
+
+        // CPU Fallback
+        Tensor out = new Tensor(bSize, m, n);
+        for (int i = 0; i < bSize; i++) {
+            Tensor ai = narrow(a, 0, i, 1).reshape(m, k);
+            Tensor bi = narrow(b, 0, i, 1).reshape(k, n);
+            Tensor ci = matmul(ai, bi);
+            System.arraycopy(ci.data, 0, out.data, i * m * n, m * n);
+        }
+        
+        if (is_grad_enabled() && (a.requires_grad || b.requires_grad)) {
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(a, b) {
+                public void apply(Tensor outGrad) {
+                    if (a.requires_grad) {
+                        Tensor bt = transpose(b, 1, 2);
+                        Tensor ga = bmm(outGrad, bt);
+                        a.backwardStep(ga);
+                    }
+                    if (b.requires_grad) {
+                        Tensor at = transpose(a, 1, 2);
+                        Tensor gb = bmm(at, outGrad);
+                        b.backwardStep(gb);
+                    }
+                }
+            };
+        }
+        return out;
+    }
+
+    private static int[] getCoords(int idx, int[] strides) {
+        int n = strides.length;
+        int[] coords = new int[n];
+        int rem = idx;
+        for (int i = 0; i < n; i++) {
+            coords[i] = rem / strides[i];
+            rem = rem % strides[i];
+        }
+        return coords;
+    }
+
+    private static int getIndex(int[] coords, int[] strides) {
+        int idx = 0;
+        for (int i = 0; i < coords.length; i++) {
+            idx += coords[i] * strides[i];
+        }
+        return idx;
+    }
+
     // stack: insert a new dimension at `dim` and concatenate
     public static Tensor stack(List<Tensor> tensors, int dim) {
         if (tensors.size() == 0)
@@ -999,6 +1171,13 @@ public class Torch {
         return split(a, sizes, dim);
     }
 
+    // expand: repeat tensor along singleton dimensions
+    public static Tensor expand(Tensor a, int... newShape) {
+        // Use broadcasting hack: add to zeros of target shape
+        Tensor z = zeros(newShape).to(a.device);
+        return add(a, z);
+    }
+
     // where: choose elements from x or y based on condition (cond != 0)
     public static Tensor where(Tensor cond, Tensor x, Tensor y) {
         if (cond.numel() != x.numel() || x.numel() != y.numel())
@@ -1013,56 +1192,6 @@ public class Torch {
         return out;
     }
 
-    // permute axes: dims is a permutation of [0..nd-1]
-    public static Tensor permute(Tensor a, int... dims) {
-        a.toCPU();
-        int nd = a.shape.length;
-        if (dims.length != nd)
-            throw new IllegalArgumentException("permute: dims length must match rank");
-        boolean[] seen = new boolean[nd];
-        for (int d : dims) {
-            if (d < 0 || d >= nd || seen[d])
-                throw new IllegalArgumentException("permute: invalid permutation");
-            seen[d] = true;
-        }
-        int[] outShape = new int[nd];
-        for (int i = 0; i < nd; i++)
-            outShape[i] = a.shape[dims[i]];
-        Tensor out = new Tensor(outShape);
-        if (a.isGPU()) out.toGPU();
-        int[] inStr = computeStrides(a.shape);
-        int[] outStr = computeStrides(outShape);
-        int outNum = out.numel();
-        for (int idx = 0; idx < outNum; idx++) {
-            int rem = idx;
-            int[] outCoord = new int[nd];
-            for (int i = 0; i < nd; i++) {
-                outCoord[i] = rem / outStr[i];
-                rem = rem % outStr[i];
-            }
-            int[] inCoord = new int[nd];
-            for (int i = 0; i < nd; i++)
-                inCoord[dims[i]] = outCoord[i];
-            int inOff = 0;
-            for (int i = 0; i < nd; i++)
-                inOff += inCoord[i] * inStr[i];
-            out.data[idx] = a.data[inOff];
-        }
-
-        if (is_grad_enabled() && a.requires_grad) {
-            out.requires_grad = true;
-            out.grad_fn = new Tensor.GradFn(a) {
-                public void apply(Tensor gradOutput) {
-                    // Reverse permutation
-                    int[] revDims = new int[nd];
-                    for (int i = 0; i < nd; i++)
-                        revDims[dims[i]] = i;
-                    a.backwardStep(permute(gradOutput, revDims));
-                }
-            };
-        }
-        return out;
-    }
 
     // gather: for each position, take input value at index specified along `dim`
     public static Tensor gather(Tensor input, int dim, Tensor index) {
@@ -2261,7 +2390,7 @@ public class Torch {
         return matmul(a, b);
     }
 
-    public static Tensor bmm(Tensor a, Tensor b) {
+    public static Tensor bmm_TEMP(Tensor a, Tensor b) {
         if (a.shape.length != 3 || b.shape.length != 3)
             throw new IllegalArgumentException("bmm requires 3D tensors");
         int B = a.shape[0], M = a.shape[1], K = a.shape[2], N = b.shape[2];

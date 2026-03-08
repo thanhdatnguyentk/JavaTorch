@@ -390,4 +390,8 @@ public class Tensor implements AutoCloseable {
             super.finalize();
         }
     }
+
+    public Tensor expand(int... newShape) {
+        return Torch.expand(this, newShape);
+    }
 }

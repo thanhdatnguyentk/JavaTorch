@@ -16,6 +16,8 @@ A minimal re-implementation of core PyTorch concepts in pure Java for learning a
 | **Optimizers** | ✅ `optim.SGD` (momentum), `optim.Adam` |
 | **Loss Functions** | ✅ `cross_entropy_tensor`, `nll_loss`, `mse_loss_tensor`, `huber_loss` |
 | **RNN/LSTM** | ✅ `RNNCell`, `LSTMCell`, `RNN`, `LSTM` (with BPTT) |
+| **Transformers** | ✅ `MultiheadAttention`, `TransformerEncoderLayer`, `ND Transpose`, `bmm` |
+| **Vision Transformer**| ✅ **ViT** architecture (Patch Embedding, CLS Token, Positional Embedding) |
 | **Data Loader** | ✅ `Dataset`, `DataLoader` (Multi-threaded Producer-Consumer) |
 | **SIMD Support** | ✅ Java Vector API (AVX2/AVX-512) for `matmul`, `dot` |
 | **GPU/cuDNN** | ✅ **JCuda + JCudnn** integration for high-performance CNN training with **GPU-accelerated Backward Pass** (cuDNN), **GPU Compatibility Audit** complete |
@@ -151,8 +153,17 @@ tests/
 - **ResNet-18 Performance**: ✅ Achieved ~66% Accuracy on CIFAR-10 in 2 epochs (~15 mins) using end-to-end GPU training.
 - **Evaluator Class**: ✅ Centralized model evaluation with multi-threaded data fetching.
 - **Global Average Pooling**: ✅ `adaptive_avg_pool2d` supports flexible architectural endpoints.
-- **Transformer**: MultiheadAttention, Softmax-dim, EncoderLayer.
+
+### ✅ Phase 16: Transformers & Vision Transformer (Complete)
+- **MultiheadAttention**: ✅ Batched queries/keys/values with scalable attention and autograd.
+- **Transformer Blocks**: ✅ `TransformerEncoderLayer` with pre-norm architecture and FeedForward modules.
+- **Vision Transformer (ViT)**: ✅ Full ViT implementation including patch embedding and learnable tokens.
+- **Generalized Ops**: ✅ Upgraded `transpose`, `expand`, `cat`, and `bmm` for higher-rank tensor support.
+- **Robust Autograd**: ✅ Robust broadcasting support in `reduceSumToShape` to support complex backprop flows.
+
+### 🔳 Upcoming
 - Conv1d/Conv3d, BatchNorm2d/3d, GroupNorm
+- Generative Models (GAN, VAE)
 - Learning rate schedulers
 - JUnit integration
 
