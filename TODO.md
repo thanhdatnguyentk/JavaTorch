@@ -39,6 +39,7 @@ Last updated: 2026-03-08
   - `TrainFashionMNIST.java`
   - `TrainCifar10.java`
   - **`TrainSentiment.java`** (Real movie review dataset using LSTM)
+  - **`TrainViTCifar10.java`** (End-to-end Vision Transformer Training on GPU)
   - **`TestViT.java`** (Functional verification of ViT on GPU)
 - Comprehensive test suite (40 tests) including `TestBatch4`, `TestDropout`, and full GPU compatibility verification.
 - ✅ **Phase 15: Computer Vision Deepening (NEW ✅)**:

@@ -24,6 +24,7 @@ A minimal re-implementation of core PyTorch concepts in pure Java for learning a
 | **NLP Support** | ✅ `Embedding`, `Vocabulary`, `BasicTokenizer`, `SentimentModel` |
 | **Autograd Optimized** | ✅ **Topological Sort** for $O(N)$ backprop (No more recursive $O(2^N)$ hangs) |
 | **GPU Optimization** | ✅ **Kernel Fusion**, **CUDA Streams**, **Arena Memory Pool**, **Custom PTX** |
+| **Examples** | ✅ **ResNet-18**, **ViT**, **Sentiment Analysis (LSTM)**, **Fashion-MNIST** |
 | **Test Suite** | ✅ 40 automated tests fully operational |
 
 ## Quick Start
@@ -55,6 +56,10 @@ java --add-modules jdk.incubator.vector -cp bin;lib/* com.user.nn.examples.Train
 # Compile & run Sentiment Analysis (Real Movie Comments Dataset)
 javac --add-modules jdk.incubator.vector -d bin -cp bin src/com/user/nn/examples/TrainSentiment.java
 java --add-modules jdk.incubator.vector -cp bin com.user.nn.examples.TrainSentiment
+
+# Compile & run Vision Transformer (ViT) on CIFAR-10 (Small ViT configuration)
+javac --add-modules jdk.incubator.vector -d bin -cp "bin;lib/*" src/com/user/nn/examples/TrainViTCifar10.java
+java --add-modules jdk.incubator.vector -cp "bin;lib/*" com.user.nn.examples.TrainViTCifar10
 ```
 
 ## Project Structure
@@ -86,10 +91,11 @@ src/
         ├── TrainIris.java       # Simple MLP for Iris classification
         ├── TrainFashionMNIST.java # MLP with DataLoader for Fashion-MNIST
         ├── TrainCifar10.java    # CNN with DataLoader on CIFAR-10
-        └── TestVectorBenchmark.java # SIMD vs Scalar Matmul Benchmark
+        ├── TrainViTCifar10.java # Vision Transformer on CIFAR-10 (GPU Example)
+        └── TrainResNetCifar10.java # ResNet-18 on CIFAR-10
 tests/
-├── run-tests.ps1        # Automated test runner (36 tests)
-├── java/com/user/nn/    # Unit test files (including TestRNN, TestDropout, TestBatch*)
+├── run-tests.ps1        # Automated test runner (40 tests)
+├── java/com/user/nn/    # Unit test files (TestViT, TestVectorBenchmark, etc.)
 └── *.py                 # NumPy reference scripts
 ```
 
