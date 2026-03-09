@@ -1,22 +1,24 @@
-# Package API Reference
+# API Reference theo package
 
-[Tiếng Việt](API_REFERENCE.md) | [README](README.en.md) | [Tutorial](TUTORIAL.en.md)
+[English](API_REFERENCE.en.md) | [README](README.md) | [Tutorial](TUTORIAL.md)
 
-This document is not a full JavaDoc replacement. Its purpose is to give you a package-level map of the framework so you can quickly find the right part of the codebase.
+Tài liệu này không thay thế JavaDoc chi tiết theo từng method. Mục tiêu của nó là cho bạn bản đồ package-level để biết nên đọc và dùng phần nào của framework trước.
 
 ## `com.user.nn.core`
 
-- `Tensor`: tensor storage, device state, gradients, backward, memory lifecycle.
-- `Torch`: tensor ops, reductions, broadcasting, matmul, and initialization helpers.
-- `Functional`: functional-style losses and utility ops.
-- `CUDAOps`: JCuda, cuBLAS, cuDNN, and PTX kernel wrappers.
+Package lõi của framework.
+
+- `Tensor`: tensor, gradient, backward, lifecycle.
+- `Torch`: tensor ops, math ops, reductions, broadcasting, matmul, init helpers.
+- `Functional`: functional losses và utility ops.
+- `CUDAOps`: wrapper JCuda, cuBLAS, cuDNN, PTX kernels.
 - `GpuMemoryPool`: VRAM pool.
-- `MemoryScope`: scoped lifecycle management.
-- `MixedPrecision`: mixed-precision support.
-- `Module`: base abstraction for layers and models.
-- `Parameter`: gradient-carrying parameter wrapper.
+- `MemoryScope`: quản lý tensor tạm theo scope.
+- `MixedPrecision`: mixed precision.
+- `Module`: base abstraction cho model/layer.
+- `Parameter`: wrapper tham số có gradient.
 - `NN`: low-level matrix helpers.
-- `BlasOps`: OpenBLAS wrapper for large CPU matmul.
+- `BlasOps`: wrapper OpenBLAS cho CPU matmul lớn.
 
 ## `com.user.nn.layers`
 
@@ -89,7 +91,7 @@ This document is not a full JavaDoc replacement. Its purpose is to give you a pa
 ## `com.user.nn.optim`
 
 - `Optim`: `SGD`, `Adam`
-- `Scheduler`: schedulers such as `StepLR`
+- `Scheduler`: learning-rate schedulers như `StepLR`
 
 ## `com.user.nn.dataloaders`
 
@@ -125,9 +127,9 @@ This document is not a full JavaDoc replacement. Its purpose is to give you a pa
 - `TrainVAEMnist`
 - `TrainLeNet`
 
-## Quick lookup guide
+## Gợi ý tra cứu nhanh
 
-- Want to add a new op: start in `core`
-- Want to build a new model: read `layers`, `containers`, `norm`, `pooling`
-- Want to train on real datasets: read `dataloaders`, `optim`, `metrics`, `examples`
-- Want to optimize performance: read `CUDAOps`, `BlasOps`, `GpuMemoryPool`, `kernels.cu`
+- Muốn viết op mới: đọc `core`
+- Muốn dựng model mới: đọc `layers`, `containers`, `norm`, `pooling`
+- Muốn train trên dữ liệu thật: đọc `dataloaders`, `optim`, `metrics`, `examples`
+- Muốn tăng tốc: đọc `CUDAOps`, `BlasOps`, `GpuMemoryPool`, `kernels.cu`

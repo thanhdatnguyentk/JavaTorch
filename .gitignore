@@ -3,3 +3,10 @@ tests\tmp
 data
 bin/
 lib/
+
+# Gradle
+.gradle/
+**/build/
+
+# Local temporary tools
+.tools/
