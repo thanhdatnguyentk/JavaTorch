@@ -1,6 +1,6 @@
 # ML_framework — TODO
 
-Last updated: 2026-03-09
+Last updated: 2026-03-10
 
 ## Release readiness (2026-03)
 - Gradle multi-module build is in place (`:core`, `:examples`, `:tests`).
@@ -9,6 +9,21 @@ Last updated: 2026-03-09
   - `./gradlew :core:clean :core:test :core:build --no-daemon`
 - Legacy script path remains available for compatibility:
   - `tests/run-tests.ps1`
+
+## GPU test status (2026-03-10)
+- Added dedicated GPU test tiers in `core/build.gradle.kts`:
+  - `:core:gpuSmoke` for fast commit-path checks
+  - `:core:gpuNightly` for broader GPU coverage
+- Implemented reusable GPU test support in:
+  - `core/src/test/java/com/user/nn/GpuTestSupport.java`
+- Implemented model/example GPU tests in:
+  - `core/src/test/java/com/user/nn/GpuModelSmokeTest.java`
+  - `core/src/test/java/com/user/nn/GpuExamplesSmokeTest.java`
+- Current local verification:
+  - `./gradlew :core:gpuSmoke --console=plain` -> PASS
+  - `./gradlew :core:gpuNightly --console=plain` -> PASS
+- Known constraint:
+  - YOLO example init can trigger JVM heap OOM in constrained workers; this case is tagged `gpu-manual` and excluded from `gpuNightly`.
 
 ## Current progress (completed)
 - Core `nn` Module/Parameter system and containers (`Sequential`, `ModuleDict`, etc).
