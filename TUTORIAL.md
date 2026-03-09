@@ -8,7 +8,7 @@ Tài liệu này hướng dẫn theo lộ trình thực hành, dành cho ngườ
 
 Sau khi đi hết tài liệu này, bạn sẽ làm được 4 việc:
 
-1. Build và chạy toàn bộ framework trên máy Windows với Java 21.
+1. Build và chạy toàn bộ framework bằng Gradle với Java 21.
 2. Chạy test để xác nhận môi trường hoạt động đúng.
 3. Chạy các ví dụ huấn luyện có sẵn.
 4. Tự viết một model nhỏ với `Tensor`, `Sequential`, autograd và optimizer.
@@ -17,54 +17,43 @@ Sau khi đi hết tài liệu này, bạn sẽ làm được 4 việc:
 
 ### Bắt buộc
 
-- Windows + PowerShell
 - JDK 21+
+- Gradle 8+ (chỉ cần trước khi đã có wrapper)
 - thư mục làm việc đang đứng ở root repo
 
 ### Kiểm tra nhanh
 
 ```powershell
 java -version
-javac -version
 ```
 
-Bạn nên thấy Java 21 và `javac` hoạt động bình thường.
+Bạn nên thấy Java 21 hoạt động bình thường.
 
 ## 3. Build project
 
-### Cách chuẩn nhất
+### Cách chuẩn nhất (Gradle)
+
+```powershell
+gradle wrapper
+.\gradlew.bat :core:clean :core:test :core:build
+```
+
+Trên macOS/Linux:
+
+```bash
+./gradlew :core:clean :core:test :core:build
+```
+
+Lý do nên dùng cách này trước:
+
+- nó compile toàn bộ source
+- compile và chạy test theo module
+- giúp bạn biết ngay môi trường có thiếu dependency hay không
+
+### Đường legacy (tương thích script cũ)
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
-```
-
-Lý do nên dùng script này trước:
-
-- nó compile toàn bộ source
-- compile luôn test
-- chạy toàn bộ regression suite
-- giúp bạn biết ngay môi trường có thiếu dependency hay không
-
-### Nếu chỉ muốn compile mà chưa chạy test
-
-```powershell
-javac --add-modules jdk.incubator.vector -d bin -cp "lib/*" `
-    src\com\user\nn\core\*.java `
-    src\com\user\nn\layers\*.java `
-    src\com\user\nn\activations\*.java `
-    src\com\user\nn\containers\*.java `
-    src\com\user\nn\norm\*.java `
-    src\com\user\nn\pooling\*.java `
-    src\com\user\nn\rnn\*.java `
-    src\com\user\nn\attention\*.java `
-    src\com\user\nn\losses\*.java `
-    src\com\user\nn\optim\*.java `
-    src\com\user\nn\dataloaders\*.java `
-    src\com\user\nn\models\*.java `
-    src\com\user\nn\models\cv\*.java `
-    src\com\user\nn\models\generative\*.java `
-    src\com\user\nn\metrics\*.java `
-    src\com\user\nn\examples\*.java
 ```
 
 ## 4. Chạy ví dụ đầu tiên: Iris

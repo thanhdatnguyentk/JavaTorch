@@ -1,6 +1,14 @@
 # ML_framework — TODO
 
-Last updated: 2026-03-08
+Last updated: 2026-03-09
+
+## Release readiness (2026-03)
+- Gradle multi-module build is in place (`:core`, `:examples`, `:tests`).
+- Gradle Wrapper has been generated (`gradlew`, `gradlew.bat`, `gradle/wrapper/*`).
+- Verified command for release checks:
+  - `./gradlew :core:clean :core:test :core:build --no-daemon`
+- Legacy script path remains available for compatibility:
+  - `tests/run-tests.ps1`
 
 ## Current progress (completed)
 - Core `nn` Module/Parameter system and containers (`Sequential`, `ModuleDict`, etc).

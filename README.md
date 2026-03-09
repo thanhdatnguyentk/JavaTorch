@@ -212,6 +212,16 @@ Repo hien co 3 tang quan ly bo nho quan trong:
 - `API_REFERENCE.md`: package reference tieng Viet
 - `API_REFERENCE.en.md`: package reference tieng Anh
 
+## Trang thai phat hanh
+
+- Build mac dinh da chuyen sang Gradle multi-module (`:core`, `:examples`, `:tests`).
+- Da sinh day du Gradle Wrapper (`gradlew`, `gradlew.bat`, `gradle/wrapper/*`).
+- Lenh kiem tra release da xac nhan:
+
+```powershell
+.\gradlew.bat :core:clean :core:test :core:build --no-daemon
+```
+
 ## Ghi chu thuc te
 
 - Mot so vi du tu tai du lieu neu thieu, mot so khac dung du lieu da co san trong `data/`.

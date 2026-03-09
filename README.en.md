@@ -3,7 +3,7 @@
 [Tiếng Việt](README.md) | [Tutorial](TUTORIAL.en.md) | [Tutorial VI](TUTORIAL.md) | [API Reference](API_REFERENCE.en.md) | [API Reference VI](API_REFERENCE.md)
 
 ![Java](https://img.shields.io/badge/Java-21+-orange)
-![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20PowerShell-blue)
+![Build](https://img.shields.io/badge/Build-Gradle%20Multi--Module-blue)
 ![CUDA](https://img.shields.io/badge/GPU-JCuda%20%2B%20cuDNN-green)
 ![CPU](https://img.shields.io/badge/CPU-Vector%20API%20%2B%20OpenBLAS-purple)
 ![Tests](https://img.shields.io/badge/Tests-44%20registered-success)
@@ -17,9 +17,9 @@ The repository already includes a tensor engine, autograd, a `Module/Parameter` 
 If you only want the shortest path to a working setup, run these three commands:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
-java --add-modules jdk.incubator.vector -cp "bin;lib/*" com.user.nn.examples.TrainIris
-java --add-modules jdk.incubator.vector -cp "bin;lib/*" com.user.nn.examples.TrainFashionMNIST
+gradle wrapper
+.\gradlew.bat :core:test
+.\gradlew.bat :core:build
 ```
 
 Then continue with:
@@ -71,6 +71,22 @@ The numbers below were collected from the current repository state using the bui
 - `TUTORIAL.md`: Vietnamese tutorial
 - `API_REFERENCE.en.md`: package-level API map in English
 - `API_REFERENCE.md`: package-level API map in Vietnamese
+
+## Build and Release Notes
+
+- The default workflow is now Gradle-based (`:core`, `:examples`, `:tests`).
+- Full wrapper generation is supported via `gradle wrapper`.
+- Verified release command:
+
+```powershell
+.\gradlew.bat :core:clean :core:test :core:build --no-daemon
+```
+
+- Legacy PowerShell runner remains available for compatibility:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
+```
 
 ---
 

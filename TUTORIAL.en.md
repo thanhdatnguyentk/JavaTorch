@@ -8,7 +8,7 @@ This tutorial is a practical onboarding path for the current codebase.
 
 By the end of this tutorial, you should be able to:
 
-1. Build and run the full framework on Windows with Java 21.
+1. Build and run the full framework with Gradle and Java 21.
 2. Run the regression suite to validate your environment.
 3. Execute the provided training examples.
 4. Write a small model using `Tensor`, `Sequential`, autograd, and an optimizer.
@@ -17,15 +17,14 @@ By the end of this tutorial, you should be able to:
 
 ### Required
 
-- Windows + PowerShell
 - JDK 21+
+- Gradle 8+ (only needed before wrapper exists)
 - current working directory at the repository root
 
 ### Quick check
 
 ```powershell
 java -version
-javac -version
 ```
 
 ## 3. Build the project
@@ -33,31 +32,20 @@ javac -version
 ### Recommended path
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
+gradle wrapper
+.\gradlew.bat :core:clean :core:test :core:build
 ```
 
-This script compiles all source files, compiles all tests, and runs the full regression suite.
+On macOS/Linux:
 
-### If you only want to compile
+```bash
+./gradlew :core:clean :core:test :core:build
+```
+
+### Legacy path (compatible with older scripts)
 
 ```powershell
-javac --add-modules jdk.incubator.vector -d bin -cp "lib/*" `
-    src\com\user\nn\core\*.java `
-    src\com\user\nn\layers\*.java `
-    src\com\user\nn\activations\*.java `
-    src\com\user\nn\containers\*.java `
-    src\com\user\nn\norm\*.java `
-    src\com\user\nn\pooling\*.java `
-    src\com\user\nn\rnn\*.java `
-    src\com\user\nn\attention\*.java `
-    src\com\user\nn\losses\*.java `
-    src\com\user\nn\optim\*.java `
-    src\com\user\nn\dataloaders\*.java `
-    src\com\user\nn\models\*.java `
-    src\com\user\nn\models\cv\*.java `
-    src\com\user\nn\models\generative\*.java `
-    src\com\user\nn\metrics\*.java `
-    src\com\user\nn\examples\*.java
+powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
 ```
 
 ## 4. First example: Iris
