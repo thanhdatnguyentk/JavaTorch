@@ -35,6 +35,7 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           if [ ! -f ./gradlew ]; then gradle wrapper; fi
+          chmod +x gradlew
           ./gradlew :core:build --no-daemon
         shell: bash
 
@@ -63,5 +64,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ ! -f ./gradlew ]; then gradle wrapper; fi
+          chmod +x gradlew
           ./gradlew :core:publish --no-daemon
         shell: bash
