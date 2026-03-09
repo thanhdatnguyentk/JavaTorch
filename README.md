@@ -1,4 +1,4 @@
-# ML Framework
+# JavaTorch - Pytorch but in java
 
 [Tieng Viet](README.vn.md) | [Tutorial](TUTORIAL.md) | [Tutorial VI](TUTORIAL.vn.md) | [API Reference](API_REFERENCE.md) | [API Reference VI](API_REFERENCE.vn.md)
 
