@@ -1,6 +1,6 @@
 # ML Framework
 
-[Tiếng Việt](README.md) | [Tutorial](TUTORIAL.en.md) | [Tutorial VI](TUTORIAL.md) | [API Reference](API_REFERENCE.en.md) | [API Reference VI](API_REFERENCE.md)
+[Tieng Viet](README.vn.md) | [Tutorial](TUTORIAL.md) | [Tutorial VI](TUTORIAL.vn.md) | [API Reference](API_REFERENCE.md) | [API Reference VI](API_REFERENCE.vn.md)
 
 ![Java](https://img.shields.io/badge/Java-21+-orange)
 ![Build](https://img.shields.io/badge/Build-Gradle%20Multi--Module-blue)
@@ -24,8 +24,8 @@ gradle wrapper
 
 Then continue with:
 
-- `TUTORIAL.en.md` for the step-by-step onboarding guide.
-- `API_REFERENCE.en.md` for the package-level API map.
+- `TUTORIAL.md` for the step-by-step onboarding guide.
+- `API_REFERENCE.md` for the package-level API map.
 
 ## System Overview
 
@@ -67,10 +67,10 @@ The numbers below were collected from the current repository state using the bui
 
 ## Companion Docs
 
-- `TUTORIAL.en.md`: step-by-step onboarding in English
-- `TUTORIAL.md`: Vietnamese tutorial
-- `API_REFERENCE.en.md`: package-level API map in English
-- `API_REFERENCE.md`: package-level API map in Vietnamese
+- `TUTORIAL.md`: step-by-step onboarding in English
+- `TUTORIAL.vn.md`: Vietnamese tutorial
+- `API_REFERENCE.md`: package-level API map in English
+- `API_REFERENCE.vn.md`: package-level API map in Vietnamese
 
 ## Build and Release Notes
 

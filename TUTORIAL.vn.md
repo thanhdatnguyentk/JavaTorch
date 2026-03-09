@@ -1,6 +1,6 @@
 # Tutorial: Bắt đầu với ML Framework
 
-[English](TUTORIAL.en.md) | [README](README.md) | [API Reference](API_REFERENCE.md) | [API Reference EN](API_REFERENCE.en.md)
+[English](TUTORIAL.md) | [README](README.vn.md) | [API Reference](API_REFERENCE.vn.md) | [API Reference EN](API_REFERENCE.md)
 
 Tài liệu này hướng dẫn theo lộ trình thực hành, dành cho người muốn hiểu và dùng framework ngay trên codebase hiện tại.
 

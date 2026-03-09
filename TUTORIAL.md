@@ -1,6 +1,6 @@
 # Tutorial: Getting Started with ML Framework
 
-[Tiếng Việt](TUTORIAL.md) | [README](README.en.md) | [API Reference](API_REFERENCE.en.md) | [API Reference VI](API_REFERENCE.md)
+[Tieng Viet](TUTORIAL.vn.md) | [README](README.md) | [API Reference](API_REFERENCE.md) | [API Reference VI](API_REFERENCE.vn.md)
 
 This tutorial is a practical onboarding path for the current codebase.
 

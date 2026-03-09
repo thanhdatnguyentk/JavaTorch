@@ -1,6 +1,6 @@
 # Package API Reference
 
-[Tiếng Việt](API_REFERENCE.md) | [README](README.en.md) | [Tutorial](TUTORIAL.en.md)
+[Tieng Viet](API_REFERENCE.vn.md) | [README](README.md) | [Tutorial](TUTORIAL.md)
 
 This document is not a full JavaDoc replacement. Its purpose is to give you a package-level map of the framework so you can quickly find the right part of the codebase.
 

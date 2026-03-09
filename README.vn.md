@@ -1,6 +1,6 @@
 # ML Framework
 
-[English](README.en.md) | [Tutorial](TUTORIAL.md) | [Tutorial EN](TUTORIAL.en.md) | [API Reference](API_REFERENCE.md) | [API Reference EN](API_REFERENCE.en.md)
+[English](README.md) | [Tutorial](TUTORIAL.vn.md) | [Tutorial EN](TUTORIAL.md) | [API Reference](API_REFERENCE.vn.md) | [API Reference EN](API_REFERENCE.md)
 
 ![Java](https://img.shields.io/badge/Java-21+-orange)
 ![Build](https://img.shields.io/badge/Build-Gradle%20Multi--Module-blue)
@@ -24,8 +24,8 @@ gradle wrapper
 
 Sau do doc tiep:
 
-- `TUTORIAL.md` neu ban muon hoc theo tung buoc bang tieng Viet.
-- `API_REFERENCE.md` neu ban can ban do package va API chinh.
+- `TUTORIAL.vn.md` neu ban muon hoc theo tung buoc bang tieng Viet.
+- `API_REFERENCE.vn.md` neu ban can ban do package va API chinh.
 
 ## So do tong quan
 
@@ -207,10 +207,10 @@ Repo hien co 3 tang quan ly bo nho quan trong:
 
 ## Tai lieu di kem
 
-- `TUTORIAL.md`: huong dan tung buoc bang tieng Viet
-- `TUTORIAL.en.md`: tutorial tieng Anh
-- `API_REFERENCE.md`: package reference tieng Viet
-- `API_REFERENCE.en.md`: package reference tieng Anh
+- `TUTORIAL.vn.md`: huong dan tung buoc bang tieng Viet
+- `TUTORIAL.md`: tutorial tieng Anh
+- `API_REFERENCE.vn.md`: package reference tieng Viet
+- `API_REFERENCE.md`: package reference tieng Anh
 
 ## Trang thai phat hanh
 

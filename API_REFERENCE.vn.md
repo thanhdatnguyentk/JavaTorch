@@ -1,6 +1,6 @@
 # API Reference theo package
 
-[English](API_REFERENCE.en.md) | [README](README.md) | [Tutorial](TUTORIAL.md)
+[English](API_REFERENCE.md) | [README](README.vn.md) | [Tutorial](TUTORIAL.vn.md)
 
 Tài liệu này không thay thế JavaDoc chi tiết theo từng method. Mục tiêu của nó là cho bạn bản đồ package-level để biết nên đọc và dùng phần nào của framework trước.
 
