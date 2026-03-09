@@ -1,5 +1,6 @@
 package com.user.nn.core;
 
+import java.lang.ref.Cleaner;
 import java.util.Arrays;
 import jcuda.*;
 import jcuda.runtime.JCuda;
@@ -21,6 +22,35 @@ public class Tensor implements AutoCloseable {
     public Pointer deviceData = null;
     boolean poolManaged = false; // true if allocated from GpuMemoryPool
     
+    // Cleaner for GPU memory safety net (replaces deprecated finalize())
+    private static final Cleaner CLEANER = Cleaner.create();
+    private Cleaner.Cleanable cleanable;
+    private CleanAction cleanAction;
+    
+    // Static so it holds no reference to the enclosing Tensor (would prevent GC)
+    private static class CleanAction implements Runnable {
+        Pointer deviceData;
+        boolean poolManaged;
+        CleanAction(Pointer deviceData, boolean poolManaged) {
+            this.deviceData = deviceData;
+            this.poolManaged = poolManaged;
+        }
+        @Override
+        public void run() {
+            if (deviceData != null && !poolManaged) {
+                cudaFree(deviceData);
+            }
+            deviceData = null;
+        }
+    }
+    
+    // Version counter for in-place mutation detection
+    private int _version = 0;
+
+    public int version() { return _version; }
+
+    void incrementVersion() { _version++; }
+
     // Synchronization flags
     private boolean onHost = true;
     private boolean onDevice = false;
@@ -123,9 +153,25 @@ public class Tensor implements AutoCloseable {
     // Autograd support
     public static abstract class GradFn {
         public final Tensor[] dependencies;
+        private final int[] savedVersions;
 
         public GradFn(Tensor... dependencies) {
             this.dependencies = dependencies;
+            this.savedVersions = new int[dependencies.length];
+            for (int i = 0; i < dependencies.length; i++) {
+                this.savedVersions[i] = dependencies[i].version();
+            }
+        }
+
+        public void checkVersions() {
+            for (int i = 0; i < dependencies.length; i++) {
+                if (dependencies[i].version() != savedVersions[i]) {
+                    throw new RuntimeException(
+                        "one of the variables needed for gradient computation has been "
+                        + "modified by an in-place operation (expected version "
+                        + savedVersions[i] + ", got " + dependencies[i].version() + ")");
+                }
+            }
         }
 
         public abstract void apply(Tensor gradOutput);
@@ -171,6 +217,7 @@ public class Tensor implements AutoCloseable {
         for (int i = topo.size() - 1; i >= 0; i--) {
             Tensor t = topo.get(i);
             if (t.grad_fn != null && t.grad != null) {
+                t.grad_fn.checkVersions();
                 t.grad_fn.apply(t.grad);
             }
         }
@@ -194,6 +241,7 @@ public class Tensor implements AutoCloseable {
         for (int i = topo.size() - 1; i >= 0; i--) {
             Tensor t = topo.get(i);
             if (t.grad_fn != null && t.grad != null) {
+                t.grad_fn.checkVersions();
                 t.grad_fn.apply(t.grad);
             }
         }
@@ -229,6 +277,7 @@ public class Tensor implements AutoCloseable {
         this.toCPU();
         data[offset(idx)] = value;
         this.markDirtyOnCPU();
+        incrementVersion();
     }
 
     public int offset(int... idx) {
@@ -266,6 +315,7 @@ public class Tensor implements AutoCloseable {
         for (int i = 0; i < data.length; i++)
             data[i] += scalar;
         this.markDirtyOnCPU();
+        incrementVersion();
     }
 
     public void mul_(float scalar) {
@@ -273,6 +323,60 @@ public class Tensor implements AutoCloseable {
         for (int i = 0; i < data.length; i++)
             data[i] *= scalar;
         this.markDirtyOnCPU();
+        incrementVersion();
+    }
+
+    public void sub_(float scalar) {
+        this.toCPU();
+        for (int i = 0; i < data.length; i++)
+            data[i] -= scalar;
+        this.markDirtyOnCPU();
+        incrementVersion();
+    }
+
+    public void add_(Tensor other) {
+        if (this.numel() != other.numel())
+            throw new IllegalArgumentException("add_: size mismatch");
+        if (this.isGPU() && other.isGPU() && CUDAOps.isAvailable()) {
+            CUDAOps.addInPlace(this, other);
+        } else {
+            this.toCPU();
+            other.toCPU();
+            for (int i = 0; i < data.length; i++)
+                data[i] += other.data[i];
+            this.markDirtyOnCPU();
+        }
+        incrementVersion();
+    }
+
+    public void sub_(Tensor other) {
+        if (this.numel() != other.numel())
+            throw new IllegalArgumentException("sub_: size mismatch");
+        if (this.isGPU() && other.isGPU() && CUDAOps.isAvailable()) {
+            CUDAOps.subInPlace(this, other);
+        } else {
+            this.toCPU();
+            other.toCPU();
+            for (int i = 0; i < data.length; i++)
+                data[i] -= other.data[i];
+            this.markDirtyOnCPU();
+        }
+        incrementVersion();
+    }
+
+    public void mul_(Tensor other) {
+        if (this.numel() != other.numel())
+            throw new IllegalArgumentException("mul_: size mismatch");
+        if (this.isGPU() && other.isGPU() && CUDAOps.isAvailable()) {
+            CUDAOps.mulInPlace(this, other);
+        } else {
+            this.toCPU();
+            other.toCPU();
+            for (int i = 0; i < data.length; i++)
+                data[i] *= other.data[i];
+            this.markDirtyOnCPU();
+        }
+        incrementVersion();
     }
 
     // shape utilities
@@ -344,6 +448,10 @@ public class Tensor implements AutoCloseable {
     }
 
     public Tensor toGPU() {
+        if (!CUDAOps.isAvailable()) {
+            System.err.println("Warning: CUDA not available; staying on CPU for tensor operations.");
+            return this;
+        }
         if (device == Device.GPU && onDevice && !onHost)
             return this;
         if (deviceData == null) {
@@ -370,6 +478,9 @@ public class Tensor implements AutoCloseable {
         onDevice = true;
         onHost = false; // Mark host as potentially stale
         device = Device.GPU;
+        // Register Cleaner as safety net for GPU memory
+        cleanAction = new CleanAction(deviceData, poolManaged);
+        cleanable = CLEANER.register(this, cleanAction);
         return this;
     }
 
@@ -390,6 +501,9 @@ public class Tensor implements AutoCloseable {
     }
 
     public Pointer getDevicePointer() {
+        if (!CUDAOps.isAvailable()) {
+            throw new IllegalStateException("CUDA not available: no device pointer present");
+        }
         if (!onDevice || device != Device.GPU)
             toGPU();
         return deviceData;
@@ -418,18 +532,17 @@ public class Tensor implements AutoCloseable {
             onDevice = false;
             poolManaged = false;
         }
+        // Deregister Cleaner (idempotent) to prevent double-free
+        if (cleanAction != null) {
+            cleanAction.deviceData = null; // Prevent Cleaner from freeing again
+            cleanAction = null;
+        }
+        if (cleanable != null) {
+            cleanable.clean();
+            cleanable = null;
+        }
         if (grad != null) {
             grad.close();
-        }
-    }
-
-    // Finalizer as safety net (though try-with-resources is preferred)
-    @Override
-    protected void finalize() throws Throwable {
-        try {
-            close();
-        } finally {
-            super.finalize();
         }
     }
 

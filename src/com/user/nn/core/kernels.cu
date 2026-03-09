@@ -145,6 +145,7 @@ __global__ void tanh_backward(float *y, float *dy, float *dx, int n) {
         float val = y[i];
         dx[i] = dy[i] * (1.0f - val * val);
     }
+}
 
 extern "C"
 __global__ void bce_forward(float *input, float *target, float *out, int n) {
@@ -191,6 +192,7 @@ __global__ void bce_logits_backward(float *input, float *target, float *dx, int 
         float sig = 1.0f / (1.0f + expf(-input[i]));
         dx[i] = sig - target[i];
     }
+}
 
 extern "C"
 __global__ void exp_kernel(float *a, float *out, int n) {
@@ -205,5 +207,57 @@ __global__ void log_kernel(float *a, float *out, int n) {
         float v = a[i];
         if (v < 1e-12f) v = 1e-12f;
         out[i] = logf(v);
+    }
+}
+
+// ---- Embedding kernels ----
+
+extern "C"
+__global__ void embedding_forward(float *weight, float *indices, float *out, int n, int d) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    int total = n * d;
+    if (tid < total) {
+        int row = tid / d;
+        int col = tid % d;
+        int idx = __float2int_rd(indices[row]);
+        out[tid] = weight[idx * d + col];
+    }
+}
+
+extern "C"
+__global__ void embedding_backward(float *grad_weight, float *indices, float *grad_out, int n, int d) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    int total = n * d;
+    if (tid < total) {
+        int row = tid / d;
+        int col = tid % d;
+        int idx = __float2int_rd(indices[row]);
+        atomicAdd(&grad_weight[idx * d + col], grad_out[tid]);
+    }
+}
+
+// ---- In-place elementwise kernels ----
+
+extern "C"
+__global__ void add_tensors_inplace(float *a, float *b, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        a[i] += b[i];
+    }
+}
+
+extern "C"
+__global__ void sub_tensors_inplace(float *a, float *b, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        a[i] -= b[i];
+    }
+}
+
+extern "C"
+__global__ void mul_tensors_inplace(float *a, float *b, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        a[i] *= b[i];
     }
 }

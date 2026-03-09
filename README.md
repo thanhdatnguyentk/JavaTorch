@@ -1,218 +1,216 @@
-# ML_framework — Java Neural Network Library (PyTorch-inspired)
+# ML Framework
 
-A minimal re-implementation of core PyTorch concepts in pure Java for learning and experimentation.
+[English](README.en.md) | [Tutorial](TUTORIAL.md) | [Tutorial EN](TUTORIAL.en.md) | [API Reference](API_REFERENCE.md) | [API Reference EN](API_REFERENCE.en.md)
 
-## Key Features
+![Java](https://img.shields.io/badge/Java-21+-orange)
+![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20PowerShell-blue)
+![CUDA](https://img.shields.io/badge/GPU-JCuda%20%2B%20cuDNN-green)
+![CPU](https://img.shields.io/badge/CPU-Vector%20API%20%2B%20OpenBLAS-purple)
+![Tests](https://img.shields.io/badge/Tests-44%20registered-success)
 
-| Feature | Status |
-|---------|--------|
-| **Tensor API** | ✅ Full shape operations, broadcasting, indexing, math, reductions |
-| **Autograd Engine** | ✅ `requires_grad`, `backward()`, `grad_fn` chain |
-| **nn.Module System** | ✅ `Module`, `Parameter`, `Sequential`, `ModuleList`, `ModuleDict` |
-| **Linear Layers** | ✅ `Linear` with Tensor autograd |
-| **Activations** | ✅ `ReLU`, `Sigmoid`, `Tanh`, `LeakyReLU`, `Softplus`, `Dropout` |
-| **CNN Layers** | ✅ `Conv2d`, `ConvTranspose2d`, `MaxPool2d`, `AvgPool2d`, `ZeroPad2d` — all with autograd |
-| **Normalization** | ✅ `BatchNorm1d`, `LayerNorm`, `InstanceNorm` |
-| **Optimizers** | ✅ `optim.SGD` (momentum), `optim.Adam` |
-| **Loss Functions** | ✅ `cross_entropy_tensor`, `nll_loss`, `mse_loss_tensor`, `huber_loss` |
-| **RNN/LSTM** | ✅ `RNNCell`, `LSTMCell`, `RNN`, `LSTM` (with BPTT) |
-| **Transformers** | ✅ `MultiheadAttention`, `TransformerEncoderLayer`, `ND Transpose`, `bmm` |
-| **Vision Transformer**| ✅ **ViT** architecture (Patch Embedding, CLS Token, Positional Embedding) |
-| **Data Loader** | ✅ `Dataset`, `DataLoader` (Multi-threaded Producer-Consumer) |
-| **SIMD Support** | ✅ Java Vector API (AVX2/AVX-512) for `matmul`, `dot` |
-| **GPU/cuDNN** | ✅ **JCuda + JCudnn** integration for high-performance CNN training with **GPU-accelerated Backward Pass** (cuDNN), **GPU Compatibility Audit** complete |
-| **NLP Support** | ✅ `Embedding`, `Vocabulary`, `BasicTokenizer`, `SentimentModel` |
-| **Autograd Optimized** | ✅ **Topological Sort** for $O(N)$ backprop (No more recursive $O(2^N)$ hangs) |
-| **GPU Optimization** | ✅ **Kernel Fusion**, **CUDA Streams**, **Arena Memory Pool**, **Custom PTX** |
-| **Examples** | ✅ **ResNet-18**, **ViT**, **Sentiment Analysis (LSTM)**, **Fashion-MNIST** |
-| **Test Suite** | ✅ 40 automated tests fully operational |
+Framework hoc may viet bang Java, lay cam hung tu PyTorch, phuc vu dong thoi 3 muc tieu: hoc cach deep learning hoat dong o muc framework, huan luyen mo hinh truc tiep trong Java, va mo rong dan tu CPU sang GPU bang JCuda, cuBLAS va cuDNN.
 
-## Quick Start
+Repo hien da co tensor engine, autograd, he `Module/Parameter`, dataloader, optimizer, CNN, RNN, Transformer, mixed precision, OpenBLAS, custom CUDA kernels va bo test hoi quy dang pass toan bo.
 
-```bash
-# Compile core framework (Note: --add-modules required for SIMD Vector API)
-javac --add-modules jdk.incubator.vector -d bin src/com/user/nn/core/*.java src/com/user/nn/optim/*.java src/com/user/nn/dataloaders/*.java src/com/user/nn/models/*.java
+## Getting Started
 
-# Run all tests (36 tests)
-powershell -File tests/run-tests.ps1
+Neu ban chi muon bat dau that nhanh, chay dung 3 lenh nay:
 
-# Examples:
-# Compile & run Iris example
-javac --add-modules jdk.incubator.vector -d bin -cp bin src/com/user/nn/examples/TrainIris.java
-java --add-modules jdk.incubator.vector -cp bin com.user.nn.examples.TrainIris
-
-# Compile & run Fashion-MNIST CNN (Using Multi-threaded DataLoader)
-javac --add-modules jdk.incubator.vector -d bin -cp bin src/com/user/nn/examples/TrainFashionMNIST.java
-java --add-modules jdk.incubator.vector -cp bin com.user.nn.examples.TrainFashionMNIST
-
-# Compile & run CIFAR-10 CNN (Using Multi-threaded DataLoader)
-javac --add-modules jdk.incubator.vector -d bin -cp bin;lib/* src/com/user/nn/examples/TrainCifar10.java
-java --add-modules jdk.incubator.vector -cp bin;lib/* com.user.nn.examples.TrainCifar10
-
-# Compile & run ResNet-18 on CIFAR-10 (High performance GPU training)
-javac --add-modules jdk.incubator.vector -d bin -cp bin;lib/* src/com/user/nn/examples/TrainResNetCifar10.java
-java --add-modules jdk.incubator.vector -cp bin;lib/* com.user.nn.examples.TrainResNetCifar10
-
-# Compile & run Sentiment Analysis (Real Movie Comments Dataset)
-javac --add-modules jdk.incubator.vector -d bin -cp bin src/com/user/nn/examples/TrainSentiment.java
-java --add-modules jdk.incubator.vector -cp bin com.user.nn.examples.TrainSentiment
-
-# Compile & run Vision Transformer (ViT) on CIFAR-10 (Small ViT configuration)
-javac --add-modules jdk.incubator.vector -d bin -cp "bin;lib/*" src/com/user/nn/examples/TrainViTCifar10.java
-java --add-modules jdk.incubator.vector -cp "bin;lib/*" com.user.nn.examples.TrainViTCifar10
+```powershell
+powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
+java --add-modules jdk.incubator.vector -cp "bin;lib/*" com.user.nn.examples.TrainIris
+java --add-modules jdk.incubator.vector -cp "bin;lib/*" com.user.nn.examples.TrainFashionMNIST
 ```
 
-## Project Structure
+Sau do doc tiep:
 
+- `TUTORIAL.md` neu ban muon hoc theo tung buoc bang tieng Viet.
+- `API_REFERENCE.md` neu ban can ban do package va API chinh.
+
+## So do tong quan
+
+```mermaid
+flowchart LR
+    A[Data Loaders] --> B[Tensor / Torch]
+    B --> C[Autograd Graph]
+    C --> D[Module / Layers]
+    D --> E[Optim / Scheduler]
+    B --> F[CPU Path]
+    B --> G[GPU Path]
+    F --> H[Vector API]
+    F --> I[OpenBLAS]
+    G --> J[JCuda / cuBLAS]
+    G --> K[cuDNN]
+    G --> L[PTX Kernels]
 ```
-src/
-└── com/user/nn/
-    ├── core/
-    │   ├── NN.java          # Module, Parameter, layers, F (loss functions), RNN/LSTM, **Embedding**, **Dropout**
-    │   ├── Tensor.java      # Core Tensor class with **Topological Sort Autograd**
-    │   └── Torch.java       # Tensor utilities (creation, ops, broadcasting, SIMD)
-    ├── optim/
-    │   └── Optim.java       # Optimizers (SGD, Adam)
-    ├── metrics/
-    │   ├── Metric.java      # Metric interface
-    │   ├── Accuracy.java    # Classification accuracy
-    │   ├── MeanSquaredError.java # Regression MSE
-    │   └── MetricTracker.java # Epoch state tracking
-    ├── dataloaders/
-    │   ├── Data.java        # Dataset, DataLoader, **Vocabulary**, **BasicTokenizer**
-    │   ├── MnistLoader.java # Download/Parse Fashion-MNIST
-    │   ├── Cifar10Loader.java # Download/Parse CIFAR-10
-    │   └── MovieCommentLoader.java # Download/Parse Movie Polarity Dataset
-    ├── models/
-    │   └── SentimentModel.java  # Embedding -> LSTM -> Dropout -> Linear Model
-    └── examples/
-        ├── App.java
-        ├── TrainSentiment.java  # Sentiment Analysis Training on Real Data
-        ├── TrainIris.java       # Simple MLP for Iris classification
-        ├── TrainFashionMNIST.java # MLP with DataLoader for Fashion-MNIST
-        ├── TrainCifar10.java    # CNN with DataLoader on CIFAR-10
-        ├── TrainViTCifar10.java # Vision Transformer on CIFAR-10 (GPU Example)
-        └── TrainResNetCifar10.java # ResNet-18 on CIFAR-10
+
+## Diem noi bat
+
+- Tensor engine co reshape, broadcasting, indexing, reduction, transpose, gather/scatter, `matmul`, `bmm`.
+- Autograd dynamic graph voi `requires_grad`, `grad_fn`, `backward()`, topological sort va version checking cho in-place ops.
+- He `Module` kieu PyTorch voi `Sequential`, `ModuleList`, `ModuleDict`, `Parameter`.
+- Layer cho nhieu bai toan pho bien: `Linear`, `Embedding`, `Conv1d`, `Conv2d`, `ConvTranspose2d`, pooling, norm, attention, transformer encoder.
+- CPU acceleration bang Java Vector API va OpenBLAS qua JavaCPP/bytedeco.
+- GPU acceleration bang JCuda, cuBLAS, cuDNN, memory pool, CUDA streams va PTX kernels tuy bien.
+- Vi du end-to-end cho Iris, Fashion-MNIST, CIFAR-10, Sentiment Analysis, ViT, GAN, VAE.
+- Bo test PowerShell hien dang ky 44 test class va dang pass toan bo.
+
+## Benchmark tham khao
+
+Cac so duoi day la ket qua do tren chinh repo hien tai bang benchmark san co. Day la so do dai dien, khong phai cam ket hieu nang tuyet doi vi con phu thuoc phan cung va moi truong.
+
+| Tac vu | Duong chay | Kich thuoc | Ket qua do gan nhat |
+|---|---|---|---|
+| Matmul CPU lon | OpenBLAS | `256 x 256` | `0.58 ms / matmul` |
+| Matmul CPU vectorized | Java Vector API | benchmark suite | `19.10 ms / matmul` |
+| Regression suite | PowerShell runner | 44 test class | pass toan bo |
+
+## Cong nghe chinh
+
+| Thanh phan | Vai tro |
+|---|---|
+| Java 21 | Nen tang build va runtime |
+| `jdk.incubator.vector` | SIMD cho phep toan CPU |
+| JCuda / cuBLAS / cuDNN | Tang toc GPU cho tensor, matmul, conv, pooling, backward |
+| OpenBLAS + JavaCPP | Tang toc `matmul` CPU kich thuoc lon |
+| PowerShell scripts | Build, test va workflow tren Windows |
+
+## Yeu cau moi truong
+
+### Bat buoc
+
+- Windows voi PowerShell.
+- JDK 21 tro len. Repo hien da duoc kiem tra voi Temurin 21.0.10.
+- `javac` va `java` trong `PATH`.
+
+### Tuy chon nhung rat nen co
+
+- NVIDIA GPU + CUDA driver neu muon dung duong GPU.
+- CUDA toolkit neu muon build lai `kernels.cu` thanh `bin/kernels.ptx`.
+
+### Dependency hien co trong repo
+
+Thu muc `lib/` hien da chua cac JAR cho:
+
+- JCuda
+- JCublas
+- JCudnn
+- JavaCPP
+- OpenBLAS
+
+Trong phan lon truong hop, classpath `"bin;lib/*"` la du.
+
+## Quick Start chi tiet
+
+### 1. Compile toan bo framework
+
+```powershell
+javac --add-modules jdk.incubator.vector -d bin -cp "lib/*" `
+    src\com\user\nn\core\*.java `
+    src\com\user\nn\layers\*.java `
+    src\com\user\nn\activations\*.java `
+    src\com\user\nn\containers\*.java `
+    src\com\user\nn\norm\*.java `
+    src\com\user\nn\pooling\*.java `
+    src\com\user\nn\rnn\*.java `
+    src\com\user\nn\attention\*.java `
+    src\com\user\nn\losses\*.java `
+    src\com\user\nn\optim\*.java `
+    src\com\user\nn\dataloaders\*.java `
+    src\com\user\nn\models\*.java `
+    src\com\user\nn\models\cv\*.java `
+    src\com\user\nn\models\generative\*.java `
+    src\com\user\nn\metrics\*.java `
+    src\com\user\nn\examples\*.java
+```
+
+### 2. Chay toan bo test
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
+```
+
+### 3. Chay vi du don gian nhat
+
+```powershell
+java --add-modules jdk.incubator.vector -cp "bin;lib/*" com.user.nn.examples.TrainIris
+```
+
+## Lo trinh nen chay vi du
+
+| Vi du | Muc tieu | Khi nao nen chay |
+|---|---|---|
+| `TrainIris` | Classification nho, de doc code | Bat dau o day |
+| `TrainFashionMNIST` | Dataloader, mini-batch, MLP, GPU training | Sau Iris |
+| `TrainSentiment` | NLP pipeline voi `Embedding` va LSTM | Khi muon xem text workflow |
+| `TrainCifar10` | CNN tren du lieu anh that | Khi muon benchmark GPU |
+| `TrainResNetCifar10` | Residual architecture | Sau khi quen CNN |
+| `TrainViTCifar10` | Vision Transformer | Khi tim hieu attention |
+| `TrainGANMnist` | Generative experiment | Khi muon mo rong nghien cuu |
+| `TrainVAEMnist` | Variational autoencoder | Khi muon thu latent models |
+| `TrainLeNet` | CNN co dien gon nhe | Khi can debug nhanh |
+
+## Cau truc repo
+
+```text
+src/com/user/nn/
+  core/           Tensor, Torch, Functional, CUDAOps, GpuMemoryPool, MixedPrecision
+  layers/         Linear, Conv, Embedding, Dropout, Bilinear
+  activations/    ReLU, Sigmoid, Tanh, GELU, Softplus, Softmax, ...
+  containers/     Sequential, ModuleList, ModuleDict, Flatten
+  norm/           BatchNorm, LayerNorm, InstanceNorm, GroupNorm
+  pooling/        MaxPool, AvgPool, AdaptiveAvgPool, ZeroPad
+  attention/      MultiheadAttention, TransformerEncoderLayer
+  rnn/            RNN, LSTM, GRU va cell tuong ung
+  losses/         BCE, CrossEntropy, KLDiv, cosine, pairwise distance
+  optim/          SGD, Adam, scheduler
+  dataloaders/    Dataset, DataLoader, loader cho MNIST/CIFAR/Sentiment
+  models/         Model hoan chinh cho NLP, CV va generative
+  examples/       Chuong trinh train end-to-end
+
 tests/
-├── run-tests.ps1        # Automated test runner (40 tests)
-├── java/com/user/nn/    # Unit test files (TestViT, TestVectorBenchmark, etc.)
-└── *.py                 # NumPy reference scripts
+  java/com/user/nn/   Toan bo test Java
+  run-tests.ps1       Script compile + chay regression suite
 ```
 
-## Roadmap
+## Kien truc van hanh
 
-### ✅ Phase 1–8: Core & Ecosystem (Complete)
-- Tensor API, Autograd engine, NN.Module migration
-- CNN Autograd Migration (`Conv2d`, `MaxPool2d`, `AvgPool2d`, `ZeroPad2d`, `ConvTranspose2d`)
-- `optim.SGD`, `optim.Adam`
-- Loss Functions (`nll_loss`, `mse_loss_tensor`, `huber_loss`)
-- Normalization (`LayerNorm`, `InstanceNorm`)
+### Tensor va autograd
 
-### ✅ Phase 9: Sequential Models (Complete)
-- **RNN & LSTM**: ✅ `RNNCell`, `LSTMCell`, `RNN`, `LSTM` implemented with BPTT support.
-- **Transformer**: 🔲 MultiheadAttention, Softmax-dim, EncoderLayer (Next Step).
+`Tensor` la loi cua framework. Moi tensor giu shape, du lieu CPU, con tro GPU, `requires_grad`, gradient tich luy, `grad_fn` va version counter de phat hien in-place mutation pha graph.
 
-### ✅ Phase 10: System Optimizations (Complete)
-- **DataLoader**: ✅ Multi-threaded Producer-Consumer pipeline (`data.java`).
-- **SIMD**: ✅ Java Vector API integration for hardware-accelerated `matmul` and `dot`.
-- Added `TestVectorBenchmark` showing 1024x1024 Matmul in ~112ms.
+### Device-aware execution
 
-### ✅ Phase 11: NLP & Autograd Optimization (Complete)
-- **Embedding**: Added `Embedding` layer with full backprop.
-- **NLP Utilities**: `Vocabulary` and `BasicTokenizer` added to `data.java`.
-- **Topological Sort**: Rewrote `Tensor.backward()` to use non-recursive topological sorting, improving RNN/LSTM backprop complexity from $O(2^N)$ to $O(N)$.
-- **Movie Dataset**: Added `MovieCommentLoader` for Rotten Tomatoes dataset.
-- **Sentiment Analysis**: End-to-end training achieved with `TrainSentiment.java`.
+Framework dispatch theo thiet bi:
 
-### ✅ Polish & Real Datasets (Complete)
-- Added `TrainFashionMNIST.java` (89.04% Test Accuracy with GPU acceleration)
-- Added `TrainCifar10.java` (Dramatic speed-up via **cuDNN**: ~10s/epoch vs several minutes)
-- **Train/Eval Modes**: Integrated `model.train()` and `model.eval()` to support inference-specific behaviors like Dropout and BatchNorm.
-- **Dropout**: Implemented `NN.Dropout` and `Torch.dropout` with inverted dropout scaling.
+- tensor o CPU thi dung CPU path
+- tensor o GPU thi uu tien GPU path
+- phep toan lon tren CPU co the dung OpenBLAS
+- phep toan GPU dung cuBLAS, cuDNN hoac PTX kernel tuy bien
+- neu GPU khong kha dung thi fallback ve CPU khi co the
 
-### ✅ Phase 12: Metrics Tracking (Complete)
-- **metrics**: ✅ Standardized `Accuracy`, `MeanSquaredError`, and `MeanAbsoluteError`.
-- **MetricTracker**: ✅ Refactored all training examples to use decoupled metric tracking for cleaner code.
+### Memory management
 
-### ✅ Phase 13: GPU & cuDNN Acceleration (Complete)
-- **JCuda Core**: ✅ Integrated JCuda (12.0.0) for GPU-aware tensors.
-- **Memory Management**: ✅ Implement `AutoCloseable` tensors with `cudaFree` for GPU memory leak prevention.
-- **CUBLAS Integration**: ✅ GPU-accelerated `matmul` using `cublasSgemm`.
-- **JCudnn Support**: ✅ **Conv2d**, **MaxPool2d**, and **ReLU** accelerated via cuDNN (8.9.x).
-- **Hybrid Dispatch**: ✅ Device-aware `Torch.java` / `NN.java` routes math to GPU if tensors reside there.
-- **Backward Sync**: ✅ Automatic CPU synchronization for backward pass when GPU forward is used.
-- **Full Compatibility Audit**: ✅ Comprehensive audit of all math and NN operations to ensure device-aware dispatch and automatic synchronization.
-- **Convenience API**: ✅ Added `Tensor.to(Device)` for seamless device migration.
-- Full suite of 40 tests operational (including cuDNN initialization and GPU forward verification).
+Repo hien co 3 tang quan ly bo nho quan trong:
 
-### ✅ Phase 14: Advanced GPU Optimizations (Zero-Overhead) (Complete)
-- **Kernel Fusion**: ✅ Integrated `Conv2d + Bias + ReLU` fusion using `cudnnConvolutionBiasActivationForward`.
-- **CUDA Streams**: ✅ Implemented asynchronous Compute and Transfer streams to overlap I/O and computation.
-- **Arena Memory Pool**: ✅ Developed `GpuMemoryPool` for instant raw VRAM allocation (0ms overhead).
-- **Auto-Scaling**: ✅ Pool size automatically scales based on model parameters or available VRAM.
-- **Custom PTX Kernels**: ✅ Implemented element-wise operations (Add, Sub, Mul) as native GPU kernels to eliminate CPU Fallback.
-- **MemoryScope**: ✅ Automated tensor lifecycle management for zero-leak training loops.
-- **GPU Backward**: ✅ Implemented full cuDNN backward support for `Conv2d` (BackwardData, BackwardFilter, BackwardBias), eliminating CPU synchronization in CNN training.
+- `AutoCloseable` tren `Tensor`
+- `Cleaner` thay cho `finalize()` cho GPU memory safety net
+- `MemoryScope` + `GpuMemoryPool` de giam overhead VRAM trong training loop
 
-### ✅ Phase 15: Computer Vision & ResNet (Complete)
-- **VGG & ResNet**: ✅ Configurable VGG/ResNet architectures with skip-connections and autograd.
-- **ResNet-18 Performance**: ✅ Achieved ~66% Accuracy on CIFAR-10 in 2 epochs (~15 mins) using end-to-end GPU training.
-- **Evaluator Class**: ✅ Centralized model evaluation with multi-threaded data fetching.
-- **Global Average Pooling**: ✅ `adaptive_avg_pool2d` supports flexible architectural endpoints.
+## Tai lieu di kem
 
-### ✅ Phase 16: Transformers & Vision Transformer (Complete)
-- **MultiheadAttention**: ✅ Batched queries/keys/values with scalable attention and autograd.
-- **Transformer Blocks**: ✅ `TransformerEncoderLayer` with pre-norm architecture and FeedForward modules.
-- **Vision Transformer (ViT)**: ✅ Full ViT implementation including patch embedding and learnable tokens.
-- **Generalized Ops**: ✅ Upgraded `transpose`, `expand`, `cat`, and `bmm` for higher-rank tensor support.
-- **Robust Autograd**: ✅ Robust broadcasting support in `reduceSumToShape` to support complex backprop flows.
+- `TUTORIAL.md`: huong dan tung buoc bang tieng Viet
+- `TUTORIAL.en.md`: tutorial tieng Anh
+- `API_REFERENCE.md`: package reference tieng Viet
+- `API_REFERENCE.en.md`: package reference tieng Anh
 
-### 🔳 Upcoming
-- Conv1d/Conv3d, BatchNorm2d/3d, GroupNorm
-- Generative Models (GAN, VAE)
-- Learning rate schedulers
-- JUnit integration
+## Ghi chu thuc te
 
-## Test Suite (40 tests)
-
-| Test | Coverage |
-|------|----------|
-| TestGPUMatmul | JCuda/GPU Data transfer & Matmul correctness |
-| TestMatOps | Matrix operations |
-| TestContainers | Sequential, ModuleList, ModuleDict |
-| TestParameterAndModules | Parameter, Module base |
-| TestFunctional | F utility functions |
-| TestLinearReLU | Linear+ReLU vs PyTorch reference |
-| TestActivations | All activation layers |
-| TestLossesAndNorms | Legacy losses & BatchNorm |
-| TestConvPool | Conv2d + MaxPool2d vs Python ref |
-| TestTorchCoverage | Torch utility functions |
-| TestTorchExtras | Advanced Torch ops |
-| TestTensor | Tensor basics |
-| TestGatherScatterExtras | Gather/Scatter ops |
-| TestAutogradSimple | Basic autograd |
-| TestAutogradLinear | Linear layer autograd |
-| TestAutogradShapeOps | Shape operation gradients |
-| TestAutogradReductions | Reduction gradients |
-| TestAutogradMatmul | Matrix multiply gradients |
-| TestAutogradActivations | Activation gradients |
-| TestAutogradMLP | End-to-end MLP training |
-| TestAutogradConv | Conv2d, MaxPool2d, AvgPool2d, ZeroPad2d, ConvTranspose2d gradients |
-| TestOptimizers | SGD + Adam convergence |
-| TestLossFunctions | NLL, MSE, Huber forward+backward |
-| TestNormLayers | LayerNorm, InstanceNorm forward+backward |
-| TestMetrics | Metrics calculations |
-| TestRNN | RNN/LSTM Forward + Backpropagation Through Time |
-| TestAutogradEmbedding | Embedding layer autograd |
-| TestDropout | Training/Eval configurations and Dropout |
-| TestViT | **Vision Transformer (ViT)** Functional Verification on GPU |
-| TestVectorBenchmark | **SIMD (AVX2/512)** Matmul Benchmark |
-| TestBatch1 | Combined batch 1 tests |
-| TestBatch2 | Combined batch 2 tests |
-| TestBatch3 | Combined batch 3 tests |
-| TestBatch4 | Combined batch 4 tests |
-| TestGPUBenchmark | Full GPU pipeline benchmark |
+- Mot so vi du tu tai du lieu neu thieu, mot so khac dung du lieu da co san trong `data/`.
+- Tai lieu uu tien PowerShell tren Windows vi repo hien toi uu theo moi truong nay.
+- Tren Windows, classpath dung dau `;`.
+- Neu sua `src/com/user/nn/core/kernels.cu`, ban can build lai PTX tuong ung.
 
 ---
 
-*Last updated: 2026-03-08*
+Tai lieu duoc cap nhat theo trang thai code hien tai vao 2026-03-09.

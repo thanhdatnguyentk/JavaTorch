@@ -53,6 +53,7 @@ $tests = @(
     , "com.user.nn.TestBatch3"
     , "com.user.nn.TestBatch4"
     , "com.user.nn.TestGPUBenchmark"
+    , "com.user.nn.TestGPUKernels"
     , "com.user.nn.TestViT"
     , "com.user.nn.TestVectorBenchmark"
     
@@ -61,6 +62,10 @@ $tests = @(
     , "com.user.nn.TestEdgeCases"
     , "com.user.nn.TestSchedulerAndOptim"
     , "com.user.nn.TestDataLoaders"
+    , "com.user.nn.TestGPUEmbedding"
+    , "com.user.nn.TestWeightInit"
+    , "com.user.nn.TestInPlaceOps"
+    , "com.user.nn.TestBlasOps"
 )
 
 $failures = @()

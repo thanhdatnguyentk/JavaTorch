@@ -15,8 +15,8 @@ public class Conv1d extends Module {
         this.stride = stride;
         this.pad = pad;
         NN.Mat w = NN.mat_alloc(outC, inC * kernel);
-        NN.mat_rand(w, -0.1f, 0.1f);
         this.weight = new Parameter(new Tensor(w.es, outC, inC, kernel));
+        Torch.nn.init.kaiming_uniform_(this.weight.getTensor());
         addParameter("weight", this.weight);
         if (useBias) {
             NN.Mat b = NN.mat_alloc(1, outC);

@@ -27,8 +27,8 @@ public class ConvTranspose2d extends Module {
         this.outputPadH = outputPadding;
         this.outputPadW = outputPadding;
         NN.Mat w = NN.mat_alloc(inChannels, outChannels * kernelH * kernelW);
-        NN.mat_rand(w, -0.08f, 0.08f);
         this.weight = new Parameter(w);
+        Torch.nn.init.kaiming_uniform_(this.weight.getTensor());
         addParameter("weight", this.weight);
         if (biasFlag) {
             NN.Mat b = NN.mat_alloc(1, outChannels);

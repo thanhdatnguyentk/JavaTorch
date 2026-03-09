@@ -13,8 +13,8 @@ public class Linear extends Module {
         this.inFeatures = inFeatures;
         this.outFeatures = outFeatures;
         NN.Mat w = NN.mat_alloc(inFeatures, outFeatures);
-        NN.mat_rand(w, -0.08f, 0.08f);
         this.weight = new Parameter(w);
+        Torch.nn.init.kaiming_uniform_(this.weight.getTensor());
         addParameter("weight", this.weight);
         if (useBias) {
             NN.Mat b = NN.mat_alloc(1, outFeatures);

@@ -52,12 +52,18 @@ public class CUDAOps {
     private static CUfunction bceLogitsBackwardFunction;
     private static CUfunction expFunction;
     private static CUfunction logFunction;
+    private static CUfunction embeddingForwardFunction;
+    private static CUfunction embeddingBackwardFunction;
+    private static CUfunction addInplaceFunction;
+    private static CUfunction subInplaceFunction;
+    private static CUfunction mulInplaceFunction;
     
     // CUDA Streams for pipelining
     private static cudaStream_t computeStream;
     private static cudaStream_t transferStream;
     
     private static boolean initialized = false;
+    private static boolean cudaAvailable = false;
 
     /**
      * Quick check whether CUDA/cuDNN/cuBLAS initialization succeeded or is
@@ -66,125 +72,109 @@ public class CUDAOps {
     public static boolean isAvailable() {
         try {
             init();
-            return true;
         } catch (Throwable t) {
-            return false;
+            // init catches exceptions internally but guard anyway
         }
+        return cudaAvailable;
     }
 
     public static synchronized void init() {
         if (!initialized) {
-            cublasHandle = new cublasHandle();
-            cublasCreate(cublasHandle);
-            
-            cudnnHandle = new cudnnHandle();
-            int status = cudnnCreate(cudnnHandle);
-            if (status != CUDNN_STATUS_SUCCESS) {
-                System.err.println("Warning: cuDNN initialization failed: " + jcuda.jcudnn.cudnnStatus.stringFor(status));
-            }
-            
-            // Initialize Driver API for custom kernels
-            JCudaDriver.setExceptionsEnabled(true);
-            cuInit(0);
-            
             try {
-                module = new CUmodule();
-                // Try multiple paths to find kernels.ptx
-                File ptxFile = null;
-                String[] candidates = {
-                    "bin/kernels.ptx",
-                    "kernels.ptx",
-                    System.getProperty("user.dir") + "/bin/kernels.ptx",
-                    System.getProperty("user.dir") + "\\bin\\kernels.ptx"
-                };
-                // Also try relative to the classpath
-                String cp = System.getProperty("java.class.path");
-                if (cp != null) {
-                    for (String p : cp.split(File.pathSeparator)) {
-                        File f = new File(p);
-                        if (f.isDirectory()) {
-                            File candidate = new File(f, "kernels.ptx");
-                            if (candidate.exists()) { ptxFile = candidate; break; }
+                cublasHandle = new cublasHandle();
+                cublasCreate(cublasHandle);
+
+                cudnnHandle = new cudnnHandle();
+                int status = cudnnCreate(cudnnHandle);
+                if (status != CUDNN_STATUS_SUCCESS) {
+                    System.err.println("Warning: cuDNN initialization failed: " + jcuda.jcudnn.cudnnStatus.stringFor(status));
+                }
+
+                // Initialize Driver API for custom kernels
+                JCudaDriver.setExceptionsEnabled(true);
+                cuInit(0);
+
+                try {
+                    module = new CUmodule();
+                    // Try multiple paths to find kernels.ptx
+                    File ptxFile = null;
+                    String[] candidates = {
+                        "bin/kernels.ptx",
+                        "kernels.ptx",
+                        System.getProperty("user.dir") + "/bin/kernels.ptx",
+                        System.getProperty("user.dir") + "\\bin\\kernels.ptx"
+                    };
+                    // Also try relative to the classpath
+                    String cp = System.getProperty("java.class.path");
+                    if (cp != null) {
+                        for (String p : cp.split(File.pathSeparator)) {
+                            File f = new File(p);
+                            if (f.isDirectory()) {
+                                File candidate = new File(f, "kernels.ptx");
+                                if (candidate.exists()) { ptxFile = candidate; break; }
+                            }
                         }
                     }
-                }
-                if (ptxFile == null) {
-                    for (String path : candidates) {
-                        File f = new File(path);
-                        if (f.exists()) { ptxFile = f; break; }
+                    if (ptxFile == null) {
+                        for (String path : candidates) {
+                            File f = new File(path);
+                            if (f.exists()) { ptxFile = f; break; }
+                        }
                     }
+                    if (ptxFile != null && ptxFile.exists()) {
+                        cuModuleLoad(module, ptxFile.getAbsolutePath());
+                        System.out.println("[CUDAOps] Loaded PTX kernels from: " + ptxFile.getAbsolutePath());
+                    } else {
+                        System.err.println("Warning: kernels.ptx not found. Searched: " + java.util.Arrays.toString(candidates));
+                    }
+
+                    // Safely try to get functions; some PTX builds may omit variants (eg. *_backward)
+                    addFunction = safeGetFunction("add_tensors");
+                    subFunction = safeGetFunction("sub_tensors");
+                    mulFunction = safeGetFunction("mul_tensors");
+                    addScalarFunction = safeGetFunction("add_scalar");
+                    mulScalarFunction = safeGetFunction("mul_scalar");
+                    reluBackwardFunction = safeGetFunction("relu_backward");
+                    leakyReluForwardFunction = safeGetFunction("leaky_relu_forward");
+                    leakyReluBackwardFunction = safeGetFunction("leaky_relu_backward");
+                    sigmoidBackwardFunction = safeGetFunction("sigmoid_backward");
+                    tanhBackwardFunction = safeGetFunction("tanh_backward");
+                    bceForwardFunction = safeGetFunction("bce_forward");
+                    bceBackwardFunction = safeGetFunction("bce_backward");
+                    bceLogitsForwardFunction = safeGetFunction("bce_logits_forward");
+                    bceLogitsBackwardFunction = safeGetFunction("bce_logits_backward");
+                    expFunction = safeGetFunction("exp_kernel");
+                    logFunction = safeGetFunction("log_kernel");
+                    embeddingForwardFunction = safeGetFunction("embedding_forward");
+                    embeddingBackwardFunction = safeGetFunction("embedding_backward");
+                    addInplaceFunction = safeGetFunction("add_tensors_inplace");
+                    subInplaceFunction = safeGetFunction("sub_tensors_inplace");
+                    mulInplaceFunction = safeGetFunction("mul_tensors_inplace");
+                } catch (Exception e) {
+                    System.err.println("Warning: Could not load custom PTX kernels. GPU element-wise operations may fail.");
+                    e.printStackTrace();
                 }
-                if (ptxFile != null && ptxFile.exists()) {
-                    cuModuleLoad(module, ptxFile.getAbsolutePath());
-                    System.out.println("[CUDAOps] Loaded PTX kernels from: " + ptxFile.getAbsolutePath());
-                } else {
-                    System.err.println("Warning: kernels.ptx not found. Searched: " + java.util.Arrays.toString(candidates));
-                }
-                
-                addFunction = new CUfunction();
-                cuModuleGetFunction(addFunction, module, "add_tensors");
-                
-                subFunction = new CUfunction();
-                cuModuleGetFunction(subFunction, module, "sub_tensors");
-                
-                mulFunction = new CUfunction();
-                cuModuleGetFunction(mulFunction, module, "mul_tensors");
-                
-                addScalarFunction = new CUfunction();
-                cuModuleGetFunction(addScalarFunction, module, "add_scalar");
-                
-                mulScalarFunction = new CUfunction();
-                cuModuleGetFunction(mulScalarFunction, module, "mul_scalar");
-                
-                reluBackwardFunction = new CUfunction();
-                cuModuleGetFunction(reluBackwardFunction, module, "relu_backward");
-                
-                leakyReluForwardFunction = new CUfunction();
-                cuModuleGetFunction(leakyReluForwardFunction, module, "leaky_relu_forward");
-                
-                leakyReluBackwardFunction = new CUfunction();
-                cuModuleGetFunction(leakyReluBackwardFunction, module, "leaky_relu_backward");
-                
-                sigmoidBackwardFunction = new CUfunction();
-                cuModuleGetFunction(sigmoidBackwardFunction, module, "sigmoid_backward");
-                
-                tanhBackwardFunction = new CUfunction();
-                cuModuleGetFunction(tanhBackwardFunction, module, "tanh_backward");
-                
-                bceForwardFunction = new CUfunction();
-                cuModuleGetFunction(bceForwardFunction, module, "bce_forward");
-                
-                bceBackwardFunction = new CUfunction();
-                cuModuleGetFunction(bceBackwardFunction, module, "bce_backward");
-                
-                bceLogitsForwardFunction = new CUfunction();
-                cuModuleGetFunction(bceLogitsForwardFunction, module, "bce_logits_forward");
-                
-                bceLogitsBackwardFunction = new CUfunction();
-                cuModuleGetFunction(bceLogitsBackwardFunction, module, "bce_logits_backward");
-                
-                expFunction = new CUfunction();
-                cuModuleGetFunction(expFunction, module, "exp_kernel");
-                
-                logFunction = new CUfunction();
-                cuModuleGetFunction(logFunction, module, "log_kernel");
-            } catch (Exception e) {
-                System.err.println("Warning: Could not load custom PTX kernels. GPU element-wise operations may fail.");
-                e.printStackTrace();
+
+                // Create CUDA Streams
+                computeStream = new cudaStream_t();
+                jcuda.runtime.JCuda.cudaStreamCreate(computeStream);
+
+                transferStream = new cudaStream_t();
+                jcuda.runtime.JCuda.cudaStreamCreate(transferStream);
+
+                // Bind streams to cuBLAS and cuDNN handles
+                jcuda.jcublas.JCublas2.cublasSetStream(cublasHandle, computeStream);
+                cudnnSetStream(cudnnHandle, computeStream);
+
+                // If we reached here without exception, mark CUDA available
+                cudaAvailable = true;
+            } catch (Throwable t) {
+                System.err.println("Warning: CUDA initialization failed or not available on this system: " + t.getMessage());
+                t.printStackTrace();
+                cudaAvailable = false;
+            } finally {
+                initialized = true;
             }
-            
-            // Create CUDA Streams
-            computeStream = new cudaStream_t();
-            jcuda.runtime.JCuda.cudaStreamCreate(computeStream);
-            
-            transferStream = new cudaStream_t();
-            jcuda.runtime.JCuda.cudaStreamCreate(transferStream);
-            
-            // Bind streams to cuBLAS and cuDNN handles
-            jcuda.jcublas.JCublas2.cublasSetStream(cublasHandle, computeStream);
-            cudnnSetStream(cudnnHandle, computeStream);
-            
-            initialized = true;
         }
     }
     
@@ -250,6 +240,18 @@ public class CUDAOps {
             
         out.markDirtyOnGPU();
     }
+
+    private static CUfunction safeGetFunction(String name) {
+        try {
+            if (module == null) return null;
+            CUfunction fn = new CUfunction();
+            cuModuleGetFunction(fn, module, name);
+            return fn;
+        } catch (Throwable t) {
+            System.err.println("Warning: PTX function '" + name + "' not found in module: " + t.getMessage());
+            return null;
+        }
+    }
     
     private static void launchScalarKernel(CUfunction function, Tensor x, float scalar, Tensor out) {
         int n = x.numel();
@@ -273,21 +275,52 @@ public class CUDAOps {
 
     public static void add(Tensor a, Tensor b, Tensor out) {
         init();
+        if (!cudaAvailable || addFunction == null) {
+            // CPU fallback
+            a.toCPU(); b.toCPU(); out.toCPU();
+            int n = a.numel();
+            for (int i = 0; i < n; i++) out.data[i] = a.data[i] + b.data[i];
+            out.markDirtyOnCPU();
+            return;
+        }
         launchElementwiseKernel(addFunction, a, b, out);
     }
     
     public static void sub(Tensor a, Tensor b, Tensor out) {
         init();
+        if (!cudaAvailable || subFunction == null) {
+            // CPU fallback
+            a.toCPU(); b.toCPU(); out.toCPU();
+            int n = a.numel();
+            for (int i = 0; i < n; i++) out.data[i] = a.data[i] - b.data[i];
+            out.markDirtyOnCPU();
+            return;
+        }
         launchElementwiseKernel(subFunction, a, b, out);
     }
     
     public static void mul(Tensor a, Tensor b, Tensor out) {
         init();
+        if (!cudaAvailable || mulFunction == null) {
+            // CPU fallback
+            a.toCPU(); b.toCPU(); out.toCPU();
+            int n = a.numel();
+            for (int i = 0; i < n; i++) out.data[i] = a.data[i] * b.data[i];
+            out.markDirtyOnCPU();
+            return;
+        }
         launchElementwiseKernel(mulFunction, a, b, out);
     }
     
     public static void add(Tensor x, float scalar, Tensor out) {
         init();
+        if (!cudaAvailable || addScalarFunction == null) {
+            x.toCPU(); out.toCPU();
+            int n = x.numel();
+            for (int i = 0; i < n; i++) out.data[i] = x.data[i] + scalar;
+            out.markDirtyOnCPU();
+            return;
+        }
         // The scalar kernel updates in-place, we should copy if x != out
         if (x != out) {
             cudaMemcpy(out.getDevicePointer(), x.getDevicePointer(), (long) x.numel() * jcuda.Sizeof.FLOAT, cudaMemcpyDeviceToDevice);
@@ -297,6 +330,13 @@ public class CUDAOps {
     
     public static void mul(Tensor x, float scalar, Tensor out) {
         init();
+        if (!cudaAvailable || mulScalarFunction == null) {
+            x.toCPU(); out.toCPU();
+            int n = x.numel();
+            for (int i = 0; i < n; i++) out.data[i] = x.data[i] * scalar;
+            out.markDirtyOnCPU();
+            return;
+        }
         if (x != out) {
             cudaMemcpy(out.getDevicePointer(), x.getDevicePointer(), (long) x.numel() * jcuda.Sizeof.FLOAT, cudaMemcpyDeviceToDevice);
         }
@@ -312,6 +352,24 @@ public class CUDAOps {
             throw new IllegalArgumentException("Only 2D matmul supported on GPU currently");
         }
         init();
+        if (!cudaAvailable) {
+            // CPU fallback: perform matmul on host memory
+            a.toCPU(); b.toCPU(); out.toCPU();
+            int m = a.shape[0];
+            int k = a.shape[1];
+            int n = b.shape[1];
+            for (int i = 0; i < m; i++) {
+                for (int j = 0; j < n; j++) {
+                    float sum = 0f;
+                    for (int t = 0; t < k; t++) {
+                        sum += a.data[i * k + t] * b.data[t * n + j];
+                    }
+                    out.data[i * n + j] = sum;
+                }
+            }
+            out.markDirtyOnCPU();
+            return;
+        }
         
         int m = a.shape[0];
         int k = a.shape[1];
@@ -352,6 +410,27 @@ public class CUDAOps {
      */
     public static void bmm(Tensor a, Tensor b, Tensor out) {
         init();
+        if (!cudaAvailable) {
+            // CPU fallback for batched matmul
+            a.toCPU(); b.toCPU(); out.toCPU();
+            int bSize = a.shape[0];
+            int m = a.shape[1];
+            int k = a.shape[2];
+            int n = b.shape[2];
+            for (int bi = 0; bi < bSize; bi++) {
+                for (int i = 0; i < m; i++) {
+                    for (int j = 0; j < n; j++) {
+                        float sum = 0f;
+                        for (int t = 0; t < k; t++) {
+                            sum += a.data[bi*m*k + i*k + t] * b.data[bi*k*n + t*n + j];
+                        }
+                        out.data[bi*m*n + i*n + j] = sum;
+                    }
+                }
+            }
+            out.markDirtyOnCPU();
+            return;
+        }
         if (a.dim() != 3 || b.dim() != 3) {
             throw new IllegalArgumentException("bmm supports 3D tensors [B, M, K] and [B, K, N]");
         }
@@ -1079,6 +1158,16 @@ public class CUDAOps {
     public static void bceLogitsBackward(Tensor input, Tensor target, Tensor dx) {
         init();
         int n = input.numel();
+        if (bceLogitsBackwardFunction == null) {
+            boolean wasGPU = input.isGPU() || target.isGPU();
+            input.toCPU(); target.toCPU(); dx.toCPU();
+            for (int i = 0; i < n; i++) {
+                float sig = 1.0f / (1.0f + (float) Math.exp(-input.data[i]));
+                dx.data[i] = sig - target.data[i];
+            }
+            if (wasGPU) { input.toGPU(); target.toGPU(); dx.toGPU(); } else { dx.markDirtyOnCPU(); }
+            return;
+        }
         Pointer pi = Pointer.to(input.getDevicePointer());
         Pointer pt = Pointer.to(target.getDevicePointer());
         Pointer pdx = Pointer.to(dx.getDevicePointer());
@@ -1086,34 +1175,78 @@ public class CUDAOps {
         Pointer kernelParameters = Pointer.to(pi, pt, pdx, pn);
         int blockSizeX = 256;
         int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
-        cuLaunchKernel(bceLogitsBackwardFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kernelParameters, null);
-        dx.markDirtyOnGPU();
+        try {
+            cuLaunchKernel(bceLogitsBackwardFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kernelParameters, null);
+            dx.markDirtyOnGPU();
+        } catch (Throwable t) {
+            boolean wasGPU = input.isGPU() || target.isGPU();
+            input.toCPU(); target.toCPU(); dx.toCPU();
+            for (int i = 0; i < n; i++) {
+                float sig = 1.0f / (1.0f + (float) Math.exp(-input.data[i]));
+                dx.data[i] = sig - target.data[i];
+            }
+            if (wasGPU) { input.toGPU(); target.toGPU(); dx.toGPU(); } else { dx.markDirtyOnCPU(); }
+        }
     }
 
     public static void exp(Tensor a, Tensor out) {
         init();
         int n = a.numel();
+        if (expFunction == null) {
+            boolean wasGPU = a.isGPU();
+            a.toCPU(); out.toCPU();
+            for (int i = 0; i < n; i++) out.data[i] = (float) Math.exp(a.data[i]);
+            if (wasGPU) { a.toGPU(); out.toGPU(); } else { out.markDirtyOnCPU(); }
+            return;
+        }
         Pointer pa = Pointer.to(a.getDevicePointer());
         Pointer pout = Pointer.to(out.getDevicePointer());
         Pointer pn = Pointer.to(new int[]{n});
         Pointer kernelParameters = Pointer.to(pa, pout, pn);
         int blockSizeX = 256;
         int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
-        cuLaunchKernel(expFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kernelParameters, null);
-        out.markDirtyOnGPU();
+        try {
+            cuLaunchKernel(expFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kernelParameters, null);
+            out.markDirtyOnGPU();
+        } catch (Throwable t) {
+            boolean wasGPU = a.isGPU();
+            a.toCPU(); out.toCPU();
+            for (int i = 0; i < n; i++) out.data[i] = (float) Math.exp(a.data[i]);
+            if (wasGPU) { a.toGPU(); out.toGPU(); } else { out.markDirtyOnCPU(); }
+        }
     }
 
     public static void log(Tensor a, Tensor out) {
         init();
         int n = a.numel();
+        if (logFunction == null) {
+            boolean wasGPU = a.isGPU();
+            a.toCPU(); out.toCPU();
+            for (int i = 0; i < n; i++) {
+                float v = Math.max(1e-12f, a.data[i]);
+                out.data[i] = (float) Math.log(v);
+            }
+            if (wasGPU) { a.toGPU(); out.toGPU(); } else { out.markDirtyOnCPU(); }
+            return;
+        }
         Pointer pa = Pointer.to(a.getDevicePointer());
         Pointer pout = Pointer.to(out.getDevicePointer());
         Pointer pn = Pointer.to(new int[]{n});
         Pointer kernelParameters = Pointer.to(pa, pout, pn);
         int blockSizeX = 256;
         int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
-        cuLaunchKernel(logFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kernelParameters, null);
-        out.markDirtyOnGPU();
+        try {
+            cuLaunchKernel(logFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kernelParameters, null);
+            out.markDirtyOnGPU();
+        } catch (Throwable t) {
+            boolean wasGPU = a.isGPU();
+            a.toCPU(); out.toCPU();
+            for (int i = 0; i < n; i++) {
+                float v = Math.max(1e-12f, a.data[i]);
+                out.data[i] = (float) Math.log(v);
+            }
+            if (wasGPU) { a.toGPU(); out.toGPU(); } else { out.markDirtyOnCPU(); }
+        }
     }
 
     /**
@@ -1226,6 +1359,126 @@ public class CUDAOps {
         cudnnDestroyTensorDescriptor(outDesc);
         cudnnDestroyReduceTensorDescriptor(reduceDesc);
         out.markDirtyOnGPU();
+    }
+
+    // ---- Embedding GPU kernels ----
+
+    /**
+     * GPU embedding forward: out[i*d + col] = weight[indices[i]*d + col]
+     * @param weight [num_embeddings, d]
+     * @param indices [n] (float[] storing int indices)
+     * @param out [n, d]
+     */
+    public static void embeddingForward(Tensor weight, Tensor indices, Tensor out) {
+        init();
+        int n = indices.numel();
+        int d = weight.shape[1];
+        if (!cudaAvailable || embeddingForwardFunction == null) {
+            // CPU fallback
+            weight.toCPU(); indices.toCPU(); out.toCPU();
+            for (int i = 0; i < n; i++) {
+                int idx = (int) indices.data[i];
+                System.arraycopy(weight.data, idx * d, out.data, i * d, d);
+            }
+            out.markDirtyOnCPU();
+            return;
+        }
+        int total = n * d;
+        Pointer pWeight = Pointer.to(weight.getDevicePointer());
+        Pointer pIndices = Pointer.to(indices.getDevicePointer());
+        Pointer pOut = Pointer.to(out.getDevicePointer());
+        Pointer pN = Pointer.to(new int[]{n});
+        Pointer pD = Pointer.to(new int[]{d});
+        Pointer kernelParams = Pointer.to(pWeight, pIndices, pOut, pN, pD);
+        int blockSize = 256;
+        int gridSize = (int) Math.ceil((double) total / blockSize);
+        cuLaunchKernel(embeddingForwardFunction,
+            gridSize, 1, 1, blockSize, 1, 1, 0, null, kernelParams, null);
+        out.markDirtyOnGPU();
+    }
+
+    /**
+     * GPU embedding backward: atomicAdd grad_weight[indices[i]*d + col] += grad_out[i*d + col]
+     * @param gradWeight [num_embeddings, d] — should be zeroed before call
+     * @param indices [n]
+     * @param gradOut [n, d]
+     */
+    public static void embeddingBackward(Tensor gradWeight, Tensor indices, Tensor gradOut) {
+        init();
+        int n = indices.numel();
+        int d = gradWeight.shape[1];
+        if (!cudaAvailable || embeddingBackwardFunction == null) {
+            // CPU fallback
+            gradWeight.toCPU(); indices.toCPU(); gradOut.toCPU();
+            for (int i = 0; i < n; i++) {
+                int idx = (int) indices.data[i];
+                for (int j = 0; j < d; j++) {
+                    gradWeight.data[idx * d + j] += gradOut.data[i * d + j];
+                }
+            }
+            gradWeight.markDirtyOnCPU();
+            return;
+        }
+        int total = n * d;
+        Pointer pGW = Pointer.to(gradWeight.getDevicePointer());
+        Pointer pIndices = Pointer.to(indices.getDevicePointer());
+        Pointer pGO = Pointer.to(gradOut.getDevicePointer());
+        Pointer pN = Pointer.to(new int[]{n});
+        Pointer pD = Pointer.to(new int[]{d});
+        Pointer kernelParams = Pointer.to(pGW, pIndices, pGO, pN, pD);
+        int blockSize = 256;
+        int gridSize = (int) Math.ceil((double) total / blockSize);
+        cuLaunchKernel(embeddingBackwardFunction,
+            gridSize, 1, 1, blockSize, 1, 1, 0, null, kernelParams, null);
+        gradWeight.markDirtyOnGPU();
+    }
+
+    // ---- In-place elementwise GPU ops ----
+
+    private static void launchInplaceKernel(CUfunction function, Tensor a, Tensor b) {
+        int n = a.numel();
+        Pointer pa = Pointer.to(a.getDevicePointer());
+        Pointer pb = Pointer.to(b.getDevicePointer());
+        Pointer pn = Pointer.to(new int[]{n});
+        Pointer kernelParams = Pointer.to(pa, pb, pn);
+        int blockSize = 256;
+        int gridSize = (int) Math.ceil((double) n / blockSize);
+        cuLaunchKernel(function,
+            gridSize, 1, 1, blockSize, 1, 1, 0, null, kernelParams, null);
+        a.markDirtyOnGPU();
+    }
+
+    public static void addInPlace(Tensor a, Tensor b) {
+        init();
+        if (!cudaAvailable || addInplaceFunction == null) {
+            a.toCPU(); b.toCPU();
+            for (int i = 0; i < a.numel(); i++) a.data[i] += b.data[i];
+            a.markDirtyOnCPU();
+            return;
+        }
+        launchInplaceKernel(addInplaceFunction, a, b);
+    }
+
+    public static void subInPlace(Tensor a, Tensor b) {
+        init();
+        if (!cudaAvailable || subInplaceFunction == null) {
+            a.toCPU(); b.toCPU();
+            for (int i = 0; i < a.numel(); i++) a.data[i] -= b.data[i];
+            a.markDirtyOnCPU();
+            return;
+        }
+        launchInplaceKernel(subInplaceFunction, a, b);
+    }
+
+    public static void mulInPlace(Tensor a, Tensor b) {
+        init();
+        if (!cudaAvailable || mulInplaceFunction == null) {
+            a.toCPU(); b.toCPU();
+            for (int i = 0; i < a.numel(); i++) a.data[i] *= b.data[i];
+            a.markDirtyOnCPU();
+            return;
+        }
+        launchInplaceKernel(mulInplaceFunction, a, b);
     }
 
     public static void shutdown() {

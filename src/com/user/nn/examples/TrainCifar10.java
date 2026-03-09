@@ -51,6 +51,8 @@ public class TrainCifar10 {
         model.add(new ReLU());
         model.add(new MaxPool2d(2, 2, 2, 2, 0, 0, 32, 16, 16));
 
+        // Flatten conv output to (batch, 32*8*8)
+        model.add(new com.user.nn.containers.Flatten());
         int flattenSize = 32 * 8 * 8; 
         model.add(new Linear(flattenSize, 128, true));
         model.add(new ReLU());

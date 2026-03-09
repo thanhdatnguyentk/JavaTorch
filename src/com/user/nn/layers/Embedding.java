@@ -20,41 +20,6 @@ public class Embedding extends Module {
 
     @Override
     public Tensor forward(Tensor indices) {
-        indices.toCPU();
-        Tensor w = weight.getTensor();
-        w.toCPU();
-        int[] idxShape = indices.shape;
-        int numIdx = indices.numel();
-        int[] outShape = new int[idxShape.length + 1];
-        System.arraycopy(idxShape, 0, outShape, 0, idxShape.length);
-        outShape[idxShape.length] = embeddingDim;
-
-        Tensor out = new Tensor(outShape);
-        if (w.isGPU() || indices.isGPU()) out.toGPU();
-
-        for (int i = 0; i < numIdx; i++) {
-            int idx = (int) indices.data[i];
-            if (idx < 0 || idx >= numEmbeddings) {
-                throw new IndexOutOfBoundsException("Embedding index out of range: " + idx);
-            }
-            System.arraycopy(w.data, idx * embeddingDim, out.data, i * embeddingDim, embeddingDim);
-        }
-
-        if (Torch.is_grad_enabled() && w.requires_grad) {
-            out.requires_grad = true;
-            out.grad_fn = new Tensor.GradFn(weight.getTensor()) {
-                public void apply(Tensor outGrad) {
-                    Tensor gw = new Tensor(w.shape);
-                    for (int i = 0; i < numIdx; i++) {
-                        int idx = (int) indices.data[i];
-                        for (int d = 0; d < embeddingDim; d++) {
-                            gw.data[idx * embeddingDim + d] += outGrad.data[i * embeddingDim + d];
-                        }
-                    }
-                    w.backwardStep(gw);
-                }
-            };
-        }
-        return out;
+        return Torch.embedding(weight.getTensor(), indices);
     }
 }

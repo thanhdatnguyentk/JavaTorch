@@ -1031,31 +1031,36 @@ public class Torch {
             return out;
         }
 
-        // CPU Path (SIMD)
+        // CPU Path — OpenBLAS (large) or SIMD (small)
         Tensor out = new Tensor(m, n);
-        Tensor bt = transpose(b);
-        int upperBound = SPECIES.loopBound(k);
+        if (BlasOps.isAvailable() && (long) m * n * k > 4096) {
+            a.toCPU(); b.toCPU();
+            BlasOps.sgemm(a.data, b.data, out.data, m, n, k);
+        } else {
+            Tensor bt = transpose(b);
+            int upperBound = SPECIES.loopBound(k);
 
-        for (int i = 0; i < m; i++) {
-            for (int j = 0; j < n; j++) {
-                float sum = 0f;
-                FloatVector sumVector = FloatVector.zero(SPECIES);
-                int kk = 0;
+            for (int i = 0; i < m; i++) {
+                for (int j = 0; j < n; j++) {
+                    float sum = 0f;
+                    FloatVector sumVector = FloatVector.zero(SPECIES);
+                    int kk = 0;
 
-                // SIMD loop
-                for (; kk < upperBound; kk += SPECIES.length()) {
-                    FloatVector va = FloatVector.fromArray(SPECIES, a.data, i * k + kk);
-                    FloatVector vb = FloatVector.fromArray(SPECIES, bt.data, j * k + kk);
-                    sumVector = sumVector.add(va.mul(vb));
+                    // SIMD loop
+                    for (; kk < upperBound; kk += SPECIES.length()) {
+                        FloatVector va = FloatVector.fromArray(SPECIES, a.data, i * k + kk);
+                        FloatVector vb = FloatVector.fromArray(SPECIES, bt.data, j * k + kk);
+                        sumVector = sumVector.add(va.mul(vb));
+                    }
+
+                    sum += sumVector.reduceLanes(jdk.incubator.vector.VectorOperators.ADD);
+
+                    // Tail loop
+                    for (; kk < k; kk++) {
+                        sum += a.data[i * k + kk] * bt.data[j * k + kk];
+                    }
+                    out.data[i * n + j] = sum;
                 }
-
-                sum += sumVector.reduceLanes(jdk.incubator.vector.VectorOperators.ADD);
-
-                // Tail loop
-                for (; kk < k; kk++) {
-                    sum += a.data[i * k + kk] * bt.data[j * k + kk];
-                }
-                out.data[i * n + j] = sum;
             }
         }
 
@@ -1064,7 +1069,7 @@ public class Torch {
             out.grad_fn = new Tensor.GradFn(a, b) {
                 public void apply(Tensor outGrad) {
                     if (a.requires_grad) {
-                        Tensor ga = matmul(outGrad, bt);
+                        Tensor ga = matmul(outGrad, transpose(b));
                         a.backwardStep(ga);
                     }
                     if (b.requires_grad) {
@@ -2878,8 +2883,6 @@ public class Torch {
     }
 
     public static Tensor embedding(Tensor weight, Tensor indices) {
-        weight.toCPU();
-        indices.toCPU();
         // indices shape [...]
         // weight shape [num_embeddings, embedding_dim]
         int[] inS = indices.shape;
@@ -2889,20 +2892,39 @@ public class Torch {
         System.arraycopy(inS, 0, outS, 0, inS.length);
         outS[inS.length] = d;
         Tensor out = new Tensor(outS);
-        if (weight.isGPU() || indices.isGPU()) out.toGPU();
-        for (int i = 0; i < n; i++) {
-            int idx = (int) indices.data[i];
-            System.arraycopy(weight.data, idx * d, out.data, i * d, d);
+
+        boolean useGPU = weight.isGPU() && CUDAOps.isAvailable();
+        if (useGPU) {
+            indices.toGPU();
+            out.toGPU();
+            CUDAOps.embeddingForward(weight, indices, out);
+        } else {
+            weight.toCPU();
+            indices.toCPU();
+            for (int i = 0; i < n; i++) {
+                int idx = (int) indices.data[i];
+                System.arraycopy(weight.data, idx * d, out.data, i * d, d);
+            }
+            if (weight.isGPU() || indices.isGPU()) out.toGPU();
         }
         if (is_grad_enabled() && weight.requires_grad) {
             out.requires_grad = true;
+            final boolean gpuBackward = useGPU;
             out.grad_fn = new Tensor.GradFn(weight) {
                 public void apply(Tensor outGrad) {
                     Tensor gw = new Tensor(weight.shape);
-                    for (int i = 0; i < n; i++) {
-                        int idx = (int) indices.data[i];
-                        for (int j = 0; j < d; j++) {
-                            gw.data[idx * d + j] += outGrad.data[i * d + j];
+                    if (gpuBackward) {
+                        gw.toGPU();
+                        // gw is zeroed on CPU, push zeros to GPU
+                        if (!outGrad.isGPU()) outGrad.toGPU();
+                        CUDAOps.embeddingBackward(gw, indices, outGrad);
+                    } else {
+                        outGrad.toCPU();
+                        for (int i = 0; i < n; i++) {
+                            int idx = (int) indices.data[i];
+                            for (int j = 0; j < d; j++) {
+                                gw.data[idx * d + j] += outGrad.data[i * d + j];
+                            }
                         }
                     }
                     weight.backwardStep(gw);
@@ -2910,5 +2932,130 @@ public class Torch {
             };
         }
         return out;
+    }
+
+    // ---- Torch.nn.init.* weight initialization API ----
+    public static class nn {
+        public static class init {
+            
+            /** Compute fan_in and fan_out from tensor shape.
+             *  2D [out, in]: fan_in=in, fan_out=out
+             *  4D [out, in, kH, kW]: fan_in=in*kH*kW, fan_out=out*kH*kW
+             *  1D [n]: fan_in=n, fan_out=n
+             */
+            public static int[] calculateFanInOut(Tensor t) {
+                int[] s = t.shape;
+                if (s.length == 1) {
+                    return new int[]{s[0], s[0]};
+                } else if (s.length == 2) {
+                    return new int[]{s[1], s[0]};
+                } else {
+                    // Conv: [outC, inC, k1, k2, ...]
+                    int receptiveField = 1;
+                    for (int i = 2; i < s.length; i++) receptiveField *= s[i];
+                    return new int[]{s[1] * receptiveField, s[0] * receptiveField};
+                }
+            }
+
+            /** Gain for activation functions. */
+            public static float calculateGain(String activation) {
+                switch (activation) {
+                    case "linear": case "sigmoid": return 1.0f;
+                    case "tanh": return 5.0f / 3.0f;
+                    case "relu": return (float) Math.sqrt(2.0);
+                    default: return 1.0f;
+                }
+            }
+
+            public static float calculateGain(String activation, float param) {
+                if ("leaky_relu".equals(activation)) {
+                    return (float) Math.sqrt(2.0 / (1.0 + param * param));
+                }
+                return calculateGain(activation);
+            }
+
+            /** Fill tensor with uniform random in [a, b). */
+            public static void uniform_(Tensor t, float a, float b) {
+                t.toCPU();
+                float range = b - a;
+                for (int i = 0; i < t.data.length; i++)
+                    t.data[i] = a + globalR.nextFloat() * range;
+                t.markDirtyOnCPU();
+            }
+
+            /** Fill tensor with normal(mean, std). */
+            public static void normal_(Tensor t, float mean, float std) {
+                t.toCPU();
+                for (int i = 0; i < t.data.length; i++)
+                    t.data[i] = mean + (float) nextGaussian(globalR) * std;
+                t.markDirtyOnCPU();
+            }
+
+            /** Fill with zeros. */
+            public static void zeros_(Tensor t) {
+                t.toCPU();
+                java.util.Arrays.fill(t.data, 0f);
+                t.markDirtyOnCPU();
+            }
+
+            /** Fill with ones. */
+            public static void ones_(Tensor t) {
+                t.toCPU();
+                java.util.Arrays.fill(t.data, 1f);
+                t.markDirtyOnCPU();
+            }
+
+            /** Fill with constant value. */
+            public static void constant_(Tensor t, float val) {
+                t.toCPU();
+                java.util.Arrays.fill(t.data, val);
+                t.markDirtyOnCPU();
+            }
+
+            /** Xavier (Glorot) uniform: U[-a, a] where a = gain * sqrt(6/(fan_in+fan_out)). */
+            public static void xavier_uniform_(Tensor t) {
+                xavier_uniform_(t, 1.0f);
+            }
+
+            public static void xavier_uniform_(Tensor t, float gain) {
+                int[] fan = calculateFanInOut(t);
+                float a = gain * (float) Math.sqrt(6.0 / (fan[0] + fan[1]));
+                uniform_(t, -a, a);
+            }
+
+            /** Xavier (Glorot) normal: N(0, std) where std = gain * sqrt(2/(fan_in+fan_out)). */
+            public static void xavier_normal_(Tensor t) {
+                xavier_normal_(t, 1.0f);
+            }
+
+            public static void xavier_normal_(Tensor t, float gain) {
+                int[] fan = calculateFanInOut(t);
+                float std = gain * (float) Math.sqrt(2.0 / (fan[0] + fan[1]));
+                normal_(t, 0f, std);
+            }
+
+            /** Kaiming (He) uniform: U[-bound, bound] where bound = gain * sqrt(3/fan_in). */
+            public static void kaiming_uniform_(Tensor t) {
+                kaiming_uniform_(t, calculateGain("relu"));
+            }
+
+            public static void kaiming_uniform_(Tensor t, float gain) {
+                int[] fan = calculateFanInOut(t);
+                float std = gain / (float) Math.sqrt(fan[0]);
+                float bound = (float) Math.sqrt(3.0) * std;
+                uniform_(t, -bound, bound);
+            }
+
+            /** Kaiming (He) normal: N(0, std) where std = gain / sqrt(fan_in). */
+            public static void kaiming_normal_(Tensor t) {
+                kaiming_normal_(t, calculateGain("relu"));
+            }
+
+            public static void kaiming_normal_(Tensor t, float gain) {
+                int[] fan = calculateFanInOut(t);
+                float std = gain / (float) Math.sqrt(fan[0]);
+                normal_(t, 0f, std);
+            }
+        }
     }
 }

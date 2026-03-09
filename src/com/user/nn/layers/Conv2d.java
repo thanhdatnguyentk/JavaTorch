@@ -33,8 +33,8 @@ public class Conv2d extends Module {
         this.padW = padW;
         int ksz = inChannels * kernelH * kernelW;
         NN.Mat w = NN.mat_alloc(ksz, outChannels);
-        NN.mat_rand(w, -0.08f, 0.08f);
         this.weight = new Parameter(w);
+        Torch.nn.init.kaiming_uniform_(this.weight.getTensor());
         addParameter("weight", this.weight);
         if (biasFlag) {
             NN.Mat b = NN.mat_alloc(1, outChannels);
