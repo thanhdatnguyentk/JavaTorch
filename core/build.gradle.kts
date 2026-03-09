@@ -8,6 +8,7 @@ dependencies {
     implementation("org.jcuda:jcuda:${property("jcudaVersion")}")
     implementation("org.jcuda:jcublas:${property("jcudaVersion")}")
     implementation("org.jcuda:jcudnn:${property("jcudaVersion")}")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.0")
 }
 
 // Keep existing src/ layout to avoid moving files initially
@@ -17,8 +18,12 @@ sourceSets {
         resources.srcDirs(file("../bin"))
     }
     test {
-        java.srcDirs(file("../tests/java"))
+        java.srcDirs(file("src/test/java"))
     }
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 tasks.register<Copy>("ensureKernelsPtx") {

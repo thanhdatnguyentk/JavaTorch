@@ -3,7 +3,7 @@
 [English](README.en.md) | [Tutorial](TUTORIAL.md) | [Tutorial EN](TUTORIAL.en.md) | [API Reference](API_REFERENCE.md) | [API Reference EN](API_REFERENCE.en.md)
 
 ![Java](https://img.shields.io/badge/Java-21+-orange)
-![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20PowerShell-blue)
+![Build](https://img.shields.io/badge/Build-Gradle%20Multi--Module-blue)
 ![CUDA](https://img.shields.io/badge/GPU-JCuda%20%2B%20cuDNN-green)
 ![CPU](https://img.shields.io/badge/CPU-Vector%20API%20%2B%20OpenBLAS-purple)
 ![Tests](https://img.shields.io/badge/Tests-44%20registered-success)
@@ -17,9 +17,9 @@ Repo hien da co tensor engine, autograd, he `Module/Parameter`, dataloader, opti
 Neu ban chi muon bat dau that nhanh, chay dung 3 lenh nay:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
-java --add-modules jdk.incubator.vector -cp "bin;lib/*" com.user.nn.examples.TrainIris
-java --add-modules jdk.incubator.vector -cp "bin;lib/*" com.user.nn.examples.TrainFashionMNIST
+gradle wrapper
+.\gradlew.bat :core:test
+.\gradlew.bat :core:build
 ```
 
 Sau do doc tiep:
@@ -73,15 +73,15 @@ Cac so duoi day la ket qua do tren chinh repo hien tai bang benchmark san co. Da
 | `jdk.incubator.vector` | SIMD cho phep toan CPU |
 | JCuda / cuBLAS / cuDNN | Tang toc GPU cho tensor, matmul, conv, pooling, backward |
 | OpenBLAS + JavaCPP | Tang toc `matmul` CPU kich thuoc lon |
-| PowerShell scripts | Build, test va workflow tren Windows |
+| Gradle Kotlin DSL | Build, test, publish da nen tang |
 
 ## Yeu cau moi truong
 
 ### Bat buoc
 
-- Windows voi PowerShell.
 - JDK 21 tro len. Repo hien da duoc kiem tra voi Temurin 21.0.10.
-- `javac` va `java` trong `PATH`.
+- Gradle 8+ (chi can khi chua sinh wrapper) hoac Gradle Wrapper.
+- `java` trong `PATH`.
 
 ### Tuy chon nhung rat nen co
 
@@ -102,38 +102,46 @@ Trong phan lon truong hop, classpath `"bin;lib/*"` la du.
 
 ## Quick Start chi tiet
 
-### 1. Compile toan bo framework
+### 1. Sinh Gradle Wrapper (1 lan duy nhat)
 
 ```powershell
-javac --add-modules jdk.incubator.vector -d bin -cp "lib/*" `
-    src\com\user\nn\core\*.java `
-    src\com\user\nn\layers\*.java `
-    src\com\user\nn\activations\*.java `
-    src\com\user\nn\containers\*.java `
-    src\com\user\nn\norm\*.java `
-    src\com\user\nn\pooling\*.java `
-    src\com\user\nn\rnn\*.java `
-    src\com\user\nn\attention\*.java `
-    src\com\user\nn\losses\*.java `
-    src\com\user\nn\optim\*.java `
-    src\com\user\nn\dataloaders\*.java `
-    src\com\user\nn\models\*.java `
-    src\com\user\nn\models\cv\*.java `
-    src\com\user\nn\models\generative\*.java `
-    src\com\user\nn\metrics\*.java `
-    src\com\user\nn\examples\*.java
+gradle wrapper
 ```
 
-### 2. Chay toan bo test
+Neu ban da co wrapper day du (`gradle/wrapper/*`) thi bo qua buoc nay.
+
+### 2. Build va test module core
+
+Windows:
+
+```powershell
+.\gradlew.bat :core:clean :core:test :core:build
+```
+
+macOS/Linux:
+
+```bash
+./gradlew :core:clean :core:test :core:build
+```
+
+### 3. Build toan bo multi-module
+
+Windows:
+
+```powershell
+.\gradlew.bat clean build
+```
+
+macOS/Linux:
+
+```bash
+./gradlew clean build
+```
+
+### 4. Legacy test runner (tuong thich voi script cu)
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
-```
-
-### 3. Chay vi du don gian nhat
-
-```powershell
-java --add-modules jdk.incubator.vector -cp "bin;lib/*" com.user.nn.examples.TrainIris
 ```
 
 ## Lo trinh nen chay vi du
@@ -207,8 +215,8 @@ Repo hien co 3 tang quan ly bo nho quan trong:
 ## Ghi chu thuc te
 
 - Mot so vi du tu tai du lieu neu thieu, mot so khac dung du lieu da co san trong `data/`.
-- Tai lieu uu tien PowerShell tren Windows vi repo hien toi uu theo moi truong nay.
-- Tren Windows, classpath dung dau `;`.
+- Luong build mac dinh da chuyen sang Gradle va ho tro da nen tang.
+- Neu chay `java -cp` thu cong tren Windows, classpath dung dau `;`.
 - Neu sua `src/com/user/nn/core/kernels.cu`, ban can build lai PTX tuong ung.
 
 ---

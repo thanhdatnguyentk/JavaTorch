@@ -1,8 +1,4 @@
 @echo off
-if exist gradlew.bat (
-  gradlew.bat %*
-  exit /b %ERRORLEVEL%
-)
 where gradle >nul 2>&1
 if %ERRORLEVEL%==0 (
   gradle %*
