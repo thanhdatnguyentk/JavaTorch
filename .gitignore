@@ -4,6 +4,9 @@ data
 bin/
 lib/
 
+# Trained model weights (large binaries)
+examples/trained_models/*.bin
+
 # Gradle
 .gradle/
 **/build/

@@ -1,0 +1,33 @@
+================================================================
+  Object Detection Training on MS COCO
+  Date : 20260310_023751
+[CUDAOps] Loaded PTX kernels from: D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\examples\..\bin\kernels.ptx
+  Device: GPU (CUDA)
+================================================================
+images_dir    = examples\data\coco\val2017
+annotations   = examples\data\coco\annotations\instances_val2017.json
+epochs        = 5
+batch_size    = 2
+max_samples   = 200
+
+COCO dataset not found. Downloading validation set (~1 GB)...
+COCO dataset already exists at: D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\examples\data\coco
+Found 5000 validation images. Skipping download.
+Parsing COCO annotations...
+Samples loaded  : 200
+Categories found: 80
+
+
+╔══════════════════════════════════════╗
+║   Faster R-CNN Training on COCO     ║
+╚══════════════════════════════════════╝
+Faster R-CNN: moving model to GPU...
+[GpuMemoryPool] Model params: 248,842,590. Base Memory: 3797 MB. Allocating: 2953 MB
+[GpuMemoryPool] Initialized with 2953 MB
+Faster R-CNN: model on GPU.
+Parameters: 248842590
+  Epoch 1/5  loss=0.793813
+  Epoch 2/5  loss=0.135139
+  Epoch 3/5  loss=0.071792
+  Epoch 4/5  loss=0.035625
+  Epoch 5/5  loss=0.023896

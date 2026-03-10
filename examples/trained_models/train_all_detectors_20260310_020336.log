@@ -1,0 +1,77 @@
+================================================================
+  Object Detection Training on MS COCO
+  Date : 20260310_020336
+[CUDAOps] Loaded PTX kernels from: D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\examples\..\bin\kernels.ptx
+  Device: GPU (CUDA)
+================================================================
+images_dir    = examples\data\coco\val2017
+annotations   = examples\data\coco\annotations\instances_val2017.json
+epochs        = 5
+batch_size    = 2
+max_samples   = 200
+
+COCO dataset not found. Downloading validation set (~1 GB)...
+COCO dataset already exists at: D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\examples\data\coco
+Found 5000 validation images. Skipping download.
+Parsing COCO annotations...
+Samples loaded  : 200
+Categories found: 80
+
+╔══════════════════════════════════════╗
+║   YOLO v1 Training on COCO          ║
+╚══════════════════════════════════════╝
+YOLO: moving model to GPU...
+[GpuMemoryPool] Model params: 60,235,034. Base Memory: 919 MB. Allocating: 2953 MB
+[GpuMemoryPool] Initialized with 2953 MB
+YOLO: model on GPU.
+Parameters: 60235034
+  Epoch 1/5  loss=340851163136.000000
+  Epoch 2/5  loss=1835.482666
+  Epoch 3/5  loss=21550.417969
+  Epoch 4/5  loss=57.178482
+  Epoch 5/5  loss=307.545349
+YOLO v1 model saved: trained_models\yolo_coco.bin
+YOLO v1 history saved: trained_models\yolo_coco_history.csv
+YOLO v1 loss curve: trained_models\yolo_coco_loss.png
+
+╔══════════════════════════════════════╗
+║   SSD 300 Training on COCO          ║
+╚══════════════════════════════════════╝
+SSD: moving model to GPU...
+SSD: model on GPU.
+Parameters: 21474832
+  Epoch 1/5  loss=6504282324992.000000
+  Epoch 2/5  loss=35569360896.000000
+  Epoch 3/5  loss=215980864.000000
+  Epoch 4/5  loss=689718.750000
+  Epoch 5/5  loss=209823.484375
+SSD 300 model saved: trained_models\ssd300_coco.bin
+SSD 300 history saved: trained_models\ssd300_coco_history.csv
+SSD 300 loss curve: trained_models\ssd300_coco_loss.png
+
+╔══════════════════════════════════════╗
+║   RetinaNet Training on COCO        ║
+╚══════════════════════════════════════╝
+RetinaNet: moving model to GPU...
+RetinaNet: model on GPU.
+Parameters: 31595548
+  Epoch 1/5  loss=0.635222
+  Epoch 2/5  loss=0.118332
+  Epoch 3/5  loss=0.068372
+  Epoch 4/5  loss=0.036412
+  Epoch 5/5  loss=0.022285
+RetinaNet model saved: trained_models\retinanet_coco.bin
+RetinaNet history saved: trained_models\retinanet_coco_history.csv
+RetinaNet loss curve: trained_models\retinanet_coco_loss.png
+
+╔══════════════════════════════════════╗
+║   Faster R-CNN Training on COCO     ║
+╚══════════════════════════════════════╝
+Faster R-CNN: moving model to GPU...
+Faster R-CNN: model on GPU.
+Parameters: 248842590
+  Epoch 1/5  loss=0.810002
+  Epoch 2/5  loss=0.177483
+  Epoch 3/5  loss=0.091608
+  Epoch 4/5  loss=0.046952
+  Epoch 5/5  loss=0.026943
