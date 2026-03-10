@@ -82,6 +82,14 @@ The numbers below were collected from the current repository state using the bui
 .\gradlew.bat :core:clean :core:test :core:build --no-daemon
 ```
 
+- Latest full verification (2026-03-10):
+
+```powershell
+.\gradlew.bat :core:test :tests:test :core:gpuSmoke :core:gpuNightly --continue
+```
+
+Result: `BUILD SUCCESSFUL`
+
 - Legacy PowerShell runner remains available for compatibility:
 
 ```powershell
@@ -90,4 +98,4 @@ powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
 
 ---
 
-Documentation updated for the current codebase state on 2026-03-09.
+Documentation updated for the current codebase state on 2026-03-10.

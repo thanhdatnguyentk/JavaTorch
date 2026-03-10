@@ -159,12 +159,15 @@ public class Tensor implements AutoCloseable {
             this.dependencies = dependencies;
             this.savedVersions = new int[dependencies.length];
             for (int i = 0; i < dependencies.length; i++) {
-                this.savedVersions[i] = dependencies[i].version();
+                this.savedVersions[i] = (dependencies[i] == null) ? -1 : dependencies[i].version();
             }
         }
 
         public void checkVersions() {
             for (int i = 0; i < dependencies.length; i++) {
+                if (dependencies[i] == null) {
+                    continue;
+                }
                 if (dependencies[i].version() != savedVersions[i]) {
                     throw new RuntimeException(
                         "one of the variables needed for gradient computation has been "

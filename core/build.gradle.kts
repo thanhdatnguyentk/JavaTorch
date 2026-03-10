@@ -62,7 +62,9 @@ sourceSets {
 }
 
 tasks.test {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags("gpu-smoke", "gpu-nightly", "gpu-manual")
+    }
     jvmArgs("--add-modules=jdk.incubator.vector")
 }
 

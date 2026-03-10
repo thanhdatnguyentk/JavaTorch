@@ -257,6 +257,7 @@ public class TrainAllDetectorsCoco {
         }
         loader.shutdown();
         saveResults(model, history, "yolo", "YOLO v1");
+        cleanupGPU("YOLO");
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -339,6 +340,7 @@ public class TrainAllDetectorsCoco {
         }
         loader.shutdown();
         saveResults(model, history, "ssd300", "SSD 300");
+        cleanupGPU("SSD");
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -410,6 +412,7 @@ public class TrainAllDetectorsCoco {
         }
         loader.shutdown();
         saveResults(model, history, "retinanet", "RetinaNet");
+        cleanupGPU("RetinaNet");
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -478,6 +481,7 @@ public class TrainAllDetectorsCoco {
         }
         loader.shutdown();
         saveResults(model, history, "faster_rcnn", "Faster R-CNN");
+        cleanupGPU("Faster R-CNN");
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -734,6 +738,14 @@ public class TrainAllDetectorsCoco {
             log.println(name + ": running on CPU.");
         }
         return gpu;
+    }
+
+    /** Release GPU memory pool so the next model can re-allocate cleanly. */
+    private static void cleanupGPU(String name) {
+        if (CUDAOps.isAvailable()) {
+            GpuMemoryPool.destroy();
+            log.println(name + ": GPU memory released.");
+        }
     }
 
     private static Data.DataLoader createLoader(List<CocoSample> samples,

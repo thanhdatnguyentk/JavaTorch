@@ -102,7 +102,9 @@ public class CUDAOps {
                         "bin/kernels.ptx",
                         "kernels.ptx",
                         System.getProperty("user.dir") + "/bin/kernels.ptx",
-                        System.getProperty("user.dir") + "\\bin\\kernels.ptx"
+                        System.getProperty("user.dir") + "\\bin\\kernels.ptx",
+                        System.getProperty("user.dir") + "/../bin/kernels.ptx",
+                        System.getProperty("user.dir") + "\\..\\bin\\kernels.ptx"
                     };
                     // Also try relative to the classpath
                     String cp = System.getProperty("java.class.path");

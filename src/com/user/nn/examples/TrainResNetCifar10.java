@@ -5,6 +5,9 @@ import com.user.nn.optim.*;
 import com.user.nn.dataloaders.*;
 import com.user.nn.metrics.*;
 import com.user.nn.models.cv.ResNet;
+import com.user.nn.utils.progress.ProgressDataLoader;
+import com.user.nn.utils.visualization.*;
+import com.user.nn.utils.visualization.exporters.*;
 import java.io.*;
 import java.util.*;
 
@@ -84,6 +87,11 @@ public class TrainResNetCifar10 {
 
         Data.DataLoader loader = new Data.DataLoader(trainDataset, batchSize, true, 4);
         Accuracy accMetric = new Accuracy();
+        
+        // Initialize TrainingHistory for visualization
+        TrainingHistory history = new TrainingHistory();
+        
+        System.out.println("\n=== Training with Progress Bar & Visualization ===\n");
 
         for (int epoch = 0; epoch < epochs; epoch++) {
             float epochLoss = 0f;
@@ -92,8 +100,13 @@ public class TrainResNetCifar10 {
             model.train();
 
             long startTime = System.currentTimeMillis();
+            
+            // Wrap DataLoader with ProgressDataLoader
+            ProgressDataLoader progLoader = new ProgressDataLoader(
+                loader, String.format("Epoch %d/%d", epoch + 1, epochs)
+            );
 
-            for (Tensor[] batch : loader) {
+            for (Tensor[] batch : progLoader) {
                 try (MemoryScope scope = new MemoryScope()) {
                     Tensor xBatch = batch[0];
                     xBatch.toGPU();
@@ -111,6 +124,10 @@ public class TrainResNetCifar10 {
                     epochLoss += loss.data[0];
                     numBatches++;
                     accMetric.update(logits, batchLabels);
+                    
+                    // Update progress bar with live metrics
+                    progLoader.setPostfix("loss", String.format("%.4f", loss.data[0]));
+                    progLoader.setPostfix("acc", String.format("%.4f", accMetric.compute()));
 
                     if (numBatches % 10 == 0) {
                         System.out.printf("  Epoch %d batch %d/%d  loss=%.4f%n",
@@ -141,8 +158,41 @@ public class TrainResNetCifar10 {
             System.out.printf("Epoch %d/%d  avg_loss=%.4f  train_acc=%.4f  test_acc=%.4f  time=%dms%n",
                     epoch + 1, epochs, avgLoss, trainAcc, testAcc, (endTime - startTime));
                     
+            // Record metrics in training history
+            Map<String, Float> metrics = new HashMap<>();
+            metrics.put("train_loss", avgLoss);
+            metrics.put("train_acc", trainAcc);
+            metrics.put("test_acc", testAcc);
+            history.record(epoch, metrics);
+                    
             testLoader.shutdown();
         }
         loader.shutdown();
+        
+        // Save training history and visualizations
+        System.out.println("\n=== Saving Training Visualizations ===");
+        try {
+            // Save training curves
+            Plot curves = history.plot();
+            PlotContext ctx = new PlotContext()
+                .title("ResNet-18 Training on CIFAR-10")
+                .xlabel("Epoch")
+                .ylabel("Metric Value")
+                .grid(true);
+            FileExporter.savePNG(curves, ctx, "resnet_training_curves.png", 800, 600);
+            System.out.println("Saved training curves to: resnet_training_curves.png");
+            
+            // Save history to CSV
+            history.saveCSV("resnet_training_history.csv");
+            System.out.println("Saved training history to: resnet_training_history.csv");
+            
+            // Report best results
+            float bestTestAcc = history.getMax("test_acc");
+            int bestEpoch = history.getMaxEpoch("test_acc");
+            System.out.printf("\nBest test accuracy: %.4f at epoch %d\n", bestTestAcc, bestEpoch + 1);
+            
+        } catch (Exception e) {
+            System.err.println("Warning: Could not save visualizations: " + e.getMessage());
+        }
     }
 }

@@ -55,5 +55,5 @@ tasks.register<JavaExec>("trainAllDetectors") {
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("com.user.nn.examples.TrainAllDetectorsCoco")
     jvmArgs("--add-modules=jdk.incubator.vector")
-    maxHeapSize = "4g"
+    maxHeapSize = "8g"
 }

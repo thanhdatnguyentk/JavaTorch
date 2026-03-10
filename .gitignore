@@ -3,6 +3,18 @@ tests\tmp
 data
 bin/
 lib/
+*.log
+train.log
+
+# Generated example/training artifacts
+examples/trained_models/*.log
+examples/trained_models/*_run.log
+examples/trained_models/train_all_detectors_*.log
+examples/*_loss.png
+examples/*_training_curves.png
+examples/accuracy_vs_speed.png
+examples/detection_*.png
+examples/coco_yolo_*.png
 
 # Trained model weights (large binaries)
 examples/trained_models/*.bin
