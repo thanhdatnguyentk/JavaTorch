@@ -131,7 +131,7 @@ public class TrainViTCifar10 {
             model.eval(); // Explicit eval mode
             float testAcc = Evaluator.evaluate(model, testLoader, accMetric);
             
-            System.out.printf(">>> Epoch %d/%d | Loss: %.4f | Train Acc: %.4f | Test Acc: %.4f | Time: %dms%n",
+        System.out.printf(">>> Epoch %d/%d | Loss: %.4f | Train Acc: %.4f | Test Acc: %.4f | Time: %dms%n",
                     epoch + 1, epochs, avgLoss, trainAcc, testAcc, (epochEnd - epochStart));
             
             // Step Scheduler
@@ -144,7 +144,43 @@ public class TrainViTCifar10 {
         // --- 3. Tích hợp Checkpointing (Model Saving) ---
         System.out.println("Saving model...");
         model.save("vit_cifar10.bin");
+
+        // ============================================================
+        //  PREDICTION DEMO - Sử dụng thư viện predict
+        // ============================================================
+        System.out.println("\n╔══════════════════════════════════════════╗");
+        System.out.println("║       PREDICTION WITH TRAINED MODEL      ║");
+        System.out.println("╚══════════════════════════════════════════╝\n");
+
+        // 1. Tạo ImagePredictor từ model đã train
+        com.user.nn.predict.ImagePredictor predictor = 
+            com.user.nn.predict.ImagePredictor.forCifar10(model);
+        predictor.topK(5).verbose(true);
+
+        // 2. Predict một ảnh từ test set
+        System.out.println(">>> Predicting a single test image...");
+        float[] sampleImage = testImages[0];
+        com.user.nn.predict.PredictionResult result = predictor.predictFromPixels(sampleImage);
+        System.out.println(result);
+        System.out.println("    Actual label: " + com.user.nn.predict.ImagePredictor.CIFAR10_LABELS[testLabels[0]]);
+
+        // 3. Batch predict trên vài ảnh test
+        System.out.println("\n>>> Batch predicting 10 test images...");
+        float[][] sampleBatch = new float[10][];
+        for (int i = 0; i < 10; i++) sampleBatch[i] = testImages[i];
+        com.user.nn.predict.PredictionResult[] batchResults = predictor.predictFromPixelBatch(sampleBatch);
         
-        System.out.println("Training Complete!");
+        int correct = 0;
+        for (int i = 0; i < batchResults.length; i++) {
+            boolean isCorrect = batchResults[i].getPredictedClass() == testLabels[i];
+            if (isCorrect) correct++;
+            System.out.printf("  Image %d: predicted=%s, actual=%s %s%n",
+                i, batchResults[i].getPredictedLabel(),
+                com.user.nn.predict.ImagePredictor.CIFAR10_LABELS[testLabels[i]],
+                isCorrect ? "✓" : "✗");
+        }
+        System.out.printf("  Batch accuracy: %d/%d%n", correct, 10);
+        
+        System.out.println("\nTraining Complete!");
     }
 }

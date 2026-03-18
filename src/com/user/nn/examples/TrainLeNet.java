@@ -156,5 +156,34 @@ public class TrainLeNet {
         }
         
         trainLoader.shutdown();
+
+        // ============================================================
+        //  PREDICTION - Sử dụng thư viện predict
+        // ============================================================
+        System.out.println("\n╔══════════════════════════════════════════╗");
+        System.out.println("║       PREDICTION WITH TRAINED MODEL      ║");
+        System.out.println("╚══════════════════════════════════════════╝\n");
+
+        model.save("lenet_mnist.bin");
+
+        com.user.nn.predict.ImagePredictor predictor = 
+            com.user.nn.predict.ImagePredictor.forMnist(model);
+        predictor.topK(5).verbose(true);
+
+        // Predict 10 test digits
+        System.out.println(">>> Predicting 10 test digits...");
+        int correct = 0;
+        for (int i = 0; i < 10; i++) {
+            com.user.nn.predict.PredictionResult result = predictor.predictFromPixels(testImages[i]);
+            boolean ok = result.getPredictedClass() == testLabels[i];
+            if (ok) correct++;
+            System.out.printf("  Digit %d: predicted=%s, actual=%s %s%n",
+                i, result.getPredictedLabel(),
+                com.user.nn.predict.ImagePredictor.MNIST_LABELS[testLabels[i]],
+                ok ? "✓" : "✗");
+        }
+        System.out.printf("  Accuracy: %d/%d%n", correct, 10);
+
+        System.out.println("\nTraining Complete!");
     }
 }

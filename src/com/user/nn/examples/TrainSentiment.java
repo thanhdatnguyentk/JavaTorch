@@ -129,6 +129,38 @@ public class TrainSentiment {
                 
             testLoader.shutdown();
         }
+
+        // ============================================================
+        //  PREDICTION - Sử dụng thư viện predict
+        // ============================================================
+        System.out.println("\n╔══════════════════════════════════════════╗");
+        System.out.println("║       PREDICTION WITH TRAINED MODEL      ║");
+        System.out.println("╚══════════════════════════════════════════╝\n");
+
+        model.save("sentiment_model.bin");
+
+        com.user.nn.predict.TextPredictor textPredictor = 
+            com.user.nn.predict.TextPredictor.forSentiment(model, vocab, maxLen);
+        textPredictor.verbose(true);
+
+        // Predict trên các câu mẫu
+        String[] sampleTexts = {
+            "This movie is absolutely amazing and wonderful!",
+            "Terrible film, waste of time and money.",
+            "The acting was decent but the plot was boring.",
+            "One of the best movies I have ever seen!",
+            "I would not recommend this to anyone."
+        };
+
+        System.out.println(">>> Predicting sentiment on sample texts...\n");
+        for (String text : sampleTexts) {
+            com.user.nn.predict.PredictionResult result = textPredictor.predictText(text);
+            System.out.printf("  \"%s\"%n", text);
+            System.out.printf("    → %s (confidence: %.4f)%n%n",
+                result.getPredictedLabel(), result.getConfidence());
+        }
+
+        System.out.println("Training Complete!");
     }
 
 }

@@ -156,6 +156,45 @@ public class TrainCifar10 {
             testLoader.shutdown();
         }
         loader.shutdown();
+
+        // ============================================================
+        //  PREDICTION - Sử dụng thư viện predict
+        // ============================================================
+        System.out.println("\n>>> Saving model...");
+        model.save("cifar10_cnn.bin");
+
+        System.out.println("\n╔══════════════════════════════════════════╗");
+        System.out.println("║       PREDICTION WITH TRAINED MODEL      ║");
+        System.out.println("╚══════════════════════════════════════════╝\n");
+
+        com.user.nn.predict.ImagePredictor predictor = 
+            com.user.nn.predict.ImagePredictor.forCifar10(model);
+        predictor.topK(5).verbose(true);
+
+        // Predict single image
+        System.out.println(">>> Predicting a single test image...");
+        com.user.nn.predict.PredictionResult result = predictor.predictFromPixels(testImages[0]);
+        System.out.println(result);
+        System.out.println("    Actual: " + com.user.nn.predict.ImagePredictor.CIFAR10_LABELS[testLabels[0]]);
+
+        // Batch predict 10 images
+        System.out.println("\n>>> Batch predicting 10 test images...");
+        float[][] sampleBatch = new float[10][];
+        for (int i = 0; i < 10; i++) sampleBatch[i] = testImages[i];
+        com.user.nn.predict.PredictionResult[] batchResults = predictor.predictFromPixelBatch(sampleBatch);
+
+        int correct = 0;
+        for (int i = 0; i < batchResults.length; i++) {
+            boolean ok = batchResults[i].getPredictedClass() == testLabels[i];
+            if (ok) correct++;
+            System.out.printf("  Image %d: predicted=%s, actual=%s %s%n",
+                i, batchResults[i].getPredictedLabel(),
+                com.user.nn.predict.ImagePredictor.CIFAR10_LABELS[testLabels[i]],
+                ok ? "✓" : "✗");
+        }
+        System.out.printf("  Batch accuracy: %d/%d%n", correct, 10);
+
+        System.out.println("\nTraining Complete!");
     }
 
 }

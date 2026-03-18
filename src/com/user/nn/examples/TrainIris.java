@@ -235,6 +235,37 @@ public class TrainIris {
         
         trainLoader.shutdown();
         testLoader.shutdown();
+
+        // ============================================================
+        //  PREDICTION - Sử dụng thư viện predict
+        // ============================================================
+        System.out.println("\n╔══════════════════════════════════════════╗");
+        System.out.println("║       PREDICTION WITH TRAINED MODEL      ║");
+        System.out.println("╚══════════════════════════════════════════╝\n");
+
+        model.save("iris_model.bin");
+
+        String[] irisLabels = {"Iris-setosa", "Iris-versicolor", "Iris-virginica"};
+        com.user.nn.predict.Predictor predictor = new com.user.nn.predict.Predictor(model, irisLabels)
+            .topK(3).verbose(true);
+
+        // Predict trên test samples
+        System.out.println(">>> Predicting test samples...");
+        int correctCount = 0;
+        for (int i = 0; i < testN; i++) {
+            Tensor input = Torch.tensor(data[numTrain + i], 1, dim);
+            com.user.nn.predict.PredictionResult result = predictor.predict(input);
+            int actual = labelsData[numTrain + i];
+            boolean ok = result.getPredictedClass() == actual;
+            if (ok) correctCount++;
+            System.out.printf("  Sample %d: predicted=%-18s actual=%-18s (conf=%.4f) %s%n",
+                i, result.getPredictedLabel(), irisLabels[actual], result.getConfidence(),
+                ok ? "✓" : "✗");
+        }
+        System.out.printf("\n  Prediction accuracy: %d/%d (%.2f%%)%n", 
+            correctCount, testN, (float) correctCount / testN * 100);
+
+        System.out.println("\nTraining Complete!");
     }
 
     static void downloadIfMissing(String urlStr, File dest) throws IOException {

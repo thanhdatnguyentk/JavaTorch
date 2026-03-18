@@ -6,7 +6,7 @@
 ![Build](https://img.shields.io/badge/Build-Gradle%20Multi--Module-blue)
 ![CUDA](https://img.shields.io/badge/GPU-JCuda%20%2B%20cuDNN-green)
 ![CPU](https://img.shields.io/badge/CPU-Vector%20API%20%2B%20OpenBLAS-purple)
-![Tests](https://img.shields.io/badge/Tests-44%20registered-success)
+![Tests](https://img.shields.io/badge/Tests-45%20registered-success)
 
 This is a Java machine learning framework inspired by PyTorch. It is designed for three goals at once: learning how deep learning frameworks work internally, training models directly in Java, and progressively scaling from CPU execution to GPU execution through JCuda, cuBLAS, and cuDNN.
 
@@ -35,6 +35,7 @@ flowchart LR
     B --> C[Autograd Graph]
     C --> D[Module / Layers]
     D --> E[Optim / Scheduler]
+    E --> P[Predict / Inference]
     B --> F[CPU Path]
     B --> G[GPU Path]
     F --> H[Vector API]
@@ -52,8 +53,36 @@ flowchart LR
 - Broad layer support: `Linear`, `Embedding`, `Conv1d`, `Conv2d`, `ConvTranspose2d`, pooling, normalization, attention, and transformer encoder blocks.
 - CPU acceleration through the Java Vector API and OpenBLAS via JavaCPP/bytedeco.
 - GPU acceleration through JCuda, cuBLAS, cuDNN, memory pools, CUDA streams, and custom PTX kernels.
-- End-to-end examples for Iris, Fashion-MNIST, CIFAR-10, Sentiment Analysis, ViT, GAN, and VAE.
-- 44 registered test classes currently passing in the PowerShell test runner.
+- Prediction library with `Predictor`, `ImagePredictor`, `TextPredictor`, `BatchPredictor`, and `PredictionPipeline` for model inference.
+- End-to-end examples for Iris, Fashion-MNIST, CIFAR-10, Sentiment Analysis, ViT, GAN, and VAE — all with integrated prediction demos.
+- 45 registered test classes currently passing in the PowerShell test runner.
+
+## Prediction / Inference
+
+The `predict` package provides a complete inference pipeline after training:
+
+```java
+// Image classification
+ImagePredictor predictor = ImagePredictor.forCifar10(model);
+PredictionResult result = predictor.predictFromPixels(imageData);
+System.out.println(result); // → airplane (0.9132), top-5 shown
+
+// Text sentiment
+TextPredictor tp = TextPredictor.forSentiment(model, vocab, maxLen);
+System.out.println(tp.predictSentiment("Great movie!")); // → POSITIVE (0.92)
+
+// Batch evaluation
+BatchPredictor bp = new BatchPredictor(predictor);
+float acc = bp.evaluateAccuracy(testLoader);
+int[][] cm = bp.confusionMatrix(testLoader, 10);
+
+// Fluent pipeline
+PredictionPipeline.create(model)
+    .loadWeights("model.bin")
+    .labels(CIFAR10_LABELS)
+    .topK(5)
+    .predict(input);
+```
 
 ## Reference Benchmarks
 
@@ -63,7 +92,7 @@ The numbers below were collected from the current repository state using the bui
 |---|---|---|---|
 | Large CPU matmul | OpenBLAS | `256 x 256` | `0.58 ms / matmul` |
 | Vectorized CPU matmul | Java Vector API | benchmark suite | `19.10 ms / matmul` |
-| Regression suite | PowerShell runner | 44 test classes | full pass |
+| Regression suite | PowerShell runner | 45 test classes | full pass |
 
 ## Companion Docs
 
@@ -98,4 +127,4 @@ powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
 
 ---
 
-Documentation updated for the current codebase state on 2026-03-10.
+Documentation updated for the current codebase state on 2026-03-18.

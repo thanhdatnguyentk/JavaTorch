@@ -163,5 +163,31 @@ public class TrainFashionMNIST {
         }
 
         trainLoader.shutdown();
+
+        // ============================================================
+        //  PREDICTION - Sử dụng thư viện predict
+        // ============================================================
+        System.out.println("\n╔══════════════════════════════════════════╗");
+        System.out.println("║       PREDICTION WITH TRAINED MODEL      ║");
+        System.out.println("╚══════════════════════════════════════════╝\n");
+
+        model.save("fashion_mnist.bin");
+
+        com.user.nn.predict.Predictor predictor = new com.user.nn.predict.Predictor(
+            model, com.user.nn.predict.ImagePredictor.FASHION_MNIST_LABELS)
+            .topK(5).verbose(true);
+
+        // Predict 10 test samples
+        System.out.println(">>> Predicting 10 test samples...");
+        for (int i = 0; i < 10; i++) {
+            Tensor input = Torch.tensor(testImages[i], 1, 784);
+            com.user.nn.predict.PredictionResult result = predictor.predict(input);
+            String actual = com.user.nn.predict.ImagePredictor.FASHION_MNIST_LABELS[testLabels[i]];
+            boolean ok = result.getPredictedClass() == testLabels[i];
+            System.out.printf("  Sample %d: predicted=%-15s actual=%-15s %s%n",
+                i, result.getPredictedLabel(), actual, ok ? "✓" : "✗");
+        }
+
+        System.out.println("\nTraining Complete!");
     }
 }

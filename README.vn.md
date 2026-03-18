@@ -6,7 +6,7 @@
 ![Build](https://img.shields.io/badge/Build-Gradle%20Multi--Module-blue)
 ![CUDA](https://img.shields.io/badge/GPU-JCuda%20%2B%20cuDNN-green)
 ![CPU](https://img.shields.io/badge/CPU-Vector%20API%20%2B%20OpenBLAS-purple)
-![Tests](https://img.shields.io/badge/Tests-44%20registered-success)
+![Tests](https://img.shields.io/badge/Tests-45%20registered-success)
 
 Framework hoc may viet bang Java, lay cam hung tu PyTorch, phuc vu dong thoi 3 muc tieu: hoc cach deep learning hoat dong o muc framework, huan luyen mo hinh truc tiep trong Java, va mo rong dan tu CPU sang GPU bang JCuda, cuBLAS va cuDNN.
 
@@ -35,6 +35,7 @@ flowchart LR
     B --> C[Autograd Graph]
     C --> D[Module / Layers]
     D --> E[Optim / Scheduler]
+    E --> P[Predict / Inference]
     B --> F[CPU Path]
     B --> G[GPU Path]
     F --> H[Vector API]
@@ -52,8 +53,36 @@ flowchart LR
 - Layer cho nhieu bai toan pho bien: `Linear`, `Embedding`, `Conv1d`, `Conv2d`, `ConvTranspose2d`, pooling, norm, attention, transformer encoder.
 - CPU acceleration bang Java Vector API va OpenBLAS qua JavaCPP/bytedeco.
 - GPU acceleration bang JCuda, cuBLAS, cuDNN, memory pool, CUDA streams va PTX kernels tuy bien.
-- Vi du end-to-end cho Iris, Fashion-MNIST, CIFAR-10, Sentiment Analysis, ViT, GAN, VAE.
-- Bo test PowerShell hien dang ky 44 test class va dang pass toan bo.
+- Thu vien predict voi `Predictor`, `ImagePredictor`, `TextPredictor`, `BatchPredictor` va `PredictionPipeline` cho inference.
+- Vi du end-to-end cho Iris, Fashion-MNIST, CIFAR-10, Sentiment Analysis, ViT, GAN, VAE — tat ca deu tich hop predict demo.
+- Bo test PowerShell hien dang ky 45 test class va dang pass toan bo.
+
+## Prediction / Inference
+
+Package `predict` cung cap pipeline inference day du sau khi train:
+
+```java
+// Phan loai anh
+ImagePredictor predictor = ImagePredictor.forCifar10(model);
+PredictionResult result = predictor.predictFromPixels(imageData);
+System.out.println(result); // -> airplane (0.9132), top-5
+
+// Phan tich cam xuc
+TextPredictor tp = TextPredictor.forSentiment(model, vocab, maxLen);
+System.out.println(tp.predictSentiment("Great movie!")); // -> POSITIVE (0.92)
+
+// Danh gia batch
+BatchPredictor bp = new BatchPredictor(predictor);
+float acc = bp.evaluateAccuracy(testLoader);
+int[][] cm = bp.confusionMatrix(testLoader, 10);
+
+// Fluent pipeline
+PredictionPipeline.create(model)
+    .loadWeights("model.bin")
+    .labels(CIFAR10_LABELS)
+    .topK(5)
+    .predict(input);
+```
 
 ## Benchmark tham khao
 
@@ -63,7 +92,7 @@ Cac so duoi day la ket qua do tren chinh repo hien tai bang benchmark san co. Da
 |---|---|---|---|
 | Matmul CPU lon | OpenBLAS | `256 x 256` | `0.58 ms / matmul` |
 | Matmul CPU vectorized | Java Vector API | benchmark suite | `19.10 ms / matmul` |
-| Regression suite | PowerShell runner | 44 test class | pass toan bo |
+| Regression suite | PowerShell runner | 45 test class | pass toan bo |
 
 ## Cong nghe chinh
 
@@ -157,6 +186,7 @@ powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
 | `TrainGANMnist` | Generative experiment | Khi muon mo rong nghien cuu |
 | `TrainVAEMnist` | Variational autoencoder | Khi muon thu latent models |
 | `TrainLeNet` | CNN co dien gon nhe | Khi can debug nhanh |
+| `PredictDemo` | Demo thu vien predict day du | Khi muon hoc predict API |
 
 ## Cau truc repo
 
@@ -173,8 +203,9 @@ src/com/user/nn/
   losses/         BCE, CrossEntropy, KLDiv, cosine, pairwise distance
   optim/          SGD, Adam, scheduler
   dataloaders/    Dataset, DataLoader, loader cho MNIST/CIFAR/Sentiment
+  predict/        Predictor, ImagePredictor, TextPredictor, BatchPredictor, PredictionPipeline
   models/         Model hoan chinh cho NLP, CV va generative
-  examples/       Chuong trinh train end-to-end
+  examples/       Chuong trinh train end-to-end voi predict demo
 
 tests/
   java/com/user/nn/   Toan bo test Java
@@ -231,4 +262,4 @@ Repo hien co 3 tang quan ly bo nho quan trong:
 
 ---
 
-Tai lieu duoc cap nhat theo trang thai code hien tai vao 2026-03-09.
+Tai lieu duoc cap nhat theo trang thai code hien tai vao 2026-03-18.
