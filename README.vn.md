@@ -173,6 +173,20 @@ macOS/Linux:
 powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
 ```
 
+### 5. Script kiem tra CI/CD tu dong
+
+- Chay nhanh (build + test + smoke test mot so example):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\ci-test.ps1 -Mode quick
+```
+
+- Chay day du (smoke test toan bo example tim thay):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\ci-test.ps1 -Mode full -ExampleTimeoutSec 60
+```
+
 ## Lo trinh nen chay vi du
 
 | Vi du | Muc tieu | Khi nao nen chay |

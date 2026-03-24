@@ -94,6 +94,38 @@ The numbers below were collected from the current repository state using the bui
 | Vectorized CPU matmul | Java Vector API | benchmark suite | `19.10 ms / matmul` |
 | Regression suite | PowerShell runner | 45 test classes | full pass |
 
+## End-to-End Benchmark (Accuracy + Performance)
+
+The repository now includes first-pass benchmark runners for:
+
+- `resnet_cifar10` (ResNet-18 on CIFAR-10)
+- `sentiment_rtpolarity` (LSTM sentiment on RT-Polarity)
+
+Both runners export standardized artifacts under `benchmark/results`:
+
+- `epoch_metrics.csv` (loss, accuracy, epoch time, memory telemetry)
+- `inference_samples.csv` (per-step inference latency)
+- `run_summary.csv` (best accuracy, total train time, p50/p95 latency, throughput)
+
+Run each benchmark directly:
+
+```powershell
+.\gradlew.bat :examples:benchmarkResNet --args="--device=cpu --epochs=2 --batchSize=64 --seed=42"
+.\gradlew.bat :examples:benchmarkSentiment --args="--device=cpu --epochs=3 --batchSize=16 --seed=42"
+```
+
+Run the full matrix orchestrator script:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\run-benchmark-matrix.ps1 -Mode quick -Device both
+```
+
+Notes:
+
+- Use `-Mode full` for longer runs.
+- For deterministic baseline comparisons, start with `--device=cpu` and `--mixedPrecision=false`.
+- GPU runs require the current CUDA/JCuda setup used by the framework.
+
 ## Companion Docs
 
 - `TUTORIAL.md`: step-by-step onboarding in English
@@ -123,6 +155,18 @@ Result: `BUILD SUCCESSFUL`
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
+```
+
+- Automated CI/CD validation script (Gradle build + tests + examples smoke):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\ci-test.ps1 -Mode quick
+```
+
+- Full examples smoke mode (runs all discovered example entrypoints with timeout):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\ci-test.ps1 -Mode full -ExampleTimeoutSec 60
 ```
 
 ---
