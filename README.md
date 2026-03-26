@@ -52,7 +52,7 @@ flowchart LR
 - PyTorch-like module system with `Sequential`, `ModuleList`, `ModuleDict`, and `Parameter`.
 - Broad layer support: `Linear`, `Embedding`, `Conv1d`, `Conv2d`, `ConvTranspose2d`, pooling, normalization, attention, and transformer encoder blocks.
 - CPU acceleration through the Java Vector API and OpenBLAS via JavaCPP/bytedeco.
-- GPU acceleration through JCuda, cuBLAS, cuDNN, memory pools, CUDA streams, and custom PTX kernels.
+- GPU acceleration through JCuda, cuBLAS, cuDNN, memory pools, CUDA streams, custom PTX kernels, and `GpuMemoryMonitor` for VRAM tracking.
 - Prediction library with `Predictor`, `ImagePredictor`, `TextPredictor`, `BatchPredictor`, and `PredictionPipeline` for model inference.
 - End-to-end examples for Iris, Fashion-MNIST, CIFAR-10, Sentiment Analysis, ViT, GAN, and VAE — all with integrated prediction demos.
 - 45 registered test classes currently passing in the PowerShell test runner.
@@ -126,6 +126,20 @@ Notes:
 - For deterministic baseline comparisons, start with `--device=cpu` and `--mixedPrecision=false`.
 - GPU runs require the current CUDA/JCuda setup used by the framework.
 
+## GAN Anime Training Notes
+
+Recent fixes improved GAN Anime training stability on GPU and removed the common case where epoch loss prints `0.0000` due to skipped non-finite batches.
+
+- BCE numerical clamp now uses a float-safe epsilon to avoid `log(0)` and `Infinity` in saturated discriminator outputs.
+- Discriminator training applies backward on real/fake loss terms separately, which is more robust if scalar GPU add paths become unstable.
+- Training logs now include batch health info (`Batches used/seen`, `Skipped D/G`) for faster debugging.
+
+Recommended run command:
+
+```powershell
+.\gradlew.bat "-PmainClass=com.user.nn.examples.TrainGANAnime" :examples:run --args "data/anime_faces 30 64 -1" --no-daemon
+```
+
 ## Companion Docs
 
 - `TUTORIAL.md`: step-by-step onboarding in English
@@ -140,7 +154,13 @@ Notes:
 - Verified release command:
 
 ```powershell
-.\gradlew.bat :core:clean :core:test :core:build --no-daemon
+.\gradlew.bat :core:clean :core:test :core:classes --no-daemon
+```
+
+- Example execution via Gradle (Recommended over raw `javac`/`java`):
+
+```powershell
+.\gradlew.bat "-PmainClass=com.user.nn.examples.TrainFashionMNIST" :examples:run --no-daemon
 ```
 
 - Latest full verification (2026-03-10):
@@ -171,4 +191,4 @@ powershell -ExecutionPolicy Bypass -File scripts\ci-test.ps1 -Mode full -Example
 
 ---
 
-Documentation updated for the current codebase state on 2026-03-18.
+Documentation updated for the current codebase state on 2026-03-24.

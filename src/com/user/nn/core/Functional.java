@@ -178,18 +178,27 @@ public class Functional {
     }
 
     public static Tensor binary_cross_entropy(Tensor input, Tensor target) {
+        final float eps = 1e-7f;
         int n = input.data.length;
         Tensor out = new Tensor(1);
         if (input.isGPU() && target.isGPU()) {
             out = new Tensor(1).toGPU();
-            Tensor bceOut = new Tensor(input.shape).toGPU();
-            CUDAOps.bceForward(input, target, bceOut);
-            bceOut.toCPU();
+            // Compute BCE mean on CPU for numerical robustness when custom PTX BCE kernels
+            // are unavailable or produce unreliable scalar values.
+            input.toCPU();
+            target.toCPU();
             float total = 0f;
-            for (int i = 0; i < n; i++) total += bceOut.data[i];
+            for (int i = 0; i < n; i++) {
+                float h = input.data[i];
+                float y = target.data[i];
+                h = Math.max(eps, Math.min(1f - eps, h));
+                total += -(y * (float) Math.log(h) + (1f - y) * (float) Math.log(1f - h));
+            }
             out.toCPU();
             out.data[0] = total / n;
             out.toGPU();
+            input.toGPU();
+            target.toGPU();
             if (input.requires_grad) {
                 out.requires_grad = true;
                 out.grad_fn = new Tensor.GradFn(input) {
@@ -199,9 +208,9 @@ public class Functional {
                         input.toCPU(); target.toCPU();
                         Tensor g = new Tensor(input.shape);
                         for (int i = 0; i < n; i++) {
-                            float h = Math.max(1e-12f, Math.min(1f - 1e-12f, input.data[i]));
+                            float h = Math.max(eps, Math.min(1f - eps, input.data[i]));
                             float y = target.data[i];
-                            g.data[i] = ((h - y) / (h * (1f - h) + 1e-12f)) * scale;
+                            g.data[i] = ((h - y) / (h * (1f - h) + eps)) * scale;
                         }
                         input.toGPU(); target.toGPU(); g.toGPU();
                         input.backwardStep(g);
@@ -216,7 +225,7 @@ public class Functional {
         for (int i = 0; i < n; i++) {
             float h = input.data[i];
             float y = target.data[i];
-            h = Math.max(1e-12f, Math.min(1f - 1e-12f, h));
+            h = Math.max(eps, Math.min(1f - eps, h));
             total += -(y * (float) Math.log(h) + (1f - y) * (float) Math.log(1f - h));
         }
         out.data[0] = total / n;
@@ -227,9 +236,9 @@ public class Functional {
                     Tensor g = new Tensor(input.shape);
                     float scale = outGrad.data[0] / n;
                     for (int i = 0; i < n; i++) {
-                        float h = Math.max(1e-12f, Math.min(1f - 1e-12f, input.data[i]));
+                        float h = Math.max(eps, Math.min(1f - eps, input.data[i]));
                         float y = target.data[i];
-                        g.data[i] = ((h - y) / (h * (1f - h) + 1e-12f)) * scale;
+                        g.data[i] = ((h - y) / (h * (1f - h) + eps)) * scale;
                     }
                     input.backwardStep(g);
                 }
