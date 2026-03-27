@@ -67,7 +67,7 @@ powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
 ### Chạy lệnh
 
 ```powershell
-java --add-modules jdk.incubator.vector -cp "bin;lib/*" com.user.nn.examples.TrainIris
+.\gradlew.bat "-PmainClass=com.user.nn.examples.TrainIris" :examples:run --no-daemon
 ```
 
 ### Điều gì sẽ xảy ra
@@ -94,7 +94,7 @@ Ví dụ này cho thấy cách framework dùng dataloader và batching trên d�
 ### Chạy lệnh
 
 ```powershell
-java --add-modules jdk.incubator.vector -cp "bin;lib/*" com.user.nn.examples.TrainFashionMNIST
+.\gradlew.bat "-PmainClass=com.user.nn.examples.TrainFashionMNIST" :examples:run --no-daemon
 ```
 
 ### Bạn sẽ học được gì
@@ -112,7 +112,7 @@ Ví dụ này kết nối toàn bộ NLP stack trong repo.
 ### Chạy lệnh
 
 ```powershell
-java --add-modules jdk.incubator.vector -cp "bin;lib/*" com.user.nn.examples.TrainSentiment
+.\gradlew.bat "-PmainClass=com.user.nn.examples.TrainSentiment" :examples:run --no-daemon
 ```
 
 ### Các thành phần chính
@@ -131,7 +131,7 @@ Nếu bạn muốn hiểu `Embedding` và backward path trên GPU, đây là ví
 ### Vision Transformer trên CIFAR-10
 
 ```powershell
-java --add-modules jdk.incubator.vector -cp "bin;lib/*" com.user.nn.examples.TrainViTCifar10
+.\gradlew.bat "-PmainClass=com.user.nn.examples.TrainViTCifar10" :examples:run --no-daemon
 ```
 
 Ví dụ này minh họa:
@@ -333,8 +333,8 @@ powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
 ### Một test riêng lẻ
 
 ```powershell
-javac --add-modules jdk.incubator.vector -d bin -cp "bin;lib/*" tests\java\com\user\nn\TestInPlaceOps.java
-java  --add-modules jdk.incubator.vector -cp "bin;lib/*" com.user.nn.TestInPlaceOps
+.\gradlew.bat :tests:test --tests "com.user.nn.TestInPlaceOps"
+.\gradlew.bat :tests:test --tests "com.user.nn.TestInPlaceOps"
 ```
 
 ### Các test bạn nên nhớ tên
@@ -412,5 +412,5 @@ Khi cần bắt đầu nhanh, hãy quay lại đúng 2 lệnh này:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
-java --add-modules jdk.incubator.vector -cp "bin;lib/*" com.user.nn.examples.TrainIris
+.\gradlew.bat "-PmainClass=com.user.nn.examples.TrainIris" :examples:run --no-daemon
 ```

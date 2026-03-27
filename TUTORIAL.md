@@ -51,7 +51,7 @@ powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
 ## 4. First example: Iris
 
 ```powershell
-java --add-modules jdk.incubator.vector -cp "bin;lib/*" com.user.nn.examples.TrainIris
+.\gradlew.bat "-PmainClass=com.user.nn.examples.TrainIris" :examples:run --no-daemon
 ```
 
 This is the best entry point because it is small, readable, and complete.
@@ -59,7 +59,7 @@ This is the best entry point because it is small, readable, and complete.
 ## 5. Fashion-MNIST example
 
 ```powershell
-java --add-modules jdk.incubator.vector -cp "bin;lib/*" com.user.nn.examples.TrainFashionMNIST
+.\gradlew.bat "-PmainClass=com.user.nn.examples.TrainFashionMNIST" :examples:run --no-daemon
 ```
 
 This example shows realistic mini-batch training with `Dataset`, `DataLoader`, `MemoryScope`, evaluation, and GPU-aware execution.
@@ -67,7 +67,7 @@ This example shows realistic mini-batch training with `Dataset`, `DataLoader`, `
 ## 6. Sentiment analysis example
 
 ```powershell
-java --add-modules jdk.incubator.vector -cp "bin;lib/*" com.user.nn.examples.TrainSentiment
+.\gradlew.bat "-PmainClass=com.user.nn.examples.TrainSentiment" :examples:run --no-daemon
 ```
 
 This is the main NLP walkthrough in the repository and uses `Vocabulary`, `BasicTokenizer`, `Embedding`, and `LSTM`.
@@ -75,7 +75,7 @@ This is the main NLP walkthrough in the repository and uses `Vocabulary`, `Basic
 ## 7. Vision Transformer example
 
 ```powershell
-java --add-modules jdk.incubator.vector -cp "bin;lib/*" com.user.nn.examples.TrainViTCifar10
+.\gradlew.bat "-PmainClass=com.user.nn.examples.TrainViTCifar10" :examples:run --no-daemon
 ```
 
 This example demonstrates patch embedding, attention, encoder blocks, scheduling, evaluation, and model saving.

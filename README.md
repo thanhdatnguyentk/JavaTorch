@@ -126,6 +126,89 @@ Notes:
 - For deterministic baseline comparisons, start with `--device=cpu` and `--mixedPrecision=false`.
 - GPU runs require the current CUDA/JCuda setup used by the framework.
 
+## UIT-VSFC Multi-Task Benchmark
+
+The UIT-VSFC multi-task runner now exports benchmark-compatible artifacts for both heads (sentiment/topic) and supports LSTM vs Transformer comparisons under the same split policy.
+
+Dataset folder format expected by the loader:
+
+- `examples/data/uit-vsfc/train/sents.txt`
+- `examples/data/uit-vsfc/train/sentiments.txt`
+- `examples/data/uit-vsfc/train/topics.txt`
+- `examples/data/uit-vsfc/dev/sents.txt`
+- `examples/data/uit-vsfc/dev/sentiments.txt`
+- `examples/data/uit-vsfc/dev/topics.txt`
+- `examples/data/uit-vsfc/test/sents.txt`
+- `examples/data/uit-vsfc/test/sentiments.txt`
+- `examples/data/uit-vsfc/test/topics.txt`
+
+Label spaces:
+
+- Sentiment: 3 classes
+- Topic: 4 classes
+
+Run one benchmark configuration:
+
+```powershell
+.\gradlew.bat "-PmainClass=com.user.nn.examples.TrainUitVsfcMultitask" :examples:run --args="--dataDir=examples/data/uit-vsfc --epochs=1 --batchSize=512 --maxLen=48 --model=lstm --device=cpu --seed=42 --alpha=1.0 --beta=1.0 --selection=weighted --inferWarmup=5 --inferSteps=20 --outputDir=benchmark/results" --no-daemon
+```
+
+Run reproducible matrix (model x device x seed):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\run-uit-vsfc-matrix.ps1 -Mode quick -Device cpu -Models all -Seeds "42,1337"
+```
+
+Run UIT from the shared orchestrator (supports framework selection):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\run-benchmark-matrix.ps1 -Mode quick -Device cpu -Tasks uit -Framework both -Seed 42
+```
+
+Notes:
+
+- `-Framework JavaTorch` runs Java UIT matrix only.
+- `-Framework pytorch` runs PyTorch UIT matrix only.
+- `-Framework both` runs both for side-by-side comparison.
+
+Generate UIT comparison report (Java vs PyTorch):
+
+```powershell
+.venv\Scripts\python.exe scripts\aggregate_uit_vsfc_compare.py --resultsDir benchmark/results --outputDir benchmark/results/compare/uit_vsfc_multitask
+```
+
+Only keep the newest run per `(framework, model, device, seed)`:
+
+```powershell
+.venv\Scripts\python.exe scripts\aggregate_uit_vsfc_compare.py --resultsDir benchmark/results --outputDir benchmark/results/compare/uit_vsfc_multitask --latestOnly
+```
+
+Keep newest runs and drop rows missing test macro-F1 metrics:
+
+```powershell
+.venv\Scripts\python.exe scripts\aggregate_uit_vsfc_compare.py --resultsDir benchmark/results --outputDir benchmark/results/compare/uit_vsfc_multitask --latestOnly --dropMissingMetrics
+```
+
+Run Phase 4 orchestration (aggregate + sanity checks + charts + markdown summary):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\run-uit-vsfc-phase4-report.ps1 -Mode quick -Device cpu -Framework both -Models all -Seeds "42" -RunBenchmarks
+```
+
+Report outputs:
+
+- `benchmark/results/compare/uit_vsfc_multitask/comparison.csv`
+- `benchmark/results/compare/uit_vsfc_multitask/comparison.md`
+
+Artifacts per run are written to:
+
+- `benchmark/results/JavaTorch/uit_vsfc_multitask/<run_id>/epoch_metrics.csv`
+- `benchmark/results/JavaTorch/uit_vsfc_multitask/<run_id>/inference_samples.csv`
+- `benchmark/results/JavaTorch/uit_vsfc_multitask/<run_id>/run_summary.csv`
+- `benchmark/results/JavaTorch/uit_vsfc_multitask/<run_id>/per_class_metrics.csv`
+- `benchmark/results/JavaTorch/uit_vsfc_multitask/<run_id>/dev_confusion_*.csv`
+- `benchmark/results/JavaTorch/uit_vsfc_multitask/<run_id>/test_confusion_*.csv`
+
 ## GAN Anime Training Notes
 
 Recent fixes improved GAN Anime training stability on GPU and removed the common case where epoch loss prints `0.0000` due to skipped non-finite batches.

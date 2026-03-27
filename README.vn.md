@@ -52,7 +52,7 @@ flowchart LR
 - He `Module` kieu PyTorch voi `Sequential`, `ModuleList`, `ModuleDict`, `Parameter`.
 - Layer cho nhieu bai toan pho bien: `Linear`, `Embedding`, `Conv1d`, `Conv2d`, `ConvTranspose2d`, pooling, norm, attention, transformer encoder.
 - CPU acceleration bang Java Vector API va OpenBLAS qua JavaCPP/bytedeco.
-- GPU acceleration bang JCuda, cuBLAS, cuDNN, memory pool, CUDA streams va PTX kernels tuy bien.
+- GPU acceleration bang JCuda, cuBLAS, cuDNN, memory pool, CUDA streams, PTX kernels tuy bien, va theo doi VRAM voi `GpuMemoryMonitor`.
 - Thu vien predict voi `Predictor`, `ImagePredictor`, `TextPredictor`, `BatchPredictor` va `PredictionPipeline` cho inference.
 - Vi du end-to-end cho Iris, Fashion-MNIST, CIFAR-10, Sentiment Analysis, ViT, GAN, VAE — tat ca deu tich hop predict demo.
 - Bo test PowerShell hien dang ky 45 test class va dang pass toan bo.
@@ -264,7 +264,13 @@ Repo hien co 3 tang quan ly bo nho quan trong:
 - Lenh kiem tra release da xac nhan:
 
 ```powershell
-.\gradlew.bat :core:clean :core:test :core:build --no-daemon
+.\gradlew.bat :core:clean :core:test :core:classes --no-daemon
+```
+
+- Cach chay cac example thong nhat va de nhat qua Gradle:
+
+```powershell
+.\gradlew.bat "-PmainClass=com.user.nn.examples.TrainFashionMNIST" :examples:run --no-daemon
 ```
 
 ## Ghi chu thuc te

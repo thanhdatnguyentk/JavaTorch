@@ -345,3 +345,33 @@ These are optional as the main example (TrainResNetCifar10) already demonstrates
 - Forward shape invariants are enforced for CNN/ResNet/ViT/VAE/GAN heads.
 - Loss/gradient path verified (`mse_loss_tensor` + `backward`) with non-null gradients on trainable parameters.
 - Numerical stability checked via finite-value assertions (no `NaN`/`Inf`) on key model outputs and loss tensors.
+
+---
+
+## Update (March 24, 2026): GPU Memory Monitor & Benchmarks
+
+### Expanded Features
+- **GPU Memory Telemetry**: Introduced \GpuMemoryMonitor.java\ for robust runtime VRAM sampling, high-utilization warnings, and peak usage tracking (tracking both process-level usage and framework pool usage).
+- **Extensive Monitor Integration**: Integrated the telemetry system natively into all large-model training examples (\TrainResNetCifar10\, \TrainViTCifar10\, \TrainCifar10\, \TrainYOLOCoco\ and all remaining detectors).
+- **Benchmarking Suite (Phases 1-3)**: Implemented standard Java benchmarking (\BenchmarkResNetCifar10\, \BenchmarkSentiment\), a baseline using DL4J (\BenchmarkDl4jResNetCifar10\, \BenchmarkDl4jSentiment\), and Python PyTorch equivalents in \scripts/benchmark_resnet_cifar10.py\ and \enchmark_sentiment.py\.
+- **Benchmarking Matrix**: A fully automated pipeline (\scripts/run-benchmark-matrix.ps1\) drives multiple runs and extracts CSV metrics into \enchmark/results\ for epoch times, accuracies, and inference latency percentiles.
+- **PTX Reconnection**: Handled CUDA PTX compilation pipeline fixing missing function symbols using direct \
+vcc\ integration for native device instructions.
+
+### Validation commands and result
+- \.\gradlew.bat :core:classes --no-daemon\ -> **BUILD SUCCESSFUL**
+
+
+---
+
+## Update (March 24, 2026): GPU Memory Monitor & Benchmarks
+
+### Expanded Features
+- **GPU Memory Telemetry**: Introduced `GpuMemoryMonitor.java` for robust runtime VRAM sampling, high-utilization warnings, and peak usage tracking (tracking both process-level usage and framework pool usage).
+- **Extensive Monitor Integration**: Integrated the telemetry system natively into all large-model training examples (`TrainResNetCifar10`, `TrainViTCifar10`, `TrainCifar10`, `TrainYOLOCoco` and all remaining detectors).
+- **Benchmarking Suite (Phases 1-3)**: Implemented standard Java benchmarking (`BenchmarkResNetCifar10`, `BenchmarkSentiment`), a baseline using DL4J (`BenchmarkDl4jResNetCifar10`, `BenchmarkDl4jSentiment`), and Python PyTorch equivalents in `scripts/benchmark_resnet_cifar10.py` and `benchmark_sentiment.py`.
+- **Benchmarking Matrix**: A fully automated pipeline (`scripts/run-benchmark-matrix.ps1`) drives multiple runs and extracts CSV metrics into `benchmark/results` for epoch times, accuracies, and inference latency percentiles.
+- **PTX Reconnection**: Handled CUDA PTX compilation pipeline fixing missing function symbols using direct `nvcc` integration for native device instructions.
+
+### Validation commands and result
+- `.\gradlew.bat :core:classes --no-daemon` -> **BUILD SUCCESSFUL**
