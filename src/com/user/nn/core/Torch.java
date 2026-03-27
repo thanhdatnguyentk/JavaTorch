@@ -269,11 +269,25 @@ public class Torch {
 
     // scalar variants
     public static Tensor add(Tensor a, float scalar) {
+        if (a.isGPU()) {
+            Tensor out = new Tensor(a.shape);
+            out.toGPU();
+            CUDAOps.add(a, scalar, out);
+            if (is_grad_enabled() && a.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn(a) {
+                    public void apply(Tensor outGrad) {
+                        a.backwardStep(outGrad.clone());
+                    }
+                };
+            }
+            return out;
+        }
+
         a.toCPU();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = a.data[i] + scalar;
-        if (a.isGPU()) out.toGPU();
         if (is_grad_enabled() && a.requires_grad) {
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(a) {
@@ -929,20 +943,26 @@ public class Torch {
         int[] outShape = a.shape.clone();
         outShape[dim0] = a.shape[dim1];
         outShape[dim1] = a.shape[dim0];
-        
-        a.toCPU();
-        Tensor out = new Tensor(outShape);
-        int[] aStrides = computeStrides(a.shape);
-        int[] outStrides = computeStrides(outShape);
-        
-        for (int i = 0; i < a.numel(); i++) {
-            int[] coords = getCoords(i, aStrides);
-            int tmp = coords[dim0];
-            coords[dim0] = coords[dim1];
-            coords[dim1] = tmp;
-            out.data[getIndex(coords, outStrides)] = a.data[i];
+
+        Tensor out;
+        if (a.isGPU() && nd == 2 && dim0 == 0 && dim1 == 1) {
+            out = new Tensor(outShape).toGPU();
+            CUDAOps.transpose(a, out);
+        } else {
+            a.toCPU();
+            out = new Tensor(outShape);
+            int[] aStrides = computeStrides(a.shape);
+            int[] outStrides = computeStrides(outShape);
+
+            for (int i = 0; i < a.numel(); i++) {
+                int[] coords = getCoords(i, aStrides);
+                int tmp = coords[dim0];
+                coords[dim0] = coords[dim1];
+                coords[dim1] = tmp;
+                out.data[getIndex(coords, outStrides)] = a.data[i];
+            }
+            if (a.isGPU()) out.toGPU();
         }
-        if (a.isGPU()) out.toGPU();
 
         if (is_grad_enabled() && a.requires_grad) {
             final int fDim0 = dim0, fDim1 = dim1;
@@ -1476,8 +1496,7 @@ public class Torch {
     public static NN.Mat toMat(Tensor t) {
         if (t.shape.length != 2)
             throw new IllegalArgumentException("toMat requires 2D tensor");
-        NN outer = new NN();
-        NN.Mat m = outer.mat_alloc(t.shape[0], t.shape[1]);
+        NN.Mat m = NN.mat_alloc(t.shape[0], t.shape[1]);
         System.arraycopy(t.data, 0, m.es, 0, t.data.length);
         return m;
     }

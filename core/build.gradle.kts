@@ -41,10 +41,22 @@ dependencies {
     runtimeOnly("org.jcuda:jcublas-natives:${property("jcudaVersion")}:$jcudaClassifier")
     runtimeOnly("org.jcuda:jcudnn-natives:${property("jcudaVersion")}:$jcudaClassifier")
     
+    // DeepLearning4J dependencies (Phase 2 baseline)
+    // Using stable 0.9.1 version with CPU backend for broader compatibility
+    implementation("org.deeplearning4j:deeplearning4j-core:0.9.1")
+    implementation("org.nd4j:nd4j-native:0.9.1")
+    runtimeOnly("org.nd4j:nd4j-native-platform:0.9.1")
+    implementation("commons-io:commons-io:2.13.0")
+    
     // Visualization dependencies
     implementation("org.jfree:jfreechart:1.5.4")
     implementation("org.jfree:jfreesvg:3.4")
-    
+
+    // Web Dashboard dependencies
+    implementation("io.javalin:javalin:5.6.3")
+    implementation("org.slf4j:slf4j-simple:2.0.7")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.15.2")
+
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.0")
 }
 

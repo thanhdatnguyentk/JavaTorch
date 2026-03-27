@@ -1,5 +1,12 @@
 package com.user.nn.examples;
 
+import com.user.nn.utils.dashboard.DashboardServer;
+import com.user.nn.utils.dashboard.DashboardIntegrationHelper;
+import com.user.nn.utils.visualization.TrainingHistory;
+import java.util.HashMap;
+import java.util.Map;
+
+
 import com.user.nn.core.*;
 import com.user.nn.optim.*;
 import com.user.nn.dataloaders.*;
@@ -55,6 +62,13 @@ public class TrainSentiment {
         Accuracy accMetric = new Accuracy();
         int epochs = 10;
         System.out.println("\nTraining on " + trainEntries.size() + " samples...");
+        TrainingHistory history = new TrainingHistory();
+        DashboardServer dashboard = new DashboardServer(7070, history).start();
+        try {
+            com.user.nn.predict.TextPredictor predictor = com.user.nn.predict.TextPredictor.forSentiment(model, vocab, maxLen);
+            DashboardIntegrationHelper.setupTextPredictorHandler(dashboard, "sentiment", predictor);
+        } catch(Exception e) {}
+
         
         for (int epoch = 0; epoch < epochs; epoch++) {
             float totalLoss = 0f;
@@ -128,7 +142,16 @@ public class TrainSentiment {
                 epoch + 1, epochs, avgLoss, trainAcc * 100, testAcc * 100);
                 
             testLoader.shutdown();
-        }
+        
+            try {
+                Map<String, Float> metrics = new HashMap<>();
+                metrics.put("loss", avgLoss);
+                metrics.put("train_acc", trainAcc);
+                metrics.put("test_acc", testAcc);
+                history.record(epoch + 1, metrics);
+                dashboard.broadcastMetrics(epoch + 1, metrics);
+            } catch (Exception dashEx) {}
+}
 
         // ============================================================
         //  PREDICTION - Sử dụng thư viện predict

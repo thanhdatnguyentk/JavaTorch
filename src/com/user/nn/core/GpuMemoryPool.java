@@ -20,6 +20,7 @@ public class GpuMemoryPool {
     private static Pointer poolBase = null;
     private static long poolSizeBytes = 0;
     private static long currentOffset = 0;
+    private static long peakOffset = 0;
     private static boolean initialized = false;
 
     /**
@@ -116,6 +117,7 @@ public class GpuMemoryPool {
         }
         poolSizeBytes = sizeBytes;
         currentOffset = 0;
+        peakOffset = 0;
         initialized = true;
         System.out.println("[GpuMemoryPool] Initialized with " + (sizeBytes / (1024 * 1024)) + " MB");
     }
@@ -145,6 +147,9 @@ public class GpuMemoryPool {
 
         Pointer slice = poolBase.withByteOffset(currentOffset);
         currentOffset += bytesNeeded;
+        if (currentOffset > peakOffset) {
+            peakOffset = currentOffset;
+        }
         return slice;
     }
 
@@ -165,6 +170,20 @@ public class GpuMemoryPool {
     }
 
     /**
+     * Get the peak usage of the pool in bytes since init/resetPeakUsedBytes.
+     */
+    public static long getPeakUsedBytes() {
+        return peakOffset;
+    }
+
+    /**
+     * Reset tracked peak usage while keeping current pool allocations untouched.
+     */
+    public static synchronized void resetPeakUsedBytes() {
+        peakOffset = currentOffset;
+    }
+
+    /**
      * Get the total capacity of the pool in bytes.
      */
     public static long getCapacityBytes() {
@@ -180,6 +199,7 @@ public class GpuMemoryPool {
             poolBase = null;
             poolSizeBytes = 0;
             currentOffset = 0;
+            peakOffset = 0;
             initialized = false;
         }
     }

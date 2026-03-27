@@ -1,0 +1,29 @@
+{
+  "name": "ml_framework",
+  "version": "1.0.0",
+  "description": "[English](README.md) | [Tutorial](TUTORIAL.vn.md) | [Tutorial EN](TUTORIAL.md) | [API Reference](API_REFERENCE.vn.md) | [API Reference EN](API_REFERENCE.md)",
+  "main": "index.js",
+  "directories": {
+    "example": "examples",
+    "lib": "lib",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thanhdatnguyentk/JavaTorch.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/thanhdatnguyentk/JavaTorch/issues"
+  },
+  "homepage": "https://github.com/thanhdatnguyentk/JavaTorch#readme",
+  "dependencies": {
+    "ws": "^8.20.0"
+  }
+}

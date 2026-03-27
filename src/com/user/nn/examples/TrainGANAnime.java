@@ -1,5 +1,12 @@
 package com.user.nn.examples;
 
+import com.user.nn.utils.dashboard.DashboardServer;
+import com.user.nn.utils.dashboard.DashboardIntegrationHelper;
+import com.user.nn.utils.visualization.TrainingHistory;
+import java.util.HashMap;
+import java.util.Map;
+
+
 import com.user.nn.activations.LeakyReLU;
 import com.user.nn.activations.Sigmoid;
 import com.user.nn.activations.Tanh;

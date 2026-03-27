@@ -5,6 +5,7 @@ bin/
 lib/
 *.log
 train.log
+*.bin
 
 # Generated example/training artifacts
 examples/trained_models/*.log
@@ -19,9 +20,13 @@ examples/coco_yolo_*.png
 # Trained model weights (large binaries)
 examples/trained_models/*.bin
 
+# Benchmark artifacts
+benchmark/results/
+
 # Gradle
 .gradle/
 **/build/
 
 # Local temporary tools
 .tools/
+.github\prompts

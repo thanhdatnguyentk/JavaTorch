@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ML Dashboard</title>
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+<div id="app" class="min-h-screen flex flex-col">
+    <!-- Navbar -->
+    <nav class="bg-indigo-600 text-white p-4 shadow mb-6">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-2xl font-bold font-mono">⚡ ML Framework Dashboard</h1>
+            <div>
+                <button @click="currentTab = 'training'" :class="{'bg-indigo-700': currentTab === 'training'}" class="px-4 py-2 rounded font-semibold hover:bg-indigo-700 transition">Training History</button>
+                <button @click="currentTab = 'inference'" :class="{'bg-indigo-700': currentTab === 'inference'}" class="px-4 py-2 rounded font-semibold hover:bg-indigo-700 transition ml-2">App / Try Model</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container mx-auto flex-grow px-4 pb-12">
+        
+        <!-- TRAINING TAB -->
+        <div v-show="currentTab === 'training'">
+            <div class="bg-white rounded-lg shadow p-6 mb-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-gray-700">Live Training Metrics</h2>
+                    <span class="text-sm px-3 py-1 rounded-full" 
+                        :class="wsConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'">
+                        {{ wsConnected ? 'Live 🟢' : 'Disconnected 🔴' }}
+                    </span>
+                </div>
+                
+                <!-- Chart Container -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h3 class="text-center font-semibold mb-2">Loss</h3>
+                        <canvas id="lossChart"></canvas>
+                    </div>
+                    <div>
+                        <h3 class="text-center font-semibold mb-2">Accuracy</h3>
+                        <canvas id="accChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Table -->
+            <div class="bg-white rounded-lg shadow p-6 overflow-x-auto">
+                <h2 class="text-xl font-bold text-gray-700 mb-4">History Table</h2>
+                <table class="min-w-full table-auto">
+                    <thead>
+                        <tr class="bg-gray-200">
+                            <th class="px-4 py-2 text-left">Epoch</th>
+                            <th class="px-4 py-2 text-left" v-for="key in metricKeys" :key="key">{{ key }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="(ep, idx) in epochs" :key="idx" class="border-b">
+                            <td class="px-4 py-2 font-mono font-bold">{{ ep }}</td>
+                            <td class="px-4 py-2" v-for="key in metricKeys" :key="key">
+                                {{ getMetricValue(key, idx) }}
+                            </td>
+                        </tr>
+                        <tr v-if="epochs.length === 0">
+                            <td colspan="100%" class="text-center p-4 text-gray-500">No training data yet.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- APP / INFERENCE TAB -->
+        <div v-show="currentTab === 'inference'" class="max-w-4xl mx-auto">
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-2xl font-bold mb-2">Try The Model</h2>
+                <p class="text-gray-500 mb-6">Upload an image or enter text to run live inference.</p>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Select Task Handler</label>
+                    <input type="text" v-model="inferenceTask" class="w-full border rounded px-3 py-2" placeholder="e.g., classify_image, detect_objects, sentiment...">
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- INPUT -->
+                    <div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Image / File</label>
+                            <input type="file" @change="onFileChange" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Text String</label>
+                            <textarea v-model="inferenceText" rows="4" class="w-full border rounded p-2" placeholder="Input text here..."></textarea>
+                        </div>
+                        <button @click="runPredict" :disabled="isPredicting" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded disabled:bg-gray-400">
+                            {{ isPredicting ? 'Inferencing...' : 'Run Predict' }}
+                        </button>
+                    </div>
+
+                    <!-- OUTPUT -->
+                    <div class="bg-gray-50 p-4 rounded border h-full min-h-[300px]">
+                        <h3 class="text-sm font-medium text-gray-700 mb-2">JSON Result</h3>
+                        <pre v-if="predictResponse" class="text-xs font-mono bg-gray-800 text-green-400 p-4 rounded overflow-auto max-h-64">{{ JSON.stringify(predictResponse, null, 2) }}</pre>
+                        <p v-else class="text-sm text-gray-400 italic">Result will appear here...</p>
+
+                        <!-- If there's an image preview => show bounding boxes logic can go here -->
+                        <div v-if="previewSrc" class="mt-4 relative">
+                            <img :src="previewSrc" id="previewImg" class="max-w-full rounded shadow" />
+                            <!-- Optional Bounding Box Overlay canvas via extra JS logic later -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+</div>
+
+<script>
+    const { createApp, ref, reactive, onMounted } = Vue;
+
+    createApp({
+        setup() {
+            const currentTab = ref('training'); // training | inference
+            
+            // --- Training History Data ---
+            const epochs = ref([]);
+            const metrics = reactive({}); // { "loss_train": [...], "acc_train": [...] }
+            const metricKeys = ref([]);
+            
+            const wsConnected = ref(false);
+
+            // Charts
+            let lossChartInstance = null;
+            let accChartInstance = null;
+
+            // --- Inference Data ---
+            const inferenceTask = ref('image_classification'); // Name match with java backend predictHandlers
+            const inferenceText = ref('');
+            const fileObj = ref(null);
+            const previewSrc = ref('');
+            const isPredicting = ref(false);
+            const predictResponse = ref(null);
+
+            onMounted(() => {
+                initCharts();
+                fetchHistory();
+                connectWebSocket();
+            });
+
+            // ====================== REST AND WS ==========================
+
+            const getBaseUrl = () => {
+                // If opened via file://, fallback to localhost:7070
+                return window.location.protocol === 'file:' ? 'http://localhost:7070' : '';
+            };
+
+            const fetchHistory = async () => {
+                try {
+                    const res = await fetch(`${getBaseUrl()}/api/metrics`);
+                    if(res.ok) {
+                        const data = await res.json();
+                        epochs.value = data.epochs || [];
+                        Object.keys(data.series || {}).forEach(k => {
+                            metrics[k] = data.series[k];
+                        });
+                        metricKeys.value = Object.keys(metrics);
+                        updateCharts();
+                    } else {
+                        console.error("Failed to fetch, status:", res.status);
+                    }
+                } catch(e) {
+                    console.error("Not running in Javalin mode or API unavailable", e);
+                }
+            };
+
+            const connectWebSocket = () => {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const host = window.location.host || 'localhost:7070';
+                const ws = new WebSocket(`${protocol}//${host}/ws/metrics`);
+                
+                ws.onopen = () => {
+                    wsConnected.value = true;
+                };
+
+                ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    // data format: { epoch: 1, metrics: { loss_train: ..., acc_val: ... } }
+                    
+                    if(!epochs.value.includes(data.epoch)) {
+                        epochs.value.push(data.epoch);
+                    }
+                    
+                    Object.keys(data.metrics).forEach(k => {
+                        if(!metrics[k]) {
+                            metrics[k] = [];
+                            metricKeys.value.push(k);
+                        }
+                        metrics[k].push(data.metrics[k]);
+                    });
+
+                    updateCharts();
+                };
+
+                ws.onclose = () => {
+                    wsConnected.value = false;
+                    setTimeout(connectWebSocket, 3000); // Reconnect
+                };
+            };
+
+            const getMetricValue = (key, idx) => {
+                if(!metrics[key] || metrics[key].length <= idx) return '-';
+                return Number(metrics[key][idx]).toFixed(4);
+            };
+
+            // ====================== CHARTS (Chart.js) ===========================
+
+            const initCharts = () => {
+                const ctxL = document.getElementById('lossChart').getContext('2d');
+                const ctxA = document.getElementById('accChart').getContext('2d');
+                
+                const commonOptions = { responsive: true, animation: {duration: 0} };
+
+                lossChartInstance = new Chart(ctxL, {
+                    type: 'line', data: { labels: [], datasets: [] }, options: commonOptions
+                });
+                accChartInstance = new Chart(ctxA, {
+                    type: 'line', data: { labels: [], datasets: [] }, options: commonOptions
+                });
+            };
+
+            const updateCharts = () => {
+                const labels = epochs.value;
+                const colors = ['rgb(79, 70, 229)', 'rgb(220, 38, 38)', 'rgb(5, 150, 105)', 'rgb(217, 119, 6)'];
+                
+                let lossData = [];
+                let accData = [];
+                let c1=0, c2=0;
+
+                metricKeys.value.forEach(k => {
+                    const ds = {
+                        label: k,
+                        data: metrics[k]
+                    };
+                    if(k.toLowerCase().includes('acc')) {
+                        ds.borderColor = colors[c2 % colors.length];
+                        accData.push(ds);
+                        c2++;
+                    } else if (k.toLowerCase().includes('loss')) {
+                        ds.borderColor = colors[c1 % colors.length];
+                        lossData.push(ds);
+                        c1++;
+                    } else {
+                        // Put in loss chart as fallback
+                        ds.borderColor = 'black';
+                        lossData.push(ds);
+                    }
+                });
+
+                lossChartInstance.data.labels = labels;
+                lossChartInstance.data.datasets = lossData;
+                lossChartInstance.update();
+
+                accChartInstance.data.labels = labels;
+                accChartInstance.data.datasets = accData;
+                accChartInstance.update();
+            };
+
+            // ====================== INFERENCE ===========================
+
+            const onFileChange = (e) => {
+                const files = e.target.files;
+                if (!files.length) return;
+                fileObj.value = files[0];
+                
+                if (fileObj.value.type.startsWith('image/')) {
+                    previewSrc.value = URL.createObjectURL(fileObj.value);
+                } else {
+                    previewSrc.value = '';
+                }
+            };
+
+            const runPredict = async () => {
+                isPredicting.value = true;
+                predictResponse.value = null;
+
+                const formData = new FormData();
+                if (fileObj.value) formData.append("file", fileObj.value);
+                if (inferenceText.value) formData.append("text", inferenceText.value);
+
+                try {
+                    const res = await fetch(`/api/predict/${inferenceTask.value}`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const json = await res.json();
+                    predictResponse.value = json;
+                } catch(err) {
+                    predictResponse.value = { error: err.message };
+                } finally {
+                    isPredicting.value = false;
+                }
+            };
+
+            return {
+                currentTab, epochs, metricKeys, getMetricValue, wsConnected,
+                inferenceTask, inferenceText, fileObj, previewSrc, isPredicting, predictResponse,
+                onFileChange, runPredict
+            };
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>

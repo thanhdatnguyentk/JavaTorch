@@ -1,5 +1,12 @@
 package com.user.nn.examples;
 
+import com.user.nn.utils.dashboard.DashboardServer;
+import com.user.nn.utils.dashboard.DashboardIntegrationHelper;
+import com.user.nn.utils.visualization.TrainingHistory;
+import java.util.HashMap;
+import java.util.Map;
+
+
 import com.user.nn.core.*;
 import com.user.nn.core.Module;
 import com.user.nn.containers.*;

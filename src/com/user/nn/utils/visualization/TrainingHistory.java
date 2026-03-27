@@ -75,12 +75,19 @@ public class TrainingHistory {
     }
     
     /**
+     * Get the raw map of all metrics.
+     */
+    public Map<String, List<Float>> getMetrics() {
+        return metrics;
+    }
+
+    /**
      * Get all metric names.
      */
     public Set<String> getMetricNames() {
         return metrics.keySet();
     }
-    
+
     /**
      * Get epochs.
      */

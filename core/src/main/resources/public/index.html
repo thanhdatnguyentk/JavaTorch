@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ML Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        darkBg: '#0f172a',
+                        glassBg: 'rgba(30, 41, 59, 0.7)',
+                        glassBorder: 'rgba(255, 255, 255, 0.1)',
+                        accent: '#38bdf8'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #0f172a; color: #e2e8f0; }
+        
+        /* Glassmorphism Classes */
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 1rem;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        }
+        
+        .glass-input {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #f8fafc;
+        }
+        .glass-input:focus {
+            outline: none;
+            border-color: #38bdf8;
+            box-shadow: 0 0 0 1px #38bdf8;
+        }
+
+        /* Custom Scrollbar for Pre */
+        pre::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        pre::-webkit-scrollbar-thumb {
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+        
+        /* Table styles */
+        th, td { border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+    </style>
+</head>
+<body class="antialiased selection:bg-accent selection:text-darkBg min-h-screen flex flex-col relative overflow-x-hidden">
+
+    <!-- Decorative background elements -->
+    <div class="absolute top-[-10%] left-[-10%] w-96 h-96 bg-blue-600/20 rounded-full blur-[100px] pointer-events-none"></div>
+    <div class="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-purple-600/20 rounded-full blur-[100px] pointer-events-none"></div>
+
+<div id="app" class="relative z-10 min-h-screen flex flex-col">
+    <!-- Navbar -->
+    <header class="glass-panel mx-6 mt-6 mb-8 px-6 py-4 flex justify-between items-center transition-all">
+        <div class="flex items-center gap-3">
+            <i data-lucide="activity" class="text-accent w-6 h-6"></i>
+            <h1 class="text-xl font-bold tracking-tight text-white">ML<span class="text-accent font-medium">Dash</span></h1>
+        </div>
+        
+        <nav class="flex gap-2 bg-slate-800/50 p-1 rounded-lg border border-white/5">
+            <button @click="currentTab = 'training'" 
+                    class=" flex items-center gap-2 px-5 py-2 rounded-md font-medium text-sm transition-all duration-300"
+                    :class="currentTab === 'training' ? 'bg-accent text-darkBg shadow-md' : 'text-slate-400 hover:text-white hover:bg-white/5'">
+                <i data-lucide="trending-up" class="w-4 h-4"></i> Training
+            </button>
+            <button @click="currentTab = 'inference'" 
+                    class="flex items-center gap-2 px-5 py-2 rounded-md font-medium text-sm transition-all duration-300"
+                    :class="currentTab === 'inference' ? 'bg-accent text-darkBg shadow-md' : 'text-slate-400 hover:text-white hover:bg-white/5'">
+                <i data-lucide="cpu" class="w-4 h-4"></i> Inference
+            </button>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto flex-grow px-6 pb-12 w-full max-w-7xl">
+        
+        <!-- ======================= -->
+        <!--      TRAINING TAB       -->
+        <!-- ======================= -->
+        <div v-show="currentTab === 'training'" class="space-y-8 animate-fade-in">
+            
+            <div class="glass-panel p-8">
+                <div class="flex justify-between items-center mb-8 border-b border-white/5 pb-4">
+                    <h2 class="text-2xl font-light text-white flex items-center gap-2">
+                        <i data-lucide="bar-chart-2" class="w-6 h-6 text-slate-400"></i> Metrics Overview
+                    </h2>
+                    
+                    <div class="flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium tracking-wide"
+                         :class="wsConnected ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'">
+                        <div class="w-2 h-2 rounded-full" :class="wsConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'"></div>
+                        {{ wsConnected ? 'LIVE' : 'DISCONNECTED' }}
+                    </div>
+                </div>
+                
+                
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8" v-if="sysStats">
+                    <div class="bg-slate-900/40 p-4 rounded-xl border border-white/5">
+                        <div class="text-xs text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1"><i data-lucide="cpu" class="w-3 h-3"></i> VRAM Used</div>
+                        <div class="text-lg font-mono text-accent">{{ sysStats.processUsedMB.toFixed(1) }} MB</div>
+                    </div>
+                    <div class="bg-slate-900/40 p-4 rounded-xl border border-white/5">
+                        <div class="text-xs text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1"><i data-lucide="database" class="w-3 h-3"></i> Pool Used</div>
+                        <div class="text-lg font-mono text-emerald-400">{{ sysStats.poolUsedMB.toFixed(1) }} MB</div>
+                    </div>
+                    <div class="bg-slate-900/40 p-4 rounded-xl border border-white/5">
+                        <div class="text-xs text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1"><i data-lucide="hard-drive" class="w-3 h-3"></i> VRAM Total</div>
+                        <div class="text-lg font-mono text-purple-400">{{ sysStats.totalMB.toFixed(1) }} MB</div>
+                    </div>
+                    <div class="bg-slate-900/40 p-4 rounded-xl border border-white/5">
+                        <div class="text-xs text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1"><i data-lucide="clock" class="w-3 h-3"></i> Last Update</div>
+                        <div class="text-lg font-mono text-slate-300">{{ lastUpdate }}</div>
+                    </div>
+                </div>
+
+                <!-- Chart Container -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div class="bg-slate-900/40 p-4 rounded-xl border border-white/5">
+                        <div class="flex justify-between items-center mb-4 px-2">
+                            <h3 class="text-sm font-medium text-slate-400 uppercase tracking-wider">Loss Curve</h3>
+                        </div>
+                        <div class="relative h-[300px]">
+                            <canvas id="lossChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="bg-slate-900/40 p-4 rounded-xl border border-white/5">
+                        <div class="flex justify-between items-center mb-4 px-2">
+                            <h3 class="text-sm font-medium text-slate-400 uppercase tracking-wider">Accuracy Curve</h3>
+                        </div>
+                        <div class="relative h-[300px]">
+                            <canvas id="accChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Table -->
+            <div class="glass-panel p-8">
+                <h2 class="text-2xl font-light text-white mb-6 flex items-center gap-2">
+                    <i data-lucide="table" class="w-6 h-6 text-slate-400"></i> History Log
+                </h2>
+                
+                <div class="overflow-x-auto rounded-lg border border-white/5 bg-slate-900/20">
+                    <table class="min-w-full table-auto text-sm text-left">
+                        <thead class="bg-slate-800/60 text-slate-300 font-medium">
+                            <tr>
+                                <th class="px-6 py-4 tracking-wider">Epoch</th>
+                                <th class="px-6 py-4 tracking-wider" v-for="key in metricKeys" :key="key">{{ key }}</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-white/5 text-slate-300">
+                            <tr v-for="(ep, idx) in epochs" :key="idx" class="hover:bg-white/5 transition-colors">
+                                <td class="px-6 py-4 font-mono text-accent">{{ ep }}</td>
+                                <td class="px-6 py-4 font-mono text-slate-400" v-for="key in metricKeys" :key="key">
+                                    {{ getMetricValue(key, idx) }}
+                                </td>
+                            </tr>
+                            <tr v-if="epochs.length === 0">
+                                <td colspan="100%" class="text-center p-8 text-slate-500 italic">No metrics recorded yet.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======================= -->
+        <!--    INFERENCE TAB        -->
+        <!-- ======================= -->
+        <div v-show="currentTab === 'inference'" class="max-w-5xl mx-auto animate-fade-in">
+            
+            <div class="glass-panel p-8">
+                
+                <div class="mb-10 text-center">
+                    <h2 class="text-3xl font-light text-white mb-3">Model Playground</h2>
+                    <p class="text-slate-400">Test your trained models strictly from the browser over REST API.</p>
+                </div>
+                
+                <div class="mb-8 p-1">
+                    <label class="block text-xs font-semibold tracking-wider text-slate-400 uppercase mb-2">Endpoint Route (Task Name)</label>
+                    <div class="relative">
+                        <i data-lucide="link-2" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"></i>
+                        <input type="text" v-model="inferenceTask" class="glass-input w-full rounded-lg pl-11 pr-4 py-3 text-sm transition-all" placeholder="e.g., classify_image">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    
+                    <!-- INPUT PANEL -->
+                    <div class="space-y-6">
+                        <div class="glass-input rounded-xl p-5 relative overflow-hidden group">
+                            <div class="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                            
+                            <label class="block text-xs font-semibold tracking-wider text-slate-400 uppercase mb-4 flex items-center gap-2">
+                                <i data-lucide="image" class="w-4 h-4"></i> Image Upload
+                            </label>
+                            
+                            <div class="flex items-center justify-center w-full">
+                                <label for="dropzone-file" class="flex flex-col items-center justify-center w-full h-32 border-2 border-slate-600 border-dashed rounded-lg cursor-pointer bg-slate-800/30 hover:bg-slate-700/50 hover:border-slate-500 transition-all">
+                                    <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                                        <i data-lucide="upload-cloud" class="w-8 h-8 mb-3 text-slate-400"></i>
+                                        <p class="mb-1 text-sm text-slate-400"><span class="font-semibold text-white">Click to upload</span> or drag and drop</p>
+                                    </div>
+                                    <input id="dropzone-file" type="file" class="hidden" @change="onFileChange" />
+                                </label>
+                            </div>
+                            <div v-if="fileObj" class="mt-3 text-xs text-accent flex items-center gap-1">
+                                <i data-lucide="check-circle-2" class="w-3 h-3"></i> {{ fileObj.name }}
+                            </div>
+                        </div>
+
+                        <div class="relative mt-4">
+                            <label class="block text-xs font-semibold tracking-wider text-slate-400 uppercase mb-2 flex items-center gap-2">
+                                <i data-lucide="align-left" class="w-4 h-4"></i> Text Input
+                            </label>
+                            <textarea v-model="inferenceText" rows="4" class="glass-input w-full rounded-lg p-4 text-sm transition-all resize-none" placeholder="Provide raw input text here for NLP tasks..."></textarea>
+                        </div>
+
+                        <button @click="runPredict" :disabled="isPredicting" 
+                                class="w-full relative overflow-hidden group bg-accent hover:bg-[#20a7df] text-darkBg font-bold py-4 px-6 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed transform active:scale-[0.98]">
+                            <span class="relative z-10 flex items-center justify-center gap-2">
+                                <i v-if="!isPredicting" data-lucide="play" class="w-5 h-5"></i>
+                                <i v-else data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
+                                {{ isPredicting ? 'Processing...' : 'Run Prediction' }}
+                            </span>
+                        </button>
+                    </div>
+
+                    <!-- OUTPUT PANEL -->
+                    <div class="glass-input rounded-xl border border-white/5 flex flex-col h-full min-h-[400px]">
+                        <div class="p-4 border-b border-white/5 bg-slate-900/40 flex items-center justify-between">
+                            <h3 class="text-xs font-semibold tracking-wider text-slate-400 uppercase flex items-center gap-2">
+                                <i data-lucide="terminal" class="w-4 h-4"></i> Output Result
+                            </h3>
+                        </div>
+                        
+                        <div class="p-5 flex-grow flex flex-col w-full">
+                            <pre v-if="predictResponse" class="flex-grow w-full text-xs font-mono text-emerald-400 bg-[#0c1222] p-4 rounded-lg overflow-auto border border-emerald-500/20 shadow-inner">{{ JSON.stringify(predictResponse, null, 2) }}</pre>
+                            
+                            <div v-else class="flex-grow flex flex-col items-center justify-center text-slate-500">
+                                <i data-lucide="code-2" class="w-12 h-12 mb-3 opacity-20"></i>
+                                <p class="text-sm font-light">Awaiting prediction output...</p>
+                            </div>
+
+                            <!-- Optional Image Preview -->
+                            <div v-if="previewSrc" class="mt-6 border-t border-white/10 pt-4 relative">
+                                <p class="text-[10px] uppercase text-slate-500 mb-2 font-semibold tracking-wider">Input Preview</p>
+                                <img :src="previewSrc" id="previewImg" class="max-h-48 rounded-lg outline outline-1 outline-white/10 object-contain shadow-lg" />
+                            </div>
+                        </div>
+                    </div>
+                    
+                </div>
+            </div>
+        </div>
+
+    </main>
+</div>
+
+<style>
+    .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+</style>
+
+<script>
+    const { createApp, ref, reactive, onMounted, nextTick } = Vue;
+
+    // Set Chart.js Defaults for Dark Mode
+    Chart.defaults.color = '#94a3b8';
+    Chart.defaults.borderColor = 'rgba(255, 255, 255, 0.05)';
+    Chart.defaults.font.family = "'Inter', sans-serif";
+
+    createApp({
+        setup() {
+            const currentTab = ref('training'); 
+            const epochs = ref([]);
+            const metrics = reactive({}); 
+            const metricKeys = ref([]);
+            const wsConnected = ref(false);
+
+            let lossChartInstance = null;
+            let accChartInstance = null;
+
+            
+            const sysStats = ref(null);
+            const lastUpdate = ref("-");
+            const inferenceTask = ref('classify_image'); 
+            const inferenceText = ref('');
+            const fileObj = ref(null);
+            const previewSrc = ref('');
+            const isPredicting = ref(false);
+            const predictResponse = ref(null);
+
+            onMounted(() => {
+                // Initialize Lucide Icons
+                lucide.createIcons();
+                
+                initCharts();
+                fetchHistory();
+                connectWebSocket();
+
+                // Re-init icons when tab changes
+                Vue.watch(currentTab, () => {
+                    nextTick(() => lucide.createIcons());
+                });
+            });
+
+            const fetchHistory = async () => {
+                try {
+                    const res = await fetch('/api/metrics');
+                    if(res.ok) {
+                        const data = await res.json();
+                        epochs.value = data.epochs || [];
+                        Object.keys(data.series || {}).forEach(k => {
+                            metrics[k] = data.series[k];
+                        });
+                        metricKeys.value = Object.keys(metrics);
+                        updateCharts();
+                            lucide.createIcons();
+                    }
+                } catch(e) {
+                    console.log("Offline or no history", e);
+                }
+            };
+
+            const connectWebSocket = () => {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const ws = new WebSocket(`${protocol}//${window.location.host}/ws/metrics`);
+                
+                ws.onopen = () => { wsConnected.value = true; };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log("WS received:", data);
+
+                        if (data.vram) {
+                            sysStats.value = data.vram;
+                        }
+                        if (data.timestamp) {
+                            const d = new Date(data.timestamp);
+                            lastUpdate.value = d.toLocaleTimeString() + "." + d.getMilliseconds().toString().padStart(3, '0');
+                        }
+                        
+                        if(!epochs.value.includes(data.epoch)) {
+                            epochs.value.push(data.epoch);
+                        }
+                        
+                        Object.keys(data.metrics).forEach(k => {
+                            if(!metrics[k]) {
+                                metrics[k] = [];
+                                if (!metricKeys.value.includes(k)) {
+                                    metricKeys.value.push(k);
+                                }
+                            }
+                            metrics[k].push(data.metrics[k]);
+                        });
+                        
+                        // Cập nhật biểu đồ sau khi Vue đã render data mới ở Table
+                        nextTick(() => {
+                            updateCharts();
+                            lucide.createIcons();
+                        });
+                    } catch(err) {
+                        console.error("Lỗi khi xử lý WS message:", err);
+                    }
+                };
+
+                ws.onclose = () => {
+                    wsConnected.value = false;
+                    setTimeout(connectWebSocket, 3000); 
+                };
+            };
+
+            const getMetricValue = (key, idx) => {
+                if(!metrics[key] || metrics[key].length <= idx) return '-';
+                return Number(metrics[key][idx]).toFixed(4);
+            };
+
+            const initCharts = () => {
+                const ctxL = document.getElementById('lossChart').getContext('2d');
+                const ctxA = document.getElementById('accChart').getContext('2d');
+                
+                const commonOptions = { 
+                    responsive: true, maintainAspectRatio: false, animation: {duration: 400},
+                    elements: {
+                        line: { tension: 0.3, borderWidth: 2 },
+                        point: { radius: 0, hitRadius: 8, hoverRadius: 4 }
+                    },
+                    plugins: { legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 6 } } },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { border: { dash: [4, 4] } }
+                    }
+                };
+
+                lossChartInstance = new Chart(ctxL, { type: 'line', data: { labels: [], datasets: [] }, options: commonOptions });
+                accChartInstance = new Chart(ctxA, { type: 'line', data: { labels: [], datasets: [] }, options: commonOptions });
+            };
+
+            const updateCharts = () => {
+                const labels = [...epochs.value]; // Copy to avoid Vue proxy issues
+                const colors = ['#38bdf8', '#818cf8', '#6366f1', '#e879f9']; 
+                const colorsAcc = ['#34d399', '#10b981', '#fbbf24', '#f59e0b'];
+                
+                let lossData = [];
+                let accData = [];
+                let c1=0, c2=0;
+
+                metricKeys.value.forEach(k => {
+                    const ds = {
+                        label: k,
+                        data: [...metrics[k]], // Copy to avoid Vue proxy issues with Chart.js
+                        fill: true,
+                    };
+                    if(k.toLowerCase().includes('acc')) {
+                        ds.borderColor = colorsAcc[c2 % colorsAcc.length];
+                        ds.backgroundColor = ds.borderColor + '15'; // 15% opacity target
+                        accData.push(ds);
+                        c2++;
+                    } else {
+                        ds.borderColor = colors[c1 % colors.length];
+                        ds.backgroundColor = ds.borderColor + '15';
+                        lossData.push(ds);
+                        c1++;
+                    }
+                });
+
+                lossChartInstance.data.labels = labels;
+                lossChartInstance.data.datasets = lossData;
+                lossChartInstance.update();
+
+                accChartInstance.data.labels = labels;
+                accChartInstance.data.datasets = accData;
+                accChartInstance.update();
+            };
+
+            const onFileChange = (e) => {
+                const files = e.target.files;
+                if (!files.length) return;
+                fileObj.value = files[0];
+                
+                if (fileObj.value.type.startsWith('image/')) {
+                    previewSrc.value = URL.createObjectURL(fileObj.value);
+                } else {
+                    previewSrc.value = '';
+                }
+            };
+
+            const runPredict = async () => {
+                isPredicting.value = true;
+                predictResponse.value = null;
+
+                const formData = new FormData();
+                if (fileObj.value) formData.append("file", fileObj.value);
+                if (inferenceText.value) formData.append("text", inferenceText.value);
+
+                try {
+                    const res = await fetch(`/api/predict/${inferenceTask.value}`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const json = await res.json();
+                    predictResponse.value = json;
+                } catch(err) {
+                    predictResponse.value = { error: err.message };
+                } finally {
+                    isPredicting.value = false;
+                    nextTick(() => lucide.createIcons());
+                }
+            };
+
+            return {
+                currentTab, epochs, metricKeys, getMetricValue, wsConnected,
+                sysStats, lastUpdate,
+                inferenceTask, inferenceText, fileObj, previewSrc, isPredicting, predictResponse,
+                onFileChange, runPredict
+            };
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>

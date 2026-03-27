@@ -1,5 +1,12 @@
 package com.user.nn.examples;
 
+import com.user.nn.utils.dashboard.DashboardServer;
+import com.user.nn.utils.dashboard.DashboardIntegrationHelper;
+import com.user.nn.utils.visualization.TrainingHistory;
+import java.util.HashMap;
+import java.util.Map;
+
+
 import com.user.nn.core.*;
 import com.user.nn.containers.*;
 import com.user.nn.layers.*;
@@ -96,6 +103,13 @@ public class TrainFashionMNIST {
 
         System.out.println("Starting training for " + epochs + " epochs...");
         int totalBatches = N / batchSize;
+        TrainingHistory history = new TrainingHistory();
+        DashboardServer dashboard = new DashboardServer(7070, history).start();
+        try {
+            com.user.nn.predict.ImagePredictor predictor = com.user.nn.predict.ImagePredictor.forMnist(model);
+            DashboardIntegrationHelper.setupImagePredictorHandler(dashboard, "classify_image", predictor);
+        } catch(Exception e) {}
+
 
         for (int epoch = 0; epoch < epochs; epoch++) {
             float epochLoss = 0f;
@@ -160,7 +174,16 @@ public class TrainFashionMNIST {
                 System.out.printf("%nFinal test accuracy: %.2f%%%n", testAcc * 100);
             }
             testLoader.shutdown();
-        }
+        
+            try {
+                Map<String, Float> metrics = new HashMap<>();
+                metrics.put("loss", avgLoss);
+                metrics.put("train_acc", trainAcc);
+                metrics.put("test_acc", testAcc);
+                history.record(epoch + 1, metrics);
+                dashboard.broadcastMetrics(epoch + 1, metrics);
+            } catch (Exception dashEx) {}
+}
 
         trainLoader.shutdown();
 
@@ -189,5 +212,6 @@ public class TrainFashionMNIST {
         }
 
         System.out.println("\nTraining Complete!");
+        try { dashboard.exportDashboardData("dashboard_final.json"); } catch(Exception e) {}
     }
 }

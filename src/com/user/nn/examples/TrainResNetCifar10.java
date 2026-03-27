@@ -90,7 +90,6 @@ public class TrainResNetCifar10 {
         
         // Initialize TrainingHistory for visualization
         TrainingHistory history = new TrainingHistory();
-        
         System.out.println("\n=== Training with Progress Bar & Visualization ===\n");
 
         for (int epoch = 0; epoch < epochs; epoch++) {
@@ -160,7 +159,7 @@ public class TrainResNetCifar10 {
                     
             // Record metrics in training history
             Map<String, Float> metrics = new HashMap<>();
-            metrics.put("train_loss", avgLoss);
+                metrics.put("train_loss", avgLoss);
             metrics.put("train_acc", trainAcc);
             metrics.put("test_acc", testAcc);
             history.record(epoch, metrics);

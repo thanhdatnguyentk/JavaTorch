@@ -183,37 +183,22 @@ public class Functional {
         Tensor out = new Tensor(1);
         if (input.isGPU() && target.isGPU()) {
             out = new Tensor(1).toGPU();
-            // Compute BCE mean on CPU for numerical robustness when custom PTX BCE kernels
-            // are unavailable or produce unreliable scalar values.
-            input.toCPU();
-            target.toCPU();
-            float total = 0f;
-            for (int i = 0; i < n; i++) {
-                float h = input.data[i];
-                float y = target.data[i];
-                h = Math.max(eps, Math.min(1f - eps, h));
-                total += -(y * (float) Math.log(h) + (1f - y) * (float) Math.log(1f - h));
-            }
+            Tensor bceOut = new Tensor(input.shape).toGPU();
+            CUDAOps.bceForward(input, target, bceOut);
+            Tensor s = Torch.sum_tensor(bceOut);
+            float val = s.toCPU().data[0] / n;
             out.toCPU();
-            out.data[0] = total / n;
-            out.toGPU();
-            input.toGPU();
-            target.toGPU();
+            out.data[0] = val;
+            out.markDirtyOnGPU();
             if (input.requires_grad) {
                 out.requires_grad = true;
                 out.grad_fn = new Tensor.GradFn(input) {
                     public void apply(Tensor outGrad) {
-                        outGrad.toCPU();
-                        float scale = outGrad.data[0] / n;
-                        input.toCPU(); target.toCPU();
-                        Tensor g = new Tensor(input.shape);
-                        for (int i = 0; i < n; i++) {
-                            float h = Math.max(eps, Math.min(1f - eps, input.data[i]));
-                            float y = target.data[i];
-                            g.data[i] = ((h - y) / (h * (1f - h) + eps)) * scale;
-                        }
-                        input.toGPU(); target.toGPU(); g.toGPU();
-                        input.backwardStep(g);
+                        float scale = outGrad.toCPU().data[0] / n;
+                        Tensor gx = new Tensor(input.shape).toGPU();
+                        CUDAOps.bceBackward(input, target, gx);
+                        CUDAOps.mul(gx, scale, gx);
+                        input.backwardStep(gx);
                     }
                 };
             }

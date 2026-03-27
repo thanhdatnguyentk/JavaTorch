@@ -54,6 +54,7 @@ flowchart LR
 - CPU acceleration bang Java Vector API va OpenBLAS qua JavaCPP/bytedeco.
 - GPU acceleration bang JCuda, cuBLAS, cuDNN, memory pool, CUDA streams, PTX kernels tuy bien, va theo doi VRAM voi `GpuMemoryMonitor`.
 - Thu vien predict voi `Predictor`, `ImagePredictor`, `TextPredictor`, `BatchPredictor` va `PredictionPipeline` cho inference.
+- **Dashboard realtime:** Tich hop san server Web tren cong 7070 phuc vu Theo doi bieu do huan luyen realtime qua Chart.js, giam sat VRAM va thu nghiem Inference playground (hinh anh & text).
 - Vi du end-to-end cho Iris, Fashion-MNIST, CIFAR-10, Sentiment Analysis, ViT, GAN, VAE — tat ca deu tich hop predict demo.
 - Bo test PowerShell hien dang ky 45 test class va dang pass toan bo.
 

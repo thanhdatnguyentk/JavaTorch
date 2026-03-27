@@ -1,5 +1,12 @@
 package com.user.nn.examples;
 
+import com.user.nn.utils.dashboard.DashboardServer;
+import com.user.nn.utils.dashboard.DashboardIntegrationHelper;
+import com.user.nn.utils.visualization.TrainingHistory;
+import java.util.HashMap;
+import java.util.Map;
+
+
 import com.user.nn.core.*;
 import com.user.nn.dataloaders.Data;
 import com.user.nn.models.cv.*;
@@ -219,7 +226,7 @@ public class TrainAllDetectorsCoco {
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), 1e-4f);
         Data.DataLoader loader = createLoader(parsed.samples, YOLO_IMAGE_SIZE, YOLO_IMAGE_SIZE, batchSize);
         TrainingHistory history = new TrainingHistory();
-
+        DashboardServer dashboard = new DashboardServer(7070, history).start();
         for (int epoch = 0; epoch < epochs; epoch++) {
             model.train();
             float epochLoss = 0f;
@@ -254,7 +261,14 @@ public class TrainAllDetectorsCoco {
             metrics.put("train_loss", avgLoss);
             history.record(epoch, metrics);
             log.printf("  Epoch %d/%d  loss=%.6f%n", epoch + 1, epochs, avgLoss);
-        }
+        
+            try {
+                Map<String, Float> dashMetrics = new HashMap<>();
+                dashMetrics.put("loss", avgLoss);
+                history.record(epoch + 1, dashMetrics);
+                dashboard.broadcastMetrics(epoch + 1, dashMetrics);
+            } catch (Exception dashEx) {}
+}
         loader.shutdown();
         saveResults(model, history, "yolo", "YOLO v1");
         cleanupGPU("YOLO");
@@ -279,7 +293,6 @@ public class TrainAllDetectorsCoco {
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), 1e-4f);
         Data.DataLoader loader = createLoader(parsed.samples, SSD_IMAGE_SIZE, SSD_IMAGE_SIZE, batchSize);
         TrainingHistory history = new TrainingHistory();
-
         for (int epoch = 0; epoch < epochs; epoch++) {
             model.train();
             float epochLoss = 0f;
@@ -364,7 +377,6 @@ public class TrainAllDetectorsCoco {
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), 1e-4f);
         Data.DataLoader loader = createLoader(parsed.samples, RETINA_IMAGE_W, RETINA_IMAGE_H, batchSize);
         TrainingHistory history = new TrainingHistory();
-
         // Access backbone layers directly for 4D feature extraction
         ResNet resnet = (ResNet) model.getModule("backbone");
 
@@ -433,7 +445,6 @@ public class TrainAllDetectorsCoco {
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), 1e-4f);
         Data.DataLoader loader = createLoader(parsed.samples, FRCNN_IMAGE_W, FRCNN_IMAGE_H, batchSize);
         TrainingHistory history = new TrainingHistory();
-
         // Access backbone layers for 4D feature extraction
         ResNet resnet = (ResNet) model.getModule("backbone");
 

@@ -57,3 +57,39 @@ tasks.register<JavaExec>("trainAllDetectors") {
     jvmArgs("--add-modules=jdk.incubator.vector")
     maxHeapSize = "8g"
 }
+
+tasks.register<JavaExec>("benchmarkResNet") {
+    group = "benchmark"
+    description = "Run benchmark for ResNet18 on CIFAR-10"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("com.user.nn.examples.BenchmarkResNetCifar10")
+    jvmArgs("--add-modules=jdk.incubator.vector")
+    maxHeapSize = "6g"
+}
+
+tasks.register<JavaExec>("benchmarkSentiment") {
+    group = "benchmark"
+    description = "Run benchmark for LSTM sentiment on RT-Polarity"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("com.user.nn.examples.BenchmarkSentiment")
+    jvmArgs("--add-modules=jdk.incubator.vector")
+    maxHeapSize = "6g"
+}
+
+tasks.register<JavaExec>("benchmarkDl4jResNet") {
+    group = "benchmark"
+    description = "Run DL4J benchmark for ResNet18 on CIFAR-10"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("com.user.nn.examples.BenchmarkDl4jResNetCifar10")
+    jvmArgs("--add-modules=jdk.incubator.vector")
+    maxHeapSize = "6g"
+}
+
+tasks.register<JavaExec>("benchmarkDl4jSentiment") {
+    group = "benchmark"
+    description = "Run DL4J benchmark for LSTM sentiment on RT-Polarity"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("com.user.nn.examples.BenchmarkDl4jSentiment")
+    jvmArgs("--add-modules=jdk.incubator.vector")
+    maxHeapSize = "6g"
+}

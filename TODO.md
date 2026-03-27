@@ -26,6 +26,7 @@ Last updated: 2026-03-10
   - YOLO example init can trigger JVM heap OOM in constrained workers; this case is tagged `gpu-manual` and excluded from `gpuNightly`.
 
 ## Current progress (completed)
+- **Real-time Vue 3 Dashboard**: Added DashboardServer for live VRAM / training metrics (WebSocket) and interactive inference playgrounds (images & text).
 - Core `nn` Module/Parameter system and containers (`Sequential`, `ModuleDict`, etc).
 - `Tensor` class with comprehensive API and native backpropagation support.
 - Mathematical operations, reductions, broadcasting, and matrix multiplication.

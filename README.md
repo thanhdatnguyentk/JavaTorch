@@ -54,6 +54,7 @@ flowchart LR
 - CPU acceleration through the Java Vector API and OpenBLAS via JavaCPP/bytedeco.
 - GPU acceleration through JCuda, cuBLAS, cuDNN, memory pools, CUDA streams, custom PTX kernels, and `GpuMemoryMonitor` for VRAM tracking.
 - Prediction library with `Predictor`, `ImagePredictor`, `TextPredictor`, `BatchPredictor`, and `PredictionPipeline` for model inference.
+- **Real-time Web Dashboard**: Local Javalin + Vue 3 UI for live Chart.js metrics, VRAM monitoring, and interactive inference playgrounds (Image & Text).
 - End-to-end examples for Iris, Fashion-MNIST, CIFAR-10, Sentiment Analysis, ViT, GAN, and VAE — all with integrated prediction demos.
 - 45 registered test classes currently passing in the PowerShell test runner.
 

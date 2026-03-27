@@ -21,6 +21,16 @@
      - **ML-specific helpers**: confusion matrix, training curves, gradient flow, embeddings
      - **TrainingHistory**: Auto-track metrics qua epochs, export CSV
 
+
+### 3. **Real-time Web Dashboard & Inference Playground**
+   - Package: com.user.nn.utils.dashboard
+   - Giao dien web hien thi huan luyen theo thoi gian thuc.
+   - Theo doi **VRAM process, VRAM pool, VRAM System**.
+   - **Vue 3 + Chart.js realtime (WebSocket)** cap nhat moi epoch.
+   - **Playground (Inference)**: Upload hinh anh hoac nhap text de test model prediction thong qua DashboardIntegrationHelper.
+   - Start 1 lan 
+ew DashboardServer(7070, history).start(), giao dien web nam tai http://localhost:7070.
+
 ## Quick Start
 
 ### Progress Bar

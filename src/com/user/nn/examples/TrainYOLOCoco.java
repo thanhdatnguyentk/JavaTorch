@@ -1,5 +1,12 @@
 package com.user.nn.examples;
 
+import com.user.nn.utils.dashboard.DashboardServer;
+import com.user.nn.utils.dashboard.DashboardIntegrationHelper;
+import com.user.nn.utils.visualization.TrainingHistory;
+import java.util.HashMap;
+import java.util.Map;
+
+
 import com.user.nn.core.Functional;
 import com.user.nn.core.CUDAOps;
 import com.user.nn.core.GpuMemoryPool;
@@ -240,7 +247,7 @@ public class TrainYOLOCoco {
         Data.DataLoader loader = new Data.DataLoader(dataset, batchSize, true, 2);
 
         TrainingHistory history = new TrainingHistory();
-
+        DashboardServer dashboard = new DashboardServer(7070, history).start();
         for (int epoch = 0; epoch < epochs; epoch++) {
             model.train();
             float epochLoss = 0f;
@@ -287,7 +294,14 @@ public class TrainYOLOCoco {
             history.record(epoch, metrics);
 
             System.out.printf("Epoch %d/%d: loss=%.6f objectness=%.4f%n", epoch + 1, epochs, avgLoss, avgObj);
-        }
+        
+            try {
+                Map<String, Float> dashMetrics = new HashMap<>();
+                dashMetrics.put("loss", avgLoss);
+                history.record(epoch + 1, dashMetrics);
+                dashboard.broadcastMetrics(epoch + 1, dashMetrics);
+            } catch (Exception dashEx) {}
+}
 
         loader.shutdown();
 

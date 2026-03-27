@@ -183,8 +183,7 @@ public class ProgressAndVisualizationDemo {
         
         try {
             TrainingHistory history = new TrainingHistory();
-            
-            // Simulate training
+        // Simulate training
             System.out.print("Simulating training");
             for (int epoch = 0; epoch < 50; epoch++) {
                 if (epoch % 10 == 0) System.out.print(".");

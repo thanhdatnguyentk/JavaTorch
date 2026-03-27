@@ -1,5 +1,12 @@
 package com.user.nn.examples;
 
+import com.user.nn.utils.dashboard.DashboardServer;
+import com.user.nn.utils.dashboard.DashboardIntegrationHelper;
+import com.user.nn.utils.visualization.TrainingHistory;
+import java.util.HashMap;
+import java.util.Map;
+
+
 import com.user.nn.core.*;
 import com.user.nn.containers.*;
 import com.user.nn.layers.*;
@@ -97,6 +104,13 @@ public class TrainCifar10 {
 
         Data.DataLoader loader = new Data.DataLoader(trainDataset, batchSize, true, 4);
         Accuracy accMetric = new Accuracy();
+        TrainingHistory history = new TrainingHistory();
+        DashboardServer dashboard = new DashboardServer(7070, history).start();
+        try {
+            com.user.nn.predict.ImagePredictor predictor = com.user.nn.predict.ImagePredictor.forCifar10(model);
+            DashboardIntegrationHelper.setupImagePredictorHandler(dashboard, "classify_image", predictor);
+        } catch(Exception e) {}
+
 
         for (int epoch = 0; epoch < epochs; epoch++) {
             float epochLoss = 0f;
@@ -154,7 +168,16 @@ public class TrainCifar10 {
                     epoch + 1, epochs, avgLoss, trainAcc, testAcc);
                     
             testLoader.shutdown();
-        }
+        
+            try {
+                Map<String, Float> metrics = new HashMap<>();
+                metrics.put("loss", avgLoss);
+                metrics.put("train_acc", trainAcc);
+                metrics.put("test_acc", testAcc);
+                history.record(epoch + 1, metrics);
+                dashboard.broadcastMetrics(epoch + 1, metrics);
+            } catch (Exception dashEx) {}
+}
         loader.shutdown();
 
         // ============================================================
@@ -195,6 +218,7 @@ public class TrainCifar10 {
         System.out.printf("  Batch accuracy: %d/%d%n", correct, 10);
 
         System.out.println("\nTraining Complete!");
+        try { dashboard.exportDashboardData("dashboard_final.json"); } catch(Exception e) {}
     }
 
 }

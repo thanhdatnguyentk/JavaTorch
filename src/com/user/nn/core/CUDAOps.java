@@ -130,6 +130,8 @@ public class CUDAOps {
                         System.err.println("Warning: kernels.ptx not found. Searched: " + java.util.Arrays.toString(candidates));
                     }
 
+                    System.out.println("[CUDAOps] Resolving PTX function symbols...");
+
                     // Safely try to get functions; some PTX builds may omit variants (eg. *_backward)
                     addFunction = safeGetFunction("add_tensors");
                     subFunction = safeGetFunction("sub_tensors");
@@ -152,12 +154,14 @@ public class CUDAOps {
                     addInplaceFunction = safeGetFunction("add_tensors_inplace");
                     subInplaceFunction = safeGetFunction("sub_tensors_inplace");
                     mulInplaceFunction = safeGetFunction("mul_tensors_inplace");
+                    System.out.println("[CUDAOps] PTX function resolution complete.");
                 } catch (Exception e) {
                     System.err.println("Warning: Could not load custom PTX kernels. GPU element-wise operations may fail.");
                     e.printStackTrace();
                 }
 
                 // Create CUDA Streams
+                System.out.println("[CUDAOps] Creating CUDA streams...");
                 computeStream = new cudaStream_t();
                 jcuda.runtime.JCuda.cudaStreamCreate(computeStream);
 
@@ -165,11 +169,13 @@ public class CUDAOps {
                 jcuda.runtime.JCuda.cudaStreamCreate(transferStream);
 
                 // Bind streams to cuBLAS and cuDNN handles
+                System.out.println("[CUDAOps] Binding streams to cuBLAS/cuDNN handles...");
                 jcuda.jcublas.JCublas2.cublasSetStream(cublasHandle, computeStream);
                 cudnnSetStream(cudnnHandle, computeStream);
 
                 // If we reached here without exception, mark CUDA available
                 cudaAvailable = true;
+                System.out.println("[CUDAOps] CUDA initialization complete.");
             } catch (Throwable t) {
                 System.err.println("Warning: CUDA initialization failed or not available on this system: " + t.getMessage());
                 t.printStackTrace();
