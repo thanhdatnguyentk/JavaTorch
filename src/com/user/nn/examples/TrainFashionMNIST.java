@@ -69,7 +69,7 @@ public class TrainFashionMNIST {
         }
 
         // --- Optimizer ---
-        float lr = 0.01f;
+        float lr = 0.001f;
         int epochs = 50;
         Optim.SGD optimizer = new Optim.SGD(model.parameters(), lr, 0.9f); // momentum 0.9
 
@@ -80,7 +80,7 @@ public class TrainFashionMNIST {
         model.toGPU();
 
         // --- DataLoader setup ---
-        int batchSize = 128;
+        int batchSize = 356;
         final int N = trainImages.length;
         final int inputDim = 784; 
 

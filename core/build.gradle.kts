@@ -98,7 +98,31 @@ tasks.register<Test>("gpuNightly") {
     jvmArgs("--add-modules=jdk.incubator.vector")
 }
 
+tasks.register("compileKernelsPtx") {
+    val srcCu = layout.projectDirectory.dir("../src/com/user/nn/core").file("kernels.cu").asFile
+    val destPtx = layout.projectDirectory.dir("../bin").file("kernels.ptx").asFile
+    val binDir = layout.projectDirectory.dir("../bin").asFile
+
+    inputs.file(srcCu)
+    outputs.file(destPtx)
+
+    doLast {
+        if (!binDir.exists()) {
+            binDir.mkdirs()
+        }
+        val nvccPath = if (org.gradle.internal.os.OperatingSystem.current().isWindows) "nvcc.exe" else "nvcc"
+        try {
+            exec {
+                commandLine(nvccPath, "-ptx", srcCu.absolutePath, "-o", destPtx.absolutePath)
+            }
+        } catch (e: Exception) {
+            println("Warning: nvcc not found or compilation failed. PTX kernels will not be built.")
+        }
+    }
+}
+
 tasks.register<Copy>("ensureKernelsPtx") {
+    dependsOn("compileKernelsPtx")
     val srcPtx = layout.projectDirectory.dir("../bin").file("kernels.ptx")
     val dest = layout.buildDirectory.dir("resources/main")
     doFirst {
@@ -110,6 +134,7 @@ tasks.register<Copy>("ensureKernelsPtx") {
 }
 
 tasks.register<Copy>("ensureTestKernelsPtx") {
+    dependsOn("compileKernelsPtx")
     val srcPtx = layout.projectDirectory.dir("../bin").file("kernels.ptx")
     val dest = layout.buildDirectory.dir("resources/test")
     doFirst {

@@ -22,6 +22,9 @@ public class Tensor implements AutoCloseable {
     public Pointer deviceData = null;
     boolean poolManaged = false; // true if allocated from GpuMemoryPool
     
+    // Counter for how many times we had to fallback to cudaMalloc
+    public static long fallbackAllocations = 0;
+    
     // Cleaner for GPU memory safety net (replaces deprecated finalize())
     private static final Cleaner CLEANER = Cleaner.create();
     private Cleaner.Cleanable cleanable;
@@ -467,6 +470,7 @@ public class Tensor implements AutoCloseable {
                     deviceData = poolSlice;
                     poolManaged = true;
                 } else {
+                    fallbackAllocations++;
                     deviceData = new Pointer();
                     cudaMalloc(deviceData, (long) numel() * Sizeof.FLOAT);
                     poolManaged = false;

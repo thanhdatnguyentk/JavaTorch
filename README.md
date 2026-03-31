@@ -52,7 +52,7 @@ flowchart LR
 - PyTorch-like module system with `Sequential`, `ModuleList`, `ModuleDict`, and `Parameter`.
 - Broad layer support: `Linear`, `Embedding`, `Conv1d`, `Conv2d`, `ConvTranspose2d`, pooling, normalization, attention, and transformer encoder blocks.
 - CPU acceleration through the Java Vector API and OpenBLAS via JavaCPP/bytedeco.
-- GPU acceleration through JCuda, cuBLAS, cuDNN, memory pools, CUDA streams, custom PTX kernels, and `GpuMemoryMonitor` for VRAM tracking.
+- GPU acceleration through JCuda, cuBLAS, cuDNN, **auto-expanding memory pools**, CUDA streams, custom PTX kernels, and `GpuMemoryMonitor` for VRAM tracking.
 - Prediction library with `Predictor`, `ImagePredictor`, `TextPredictor`, `BatchPredictor`, and `PredictionPipeline` for model inference.
 - **Real-time Web Dashboard**: Local Javalin + Vue 3 UI for live Chart.js metrics, VRAM monitoring, and interactive inference playgrounds (Image & Text).
 - End-to-end examples for Iris, Fashion-MNIST, CIFAR-10, Sentiment Analysis, ViT, GAN, and VAE — all with integrated prediction demos.
@@ -210,6 +210,33 @@ Artifacts per run are written to:
 - `benchmark/results/JavaTorch/uit_vsfc_multitask/<run_id>/dev_confusion_*.csv`
 - `benchmark/results/JavaTorch/uit_vsfc_multitask/<run_id>/test_confusion_*.csv`
 
+## GPU Memory Pool Auto-Expand
+
+The `GpuMemoryPool` now automatically expands when the actual VRAM demand during a training step exceeds the initially allocated pool size. This eliminates the performance bottleneck caused by frequent `cudaMalloc`/`cudaFree` fallback calls.
+
+**How it works:**
+
+1. On the first training step, if the pool is too small, tensors fall back to standard `cudaMalloc` (slow path).
+2. At the end of the step (`MemoryScope.close()` → `GpuMemoryPool.reset()`), the pool detects that demand exceeded capacity.
+3. The pool auto-expands to `requiredBytes * 1.1` (10% margin), capped at 90% of available VRAM.
+4. All subsequent steps run entirely from the pre-allocated pool (fast path).
+
+**Benchmark results (CNN, batch_size=64, imgSize=32):**
+
+| Step | Latency (ms) | Fallback Allocations | Pool Status |
+|------|-------------|---------------------|-------------|
+| 1 | 1,386 | 24 | Exhausted (512 MB) → Auto-expand to 923 MB |
+| 2 | 285 | 0 | Expanded, cache warming |
+| 3-6 | ~140-200 | 0 | Fully pooled, ~10x faster |
+
+No user configuration is needed. The pool adapts automatically to any model and batch size.
+
+Monitoring output example:
+
+```text
+[GpuMemoryPool] Auto-expanding pool from 512 MB to 923 MB due to high demand (Required: 838 MB)
+```
+
 ## GAN Anime Training Notes
 
 Recent fixes improved GAN Anime training stability on GPU and removed the common case where epoch loss prints `0.0000` due to skipped non-finite batches.
@@ -275,4 +302,4 @@ powershell -ExecutionPolicy Bypass -File scripts\ci-test.ps1 -Mode full -Example
 
 ---
 
-Documentation updated for the current codebase state on 2026-03-24.
+Documentation updated for the current codebase state on 2026-03-31.

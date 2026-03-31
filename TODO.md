@@ -1,6 +1,6 @@
 # ML_framework — TODO
 
-Last updated: 2026-03-10
+Last updated: 2026-03-31
 
 ## Release readiness (2026-03)
 - Gradle multi-module build is in place (`:core`, `:examples`, `:tests`).
@@ -46,9 +46,10 @@ Last updated: 2026-03-10
 - ✅ **Phase 14: GPU Zero-Overhead Pipeline (NEW ✅)**:
   - **Kernel Fusion**: `Conv2d + Bias + ReLU` single-call execution.
   - **CUDA Streams**: Asynchronous Compute/Transfer pipelining.
-  - **Arena Memory Pool**: `GpuMemoryPool` with auto-parameter detection.
+  - **Arena Memory Pool**: `GpuMemoryPool` with auto-parameter detection and **auto-expanding** when batch demand exceeds initial pool size.
   - **Custom PTX**: Native GPU kernels for Add/Sub/Mul (0 CPU Fallback).
   - **MemoryScope**: Automated ephemeral memory tracking and reset.
+  - **Fallback Tracking**: `Tensor.fallbackAllocations` counter for diagnosing VRAM exhaustion.
 - **Phase 16: Transformers & Vision Transformer (ViT) (NEW ✅)**:
   - **MultiheadAttention**: Full implementation with batched matrix multiplication (`bmm`).
   - **TransformerEncoderLayer**: Pre-norm architecture with LayerNorm and FeedForward.

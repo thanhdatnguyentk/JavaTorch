@@ -52,7 +52,7 @@ flowchart LR
 - He `Module` kieu PyTorch voi `Sequential`, `ModuleList`, `ModuleDict`, `Parameter`.
 - Layer cho nhieu bai toan pho bien: `Linear`, `Embedding`, `Conv1d`, `Conv2d`, `ConvTranspose2d`, pooling, norm, attention, transformer encoder.
 - CPU acceleration bang Java Vector API va OpenBLAS qua JavaCPP/bytedeco.
-- GPU acceleration bang JCuda, cuBLAS, cuDNN, memory pool, CUDA streams, PTX kernels tuy bien, va theo doi VRAM voi `GpuMemoryMonitor`.
+- GPU acceleration bang JCuda, cuBLAS, cuDNN, **memory pool tu dong mo rong**, CUDA streams, PTX kernels tuy bien, va theo doi VRAM voi `GpuMemoryMonitor`.
 - Thu vien predict voi `Predictor`, `ImagePredictor`, `TextPredictor`, `BatchPredictor` va `PredictionPipeline` cho inference.
 - **Dashboard realtime:** Tich hop san server Web tren cong 7070 phuc vu Theo doi bieu do huan luyen realtime qua Chart.js, giam sat VRAM va thu nghiem Inference playground (hinh anh & text).
 - Vi du end-to-end cho Iris, Fashion-MNIST, CIFAR-10, Sentiment Analysis, ViT, GAN, VAE — tat ca deu tich hop predict demo.
@@ -250,6 +250,7 @@ Repo hien co 3 tang quan ly bo nho quan trong:
 - `AutoCloseable` tren `Tensor`
 - `Cleaner` thay cho `finalize()` cho GPU memory safety net
 - `MemoryScope` + `GpuMemoryPool` de giam overhead VRAM trong training loop
+- `GpuMemoryPool` tu dong mo rong khi nhu cau VRAM thuc te vuot qua kich thuoc pool ban dau, loai bo hoan toan tat nghen do `cudaMalloc`/`cudaFree` fallback
 
 ## Tai lieu di kem
 
@@ -283,4 +284,4 @@ Repo hien co 3 tang quan ly bo nho quan trong:
 
 ---
 
-Tai lieu duoc cap nhat theo trang thai code hien tai vao 2026-03-18.
+Tai lieu duoc cap nhat theo trang thai code hien tai vao 2026-03-31.

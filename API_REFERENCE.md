@@ -10,8 +10,9 @@ This document is not a full JavaDoc replacement. Its purpose is to give you a pa
 - `Torch`: tensor ops, reductions, broadcasting, matmul, and initialization helpers.
 - `Functional`: functional-style losses and utility ops.
 - `CUDAOps`: JCuda, cuBLAS, cuDNN, and PTX kernel wrappers.
-- `GpuMemoryPool`: VRAM pool.
-- `MemoryScope`: scoped lifecycle management.
+- `GpuMemoryPool`: VRAM pool with auto-expanding when batch demand exceeds initial allocation.
+- `GpuMemoryMonitor`: live VRAM usage tracking and fallback allocation reporting.
+- `MemoryScope`: scoped lifecycle management (triggers pool auto-expand on `close()`).
 - `MixedPrecision`: mixed-precision support.
 - `Module`: base abstraction for layers and models.
 - `Parameter`: gradient-carrying parameter wrapper.

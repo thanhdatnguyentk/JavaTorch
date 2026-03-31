@@ -93,3 +93,12 @@ tasks.register<JavaExec>("benchmarkDl4jSentiment") {
     jvmArgs("--add-modules=jdk.incubator.vector")
     maxHeapSize = "6g"
 }
+
+tasks.register<JavaExec>("benchmarkMemoryPool") {
+    group = "benchmark"
+    description = "Run MemoryPool auto-expand benchmark"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("com.user.nn.examples.BenchmarkMemoryPool")
+    jvmArgs("--add-modules=jdk.incubator.vector")
+    maxHeapSize = "6g"
+}

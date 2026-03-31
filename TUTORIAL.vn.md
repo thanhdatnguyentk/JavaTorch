@@ -288,6 +288,16 @@ Mục tiêu của pattern này:
 - giảm chi phí cấp phát VRAM
 - giữ loop ổn định lâu dài
 
+### GPU Memory Pool tự động mở rộng
+
+Khi chạy GPU, framework dùng `GpuMemoryPool` để pre-allocate VRAM, tránh gọi `cudaMalloc` chậm cho từng tensor. Nếu model và batch size yêu cầu nhiều VRAM hơn pool ban đầu, pool sẽ **tự động mở rộng** ở cuối step đầu tiên:
+
+```text
+[GpuMemoryPool] Auto-expanding pool from 512 MB to 768 MB due to high demand (Required: 697 MB)
+```
+
+Bạn không cần cấu hình gì thêm — hệ thống tự đo peak demand và resize pool với biên an toàn 10% (giới hạn 90% tổng VRAM). Sau khi mở rộng, tất cả các step tiếp theo chạy tốc độ tối đa với 0 fallback allocation.
+
 ## 11. Weight initialization
 
 Repo hiện đã có API kiểu PyTorch trong `Torch.nn.init`.

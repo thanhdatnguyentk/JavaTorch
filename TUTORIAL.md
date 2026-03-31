@@ -197,3 +197,13 @@ The framework supports:
 - `mul_(Tensor)`
 
 Version tracking is used to detect invalid graph mutations caused by in-place updates.
+
+## 13. GPU Memory Pool Auto-Expand
+
+When running on GPU, the framework uses a `GpuMemoryPool` to pre-allocate VRAM and avoid slow per-tensor `cudaMalloc` calls. If your model and batch size require more VRAM than the initial pool size, the pool **automatically expands** at the end of the first training step:
+
+```text
+[GpuMemoryPool] Auto-expanding pool from 512 MB to 768 MB due to high demand (Required: 697 MB)
+```
+
+You do not need to configure pool sizes manually. The system tracks peak demand and resizes the pool with a 10% safety margin (capped at 90% of total VRAM). After expansion, all subsequent steps run at full speed with zero fallback allocations.

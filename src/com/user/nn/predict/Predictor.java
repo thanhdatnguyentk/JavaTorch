@@ -127,6 +127,7 @@ public class Predictor {
 
             // Chuyển về CPU để xử lý kết quả
             logits.toCPU();
+            System.out.println("DEBUG Predictor predict logits: " + java.util.Arrays.toString(logits.data));
 
             // Xử lý kết quả cho từng sample trong batch
             int batch = logits.shape[0];
@@ -204,6 +205,8 @@ public class Predictor {
 
             Tensor logits = model.forward(input);
             logits.toCPU();
+            
+            System.out.println("DEBUG logits: " + java.util.Arrays.toString(logits.data));
 
             int numClasses = logits.shape[1];
             return argmax(logits.data, 0, numClasses);

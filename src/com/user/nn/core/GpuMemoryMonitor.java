@@ -48,6 +48,10 @@ public class GpuMemoryMonitor {
                     formatMb(s.freeBytes),
                     formatMb(s.poolUsedBytes),
                     formatMb(s.poolPeakBytes));
+                    
+            if (Tensor.fallbackAllocations > 0) {
+                System.out.printf("[%s][VRAM][WARN] Fallback fallbackAllocations: %d%n", tag, Tensor.fallbackAllocations);
+            }
         }
 
         double util = s.totalBytes > 0 ? (double) s.processUsedBytes / s.totalBytes : 0.0;
@@ -80,6 +84,10 @@ public class GpuMemoryMonitor {
                 formatMb(peakProcessUsedBytes),
                 formatMb(minFreeBytes),
                 formatMb(peakPoolUsedBytes));
+                
+        if (Tensor.fallbackAllocations > 0) {
+            System.out.printf("[%s][VRAM][WARN] Total fallback allocations: %d%n", tag, Tensor.fallbackAllocations);
+        }
     }
 
     public void printSummary() {

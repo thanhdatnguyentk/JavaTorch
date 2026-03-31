@@ -140,16 +140,20 @@ public class GpuMemoryPool {
         // Align to 256 bytes for optimal GPU memory access
         bytesNeeded = ((bytesNeeded + 255) / 256) * 256;
 
-        if (currentOffset + bytesNeeded > poolSizeBytes) {
+        long newOffset = currentOffset + bytesNeeded;
+        if (newOffset > peakOffset) {
+            peakOffset = newOffset;
+        }
+
+        if (newOffset > poolSizeBytes) {
             // Pool exhausted, caller should fall back to standard cudaMalloc
+            // We update currentOffset anyway so we know total memory required for auto-expand
+            currentOffset = newOffset;
             return null;
         }
 
         Pointer slice = poolBase.withByteOffset(currentOffset);
-        currentOffset += bytesNeeded;
-        if (currentOffset > peakOffset) {
-            peakOffset = currentOffset;
-        }
+        currentOffset = newOffset;
         return slice;
     }
 
@@ -159,6 +163,37 @@ public class GpuMemoryPool {
      * Should be called at the end of each training step (inside MemoryScope.close()).
      */
     public static synchronized void reset() {
+        if (currentOffset > poolSizeBytes && poolBase != null) {
+            // Pool was exhausted during this step. We need to auto-expand it.
+            // Calculate new size: required + 10% margin, aligned to 1MB
+            long newSizeBytes = (long) (currentOffset * 1.1);
+            newSizeBytes = ((newSizeBytes + 1024 * 1024 - 1) / (1024 * 1024)) * (1024 * 1024);
+            
+            // Cap at 90% of available VRAM
+            long[] free = new long[1];
+            long[] total = new long[1];
+            cudaMemGetInfo(free, total);
+            // We're freeing the old pool, so the new available memory will be free + poolSizeBytes
+            long maxSafeBytes = (long) ((free[0] + poolSizeBytes) * 0.9);
+            newSizeBytes = Math.min(newSizeBytes, maxSafeBytes);
+            
+            if (newSizeBytes > poolSizeBytes) {
+                System.out.printf("[GpuMemoryPool] Auto-expanding pool from %d MB to %d MB due to high demand (Required: %d MB)%n",
+                    poolSizeBytes / (1024 * 1024), newSizeBytes / (1024 * 1024), currentOffset / (1024 * 1024));
+                    
+                cudaFree(poolBase);
+                poolBase = new Pointer();
+                try {
+                    cudaMalloc(poolBase, newSizeBytes);
+                    poolSizeBytes = newSizeBytes;
+                } catch (Exception e) {
+                    System.err.println("[GpuMemoryPool] Auto-expand cudaMalloc failed for " + (newSizeBytes / (1024 * 1024)) + " MB: " + e.getMessage());
+                    poolSizeBytes = 0;
+                    poolBase = null;
+                    initialized = false;
+                }
+            }
+        }
         currentOffset = 0;
     }
 

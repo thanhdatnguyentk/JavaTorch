@@ -100,7 +100,7 @@ public class TrainLeNet {
         System.out.println("Starting training for " + epochs + " epochs...");
         int totalBatches = N / batchSize;
         TrainingHistory history = new TrainingHistory();
-        DashboardServer dashboard = new DashboardServer(7070, history).start();
+        DashboardServer dashboard = new DashboardServer(7075, history).start();
         try {
             com.user.nn.predict.ImagePredictor predictor = com.user.nn.predict.ImagePredictor.forMnist(model);
             DashboardIntegrationHelper.setupImagePredictorHandler(dashboard, "classify_image", predictor);
@@ -194,7 +194,8 @@ public class TrainLeNet {
         predictor.topK(5).verbose(true);
 
         // Predict 10 test digits
-        System.out.println(">>> Predicting 10 test digits...");
+        predictor.device(Tensor.Device.GPU);
+        System.out.println(">>> Predicting 10 test digits with GPU...");
         int correct = 0;
         for (int i = 0; i < 10; i++) {
             com.user.nn.predict.PredictionResult result = predictor.predictFromPixels(testImages[i]);
