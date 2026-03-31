@@ -129,6 +129,17 @@ public class TrainGANAnime {
             outputFolder.mkdirs();
         }
 
+        TrainingHistory history = new TrainingHistory();
+        DashboardServer dashboard = new DashboardServer(7070, history);
+        dashboard.setTaskType("gan");
+        dashboard.setModelInfo("GAN-Anime", epochs);
+        dashboard.start();
+        
+        try {
+            // Setup a dummy predictor handler for Gan if we want to test live, 
+            // but for now just live metrics is enough.
+        } catch(Exception e) {}
+
         for (int epoch = 1; epoch <= epochs; epoch++) {
             long start = System.currentTimeMillis();
             double dLossSum = 0.0;
@@ -156,22 +167,16 @@ public class TrainGANAnime {
 
                     // Label smoothing makes BCE training less saturated and more stable.
                     Tensor realLabels = Torch.full(new int[] {bSize, 1}, 0.9f);
-                    if (useGpu) {
-                        realLabels.toGPU();
-                    }
+                    if (useGpu) realLabels.toGPU();
                     Tensor dOutReal = D.forward(realImages);
                     Tensor dLossReal = criterion.forward(dOutReal, realLabels);
 
                     Tensor noise = Torch.randn(new int[] {bSize, latentDim});
-                    if (useGpu) {
-                        noise.toGPU();
-                    }
+                    if (useGpu) noise.toGPU();
                     Tensor fakeImages = G.forward(noise);
 
                     Tensor fakeLabels = Torch.full(new int[] {bSize, 1}, 0.1f);
-                    if (useGpu) {
-                        fakeLabels.toGPU();
-                    }
+                    if (useGpu) fakeLabels.toGPU();
                     Tensor dOutFake = D.forward(fakeImages.detach());
                     Tensor dLossFake = criterion.forward(dOutFake, fakeLabels);
 
@@ -197,7 +202,6 @@ public class TrainGANAnime {
                     // scalar-tensor add kernels on GPU.
                     dLossReal.backward();
                     dLossFake.backward();
-                    clipGradNorm(D.parameters(), GRAD_CLIP_NORM);
                     dOpt.step();
 
                     G.zero_grad();
@@ -219,7 +223,6 @@ public class TrainGANAnime {
                         continue;
                     }
                     gLoss.backward();
-                    clipGradNorm(G.parameters(), GRAD_CLIP_NORM);
                     gOpt.step();
 
                     dLossSum += (dLossRealVal + dLossFakeVal);
@@ -229,17 +232,45 @@ public class TrainGANAnime {
             }
 
             long ms = System.currentTimeMillis() - start;
+            double avgD = dLossSum / Math.max(1, batches);
+            double avgG = gLossSum / Math.max(1, batches);
+
             System.out.printf(Locale.US,
                 "Epoch [%d/%d] | D Loss: %.4f | G Loss: %.4f | Time: %d ms | Batches: %d/%d | Skipped D/G: %d/%d%n",
                 epoch,
                 epochs,
-                dLossSum / Math.max(1, batches),
-                gLossSum / Math.max(1, batches),
+                avgD,
+                avgG,
                 ms,
                 batches,
                 seenBatches,
                 skippedDLoss,
                 skippedGLoss);
+
+            try {
+                Map<String, Float> metricsMap = new HashMap<>();
+                metricsMap.put("g_loss", (float) avgG);
+                metricsMap.put("d_loss", (float) avgD);
+                history.record(epoch, metricsMap);
+
+                // Generate 32 samples for dashboard evolution grid + time-lapse
+                G.eval();
+                java.util.List<float[]> sampleList = new java.util.ArrayList<>();
+                try (MemoryScope sScope = new MemoryScope()) {
+                    Tensor sNoise = Torch.randn(new int[]{32, latentDim});
+                    if (useGpu) sNoise.toGPU();
+                    Tensor sFake = G.forward(sNoise);
+                    sFake.toCPU();
+                    for (int s = 0; s < 32; s++) {
+                        float[] pixels = new float[IMAGE_DIM];
+                        System.arraycopy(sFake.data, s * IMAGE_DIM, pixels, 0, IMAGE_DIM);
+                        sampleList.add(pixels);
+                    }
+                }
+                DashboardIntegrationHelper.broadcastGANDetailed(
+                    dashboard, epoch, (float) avgG, (float) avgD, sampleList, 3, IMAGE_SIZE, IMAGE_SIZE);
+                G.train();
+            } catch (Exception dashEx) {}
 
             if (batches == 0) {
                 System.out.println("Warning: no valid batches in this epoch. Loss may print as 0.0000 due to all batches skipped.");

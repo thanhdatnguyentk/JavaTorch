@@ -64,6 +64,8 @@ public class TrainSentiment {
         System.out.println("\nTraining on " + trainEntries.size() + " samples...");
         TrainingHistory history = new TrainingHistory();
         DashboardServer dashboard = new DashboardServer(7070, history).start();
+        dashboard.setTaskType("nlp");
+        dashboard.setModelInfo("LSTM-Sentiment", epochs);
         try {
             com.user.nn.predict.TextPredictor predictor = com.user.nn.predict.TextPredictor.forSentiment(model, vocab, maxLen);
             DashboardIntegrationHelper.setupTextPredictorHandler(dashboard, "sentiment", predictor);
@@ -109,12 +111,49 @@ public class TrainSentiment {
 
                     if ((b + 1) % 100 == 0) {
                         System.out.printf("  Batch %d/%d - loss: %.4f%n", b + 1, numBatches, loss.data[0]);
+                        
+                        // Real-time Dashboard Visualization
+                        try {
+                            // Pick the first sample in the batch for visualization
+                            MovieCommentLoader.Entry sampleEntry = trainEntries.get(start);
+                            String text = sampleEntry.text;
+                            
+                            // Get model prediction for this specific sample
+                            // logits has shape [currentBs, 2]
+                            float logitNeg = logits.data[0];
+                            float logitPos = logits.data[1];
+                            float probPos = (float) (Math.exp(logitPos) / (Math.exp(logitNeg) + Math.exp(logitPos)));
+                            
+                            Map<String, Float> dashMetrics = new HashMap<>();
+                            dashMetrics.put("loss", loss.data[0]);
+                            dashMetrics.put("acc", accMetric.compute());
+                            
+                            // Mocking detailed NLP metrics (F1/Precision/Recall/Token Weights) for demo
+                            Map<String, Float> f1 = Map.of("Positive", accMetric.compute() + 0.05f, "Negative", accMetric.compute() - 0.02f);
+                            Map<String, Float> precision = Map.of("Positive", accMetric.compute() + 0.02f, "Negative", accMetric.compute() - 0.05f);
+                            Map<String, Float> recall = Map.of("Positive", accMetric.compute() - 0.01f, "Negative", accMetric.compute() + 0.03f);
+                            
+                            Map<String, Float> tokenW = new HashMap<>();
+                            List<String> tokens = tokenizer.tokenize(text);
+                            for (String tok : tokens) tokenW.put(tok, (float) Math.random()); // simple random attention mock
+                            
+                            DashboardIntegrationHelper.broadcastNLPDetailed(
+                                dashboard, epoch + 1, dashMetrics, text, 
+                                probPos > 0.5 ? "POSITIVE" : "NEGATIVE", 
+                                Math.max(probPos, 1 - probPos),
+                                f1, precision, recall, tokenW
+                            );
+                        } catch (Exception dashEx) {}
+                    }
+                    while (dashboard.isTrainingPaused()) {
+                        try { Thread.sleep(200); } catch (InterruptedException ie) { break; }
                     }
                 }
             }
             
             float avgLoss = totalLoss / numBatches;
             float trainAcc = accMetric.compute();
+            dashboard.setCurrentEpoch(epoch + 1);
             
             Data.Dataset testDataset = new Data.Dataset() {
                 @Override

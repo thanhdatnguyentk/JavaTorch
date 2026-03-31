@@ -1,0 +1,365 @@
+﻿To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.10.2/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+
+> Task :core:compileJava
+.\gradlew.bat : warning: using incubating module(s): jdk.incubator.vector
+At line:1 char:1
++ .\gradlew.bat :core:compileJava --no-daemon --console=plain > compile ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (warning: using ...ncubator.vector:String) [], Rem 
+   oteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\optim\Op
+tim.java:155: error: variable m is already defined in class Adam
+        private Tensor[] m; // first moment
+                         ^
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\optim\Op
+tim.java:156: error: variable v is already defined in class Adam
+        private Tensor[] v; // second moment
+                         ^
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\core\NN.
+java:66: error: cannot find symbol
+        Tensor t = Torch.rand(new int[] { m.rows, m.cols });
+                        ^
+  symbol:   method rand(int[])
+  location: class Torch
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\core\NN.
+java:75: error: method full in class Torch cannot be applied to given types;
+        Tensor t = Torch.full(new int[] { m.rows, m.cols }, value);
+                        ^
+  required: int[],float,String
+  found:    int[],float
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\core\NN.
+java:96: error: cannot find symbol
+        Tensor t = Torch.rand(new int[] { m.rows, m.cols });
+                        ^
+  symbol:   method rand(int[])
+  location: class Torch
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\core\CUD
+AOps.java:156: error: cannot find symbol
+                    addInplaceFunction = safeGetFunction("add_tensors_inplace");
+                    ^
+  symbol:   variable addInplaceFunction
+  location: class CUDAOps
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\core\CUD
+AOps.java:157: error: cannot find symbol
+                    subInplaceFunction = safeGetFunction("sub_tensors_inplace");
+                    ^
+  symbol:   variable subInplaceFunction
+  location: class CUDAOps
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\core\CUD
+AOps.java:1467: error: cannot find symbol
+        if (!cudaAvailable || addInplaceFunction == null) {
+                              ^
+  symbol:   variable addInplaceFunction
+  location: class CUDAOps
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\core\CUD
+AOps.java:1473: error: cannot find symbol
+        launchInplaceKernel(addInplaceFunction, a, b);
+                            ^
+  symbol:   variable addInplaceFunction
+  location: class CUDAOps
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\core\CUD
+AOps.java:1478: error: cannot find symbol
+        if (!cudaAvailable || subInplaceFunction == null) {
+                              ^
+  symbol:   variable subInplaceFunction
+  location: class CUDAOps
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\core\CUD
+AOps.java:1484: error: cannot find symbol
+        launchInplaceKernel(subInplaceFunction, a, b);
+                            ^
+  symbol:   variable subInplaceFunction
+  location: class CUDAOps
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\core\Tor
+ch.java:107: error: method full in class Torch cannot be applied to given types;
+        Tensor p = full(shape, prob);
+                   ^
+  required: int[],float,String
+  found:    int[],float
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\core\Tor
+ch.java:207: error: method full in class Torch cannot be applied to given types;
+                        Tensor gb = binaryOp(outGrad, full(outGrad.shape, -1.0f), (x, y) -> x *
+ y);
+                                                      ^
+  required: int[],float,String
+  found:    int[],float
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\core\Tor
+ch.java:555: error: method ones in class Torch cannot be applied to given types;
+                    Tensor ga = ones(a.shape);
+                                ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\core\Tor
+ch.java:867: error: method zeros in class Torch cannot be applied to given types;
+        return zeros(a.shape);
+               ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\core\Tor
+ch.java:871: error: method ones in class Torch cannot be applied to given types;
+        return ones(a.shape);
+               ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\core\Tor
+ch.java:1231: error: method zeros in class Torch cannot be applied to given types;
+        Tensor z = zeros(newShape).to(a.device);
+                   ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\AnimeGenerator.java:35: error: method randn in class Torch cannot be applied to given types;
+        Tensor z = Torch.randn(new int[]{1, latentDim});
+                        ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\TrainGANAnime.java:305: error: method randn in class Torch cannot be applied to given types;
+            Tensor z = Torch.randn(new int[] {sampleCount, latentDim});
+                            ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\BenchmarkMemoryPool.java:52: error: method randn in class Torch cannot be applied to given typ
+es;
+                Tensor x = Torch.randn(new int[]{batchSize, channels, imgSize, imgSize}).toGPU(
+);
+                                ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\rnn\LSTM
+.java:23: error: incompatible types: int cannot be converted to int[]
+        Tensor h = Torch.zeros(batch, hiddenSize).to(x.device);
+                               ^
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\rnn\LSTM
+.java:24: error: incompatible types: int cannot be converted to int[]
+        Tensor c = Torch.zeros(batch, hiddenSize).to(x.device);
+                               ^
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\ObjectDetectionDemo.java:92: error: method randn in class Torch cannot be applied to given typ
+es;
+            Tensor images = Torch.randn(new int[]{1, 3, imageH, imageW});
+                                 ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\ObjectDetectionDemo.java:152: error: method randn in class Torch cannot be applied to given ty
+pes;
+            Tensor frame = Torch.randn(new int[]{1, 3, imageSize, imageSize});
+                                ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\ObjectDetectionDemo.java:202: error: method randn in class Torch cannot be applied to given ty
+pes;
+        Tensor image = Torch.randn(new int[]{1, 3, 300, 300});
+                            ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\PredictDemo.java:46: error: cannot find symbol
+        Tensor fakeImage = Torch.rand(new int[]{1, 3, 32, 32});
+                                ^
+  symbol:   method rand(int[])
+  location: class Torch
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\TrainAllDetectorsCoco.java:509: error: method zeros in class Torch cannot be applied to given 
+types;
+        Tensor target = Torch.zeros(pred.shape);
+                             ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\TrainAllDetectorsCoco.java:555: error: method zeros in class Torch cannot be applied to given 
+types;
+        Tensor target = Torch.zeros(shape);
+                             ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\TrainAllDetectorsCoco.java:589: error: method zeros in class Torch cannot be applied to given 
+types;
+        Tensor target = Torch.zeros(shape);
+                             ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\TrainAllDetectorsCoco.java:628: error: method zeros in class Torch cannot be applied to given 
+types;
+        Tensor target = Torch.zeros(shape);
+                             ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\TrainAllDetectorsCoco.java:667: error: method zeros in class Torch cannot be applied to given 
+types;
+        Tensor target = Torch.zeros(shape);
+                             ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\TrainAllDetectorsCoco.java:901: error: method zeros in class Torch cannot be applied to given 
+types;
+            if (src == null) return Torch.zeros(3, dstH, dstW);
+                                         ^
+  required: int[],String
+  found:    int,int,int
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\TrainAllDetectorsCoco.java:918: error: method zeros in class Torch cannot be applied to given 
+types;
+            return Torch.zeros(3, dstH, dstW);
+                        ^
+  required: int[],String
+  found:    int,int,int
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\TrainGANMnist.java:137: error: method full in class Torch cannot be applied to given types;
+                    Tensor realLabels = Torch.full(new int[]{bSize, 1}, 1.0f).toGPU();
+                                             ^
+  required: int[],float,String
+  found:    int[],float
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\TrainGANMnist.java:142: error: method randn in class Torch cannot be applied to given types;
+                    Tensor noise = Torch.randn(new int[]{bSize, latentDim}).toGPU();
+                                        ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\TrainGANMnist.java:144: error: method full in class Torch cannot be applied to given types;
+                    Tensor fakeLabels = Torch.full(new int[]{bSize, 1}, 0.0f).toGPU();
+                                             ^
+  required: int[],float,String
+  found:    int[],float
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\TrainGANMnist.java:194: error: method randn in class Torch cannot be applied to given types;
+            Tensor noise = Torch.randn(new int[]{16, latentDim}).toGPU();
+                                ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\TrainVAEMnist.java:63: error: method randn in class Torch cannot be applied to given types;
+            Tensor eps = Torch.randn(mu.shape).toGPU();
+                              ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\TrainVAEMnist.java:135: error: method ones in class Torch cannot be applied to given types;
+                                                           Torch.add(Torch.add(Torch.ones(logva
+r.shape).toGPU(), logvar), 
+                                                                                    ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\TrainYOLOCoco.java:316: error: method zeros in class Torch cannot be applied to given types;
+        Tensor target = Torch.zeros(pred.shape);
+                             ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\TrainYOLOCoco.java:578: error: method zeros in class Torch cannot be applied to given types;
+                return Torch.zeros(3, dstH, dstW);
+                            ^
+  required: int[],String
+  found:    int,int,int
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples
+\TrainYOLOCoco.java:602: error: method zeros in class Torch cannot be applied to given types;
+            return Torch.zeros(3, dstH, dstW);
+                        ^
+  required: int[],String
+  found:    int,int,int
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\models\c
+v\ViT.java:39: error: method randn in class Torch cannot be applied to given types;
+        this.clsToken = new Parameter(Torch.randn(new int[]{1, 1, embedDim}).mul(0.02f));
+                                           ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\models\c
+v\ViT.java:40: error: method randn in class Torch cannot be applied to given types;
+        this.posEmbed = new Parameter(Torch.randn(new int[]{1, numPatches + 1, embedDim}).mul(0
+.02f));
+                                           ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\models\g
+enerative\VAE.java:43: error: method randn in class Torch cannot be applied to given types;
+        Tensor eps = Torch.randn(mu.shape).to(mu.device);
+                          ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\models\M
+ultiTaskTransformerModel.java:35: error: method randn in class Torch cannot be applied to given
+ types;
+        this.posEmbed = new Parameter(Torch.randn(new int[]{1, maxSeqLen, embedDim}).mul(0.02f)
+);
+                                           ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\optim\Op
+tim.java:58: error: method zeros in class Torch cannot be applied to given types;
+                    this.v.put(p, Torch.zeros(p.getTensor().shape));
+                                       ^
+  required: int[],String
+  found:    int[]
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\rnn\GRU.
+java:21: error: incompatible types: int cannot be converted to int[]
+        Tensor h = Torch.zeros(batch, cell.hiddenSize).to(x.device);
+                               ^
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\rnn\RNN.
+java:23: error: incompatible types: int cannot be converted to int[]
+        Tensor h = Torch.zeros(batch, hiddenSize).to(x.device);
+                               ^
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+Note: Some messages have been simplified; recompile with -Xdiags:verbose to get full output
+49 errors
+1 warning
+
+> Task :core:compileJava FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':core:compileJava'.
+> Compilation failed; see the compiler error output for details.
+
+* Try:
+> Run with --info option to get more log output.
+> Run with --scan to get full insights.
+
+BUILD FAILED in 11s
+1 actionable task: 1 executed

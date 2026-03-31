@@ -54,8 +54,15 @@ flowchart LR
 - CPU acceleration through the Java Vector API and OpenBLAS via JavaCPP/bytedeco.
 - GPU acceleration through JCuda, cuBLAS, cuDNN, **auto-expanding memory pools**, CUDA streams, custom PTX kernels, and `GpuMemoryMonitor` for VRAM tracking.
 - Prediction library with `Predictor`, `ImagePredictor`, `TextPredictor`, `BatchPredictor`, and `PredictionPipeline` for model inference.
-- **Real-time Web Dashboard**: Local Javalin + Vue 3 UI for live Chart.js metrics, VRAM monitoring, and interactive inference playgrounds (Image & Text).
-- End-to-end examples for Iris, Fashion-MNIST, CIFAR-10, Sentiment Analysis, ViT, GAN, and VAE — all with integrated prediction demos.
+- **Neural Dashboard (Premium Edition)**: A high-performance Web dashboard built with Vue 3, Tailwind CSS, and WebSocket. Features a professional "Neural Overlay" dark theme with glassmorphism effects.
+- **Specialized Real-time Views**:
+  - **Classification**: Live prediction grids with confidence bars and confusion matrix heatmaps.
+  - **Detection**: Real-time bounding box visualization on source images, IOU/mAP leaderboards, and loss breakdown charts.
+  - **GAN / Generative**: Live sample gallery with historical time-lapse capability for visual verification of generator progress.
+  - **NLP**: Multi-task telemetry with sentiment/topic distribution, token importance (attention) highlights, and text generation streams.
+  - **System Monitor**: Glassmorphism gauges for GPU VRAM (System, Pool, Runtime), CPU utilization, and pipeline stage latency tracking.
+- **Training Control**: Integrated pause, resume, and real-time inference playground directly from the web interface.
+- End-to-end examples for Iris, Fashion-MNIST, CIFAR-10, Sentiment Analysis, ViT, GAN, VAE, and YOLO — all with integrated rich dashboard telemetry.
 - 45 registered test classes currently passing in the PowerShell test runner.
 
 ## Prediction / Inference

@@ -106,6 +106,9 @@ public class TrainCifar10 {
         Accuracy accMetric = new Accuracy();
         TrainingHistory history = new TrainingHistory();
         DashboardServer dashboard = new DashboardServer(7070, history).start();
+        dashboard.setTaskType("classification");
+        dashboard.setModelInfo("CNN-CIFAR10", epochs);
+        String[] classLabels = com.user.nn.predict.ImagePredictor.CIFAR10_LABELS;
         try {
             com.user.nn.predict.ImagePredictor predictor = com.user.nn.predict.ImagePredictor.forCifar10(model);
             DashboardIntegrationHelper.setupImagePredictorHandler(dashboard, "classify_image", predictor);
@@ -140,20 +143,34 @@ public class TrainCifar10 {
                     numBatches++;
                     accMetric.update(logits, batchLabels);
 
-                    if (numBatches % 20 == 0) {
+                    // Batch-level broadcast for real-time dashboard
+                    if (numBatches % 10 == 0) {
+                        try {
+                            Map<String, Object> batchMetrics = new HashMap<>();
+                            batchMetrics.put("loss", loss.data[0]);
+                            batchMetrics.put("batch", numBatches);
+                            batchMetrics.put("train_acc", accMetric.compute());
+                            dashboard.broadcastTaskMetrics(epoch + 1, batchMetrics);
+                        } catch (Exception e) {}
                         System.out.printf("  Epoch %d batch %d/%d  loss=%.4f%n",
                                 epoch + 1, numBatches, N / batchSize, loss.data[0]);
+                    }
+
+                    // Pause support
+                    while (dashboard.isTrainingPaused()) {
+                        try { Thread.sleep(200); } catch (InterruptedException ie) { break; }
                     }
                 }
             }
 
             float trainAcc = accMetric.compute();
             float avgLoss = epochLoss / numBatches;
-            
+            dashboard.setCurrentEpoch(epoch + 1);
+
+            // Evaluation
             Data.Dataset testDataset = new Data.Dataset() {
                 @Override
                 public int len() { return testImages.length; }
-
                 @Override
                 public Tensor[] get(int index) {
                     Tensor x = Torch.tensor(testImages[index], 3, 32, 32);
@@ -162,22 +179,62 @@ public class TrainCifar10 {
                 }
             };
             Data.DataLoader testLoader = new Data.DataLoader(testDataset, 256, false, 2);
-            
             float testAcc = Evaluator.evaluate(model, testLoader, accMetric);
+
+            // --- Confusion Matrix ---
+            int numClasses = 10;
+            int[][] cm = new int[numClasses][numClasses];
+            List<Map<String, Object>> livePreds = new ArrayList<>();
+            model.eval();
+            int sampleCount = 0;
+            for (int ti = 0; ti < Math.min(200, testImages.length); ti++) {
+                try (MemoryScope evalScope = new MemoryScope()) {
+                    Tensor tx = Torch.tensor(testImages[ti], 3, 32, 32);
+                    tx.toGPU();
+                    Tensor out = model.forward(Torch.reshape(tx, 1, 3, 32, 32));
+                    int pred = 0; float maxVal = out.data[0];
+                    for (int c = 1; c < numClasses; c++) {
+                        if (out.data[c] > maxVal) { maxVal = out.data[c]; pred = c; }
+                    }
+                    cm[testLabels[ti]][pred]++;
+
+                    // Build live prediction grid (up to 9 samples)
+                    if (sampleCount < 9) {
+                        List<Map<String, Object>> topK = new ArrayList<>();
+                        float[] scores = new float[numClasses];
+                        float sum = 0;
+                        for (int c = 0; c < numClasses; c++) { scores[c] = (float) Math.exp(out.data[c]); sum += scores[c]; }
+                        for (int c = 0; c < numClasses; c++) scores[c] /= sum;
+                        Integer[] indices = new Integer[numClasses];
+                        for (int c = 0; c < numClasses; c++) indices[c] = c;
+                        Arrays.sort(indices, (a, b) -> Float.compare(scores[b], scores[a]));
+                        for (int k = 0; k < Math.min(3, numClasses); k++) {
+                            topK.add(DashboardIntegrationHelper.buildTopKEntry(classLabels[indices[k]], scores[indices[k]]));
+                        }
+                        String imgB64 = DashboardIntegrationHelper.encodePixelsToBase64(testImages[ti], 3, 32, 32);
+                        livePreds.add(DashboardIntegrationHelper.buildLivePrediction(
+                            imgB64, classLabels[pred], classLabels[testLabels[ti]],
+                            pred == testLabels[ti], topK));
+                        sampleCount++;
+                    }
+                }
+            }
+
             System.out.printf("Epoch %d/%d  avg_loss=%.4f  train_acc=%.4f  test_acc=%.4f%n",
                     epoch + 1, epochs, avgLoss, trainAcc, testAcc);
-                    
             testLoader.shutdown();
-        
+
+            // Rich dashboard broadcast
             try {
                 Map<String, Float> metrics = new HashMap<>();
                 metrics.put("loss", avgLoss);
                 metrics.put("train_acc", trainAcc);
                 metrics.put("test_acc", testAcc);
                 history.record(epoch + 1, metrics);
-                dashboard.broadcastMetrics(epoch + 1, metrics);
+                DashboardIntegrationHelper.broadcastClassificationDetailed(
+                    dashboard, epoch + 1, metrics, cm, classLabels, livePreds);
             } catch (Exception dashEx) {}
-}
+        }
         loader.shutdown();
 
         // ============================================================

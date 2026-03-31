@@ -116,6 +116,11 @@ public class TrainGANMnist {
         
         Random rand = new Random();
         
+        TrainingHistory history = new TrainingHistory();
+        DashboardServer dashboard = new DashboardServer(7070, history).start();
+        dashboard.setTaskType("gan");
+        dashboard.setModelInfo("GAN-MNIST", epochs);
+
         System.out.println("Starting Training Loop...");
         for (int epoch = 1; epoch <= epochs; epoch++) {
             long startTime = System.currentTimeMillis();
@@ -166,12 +171,40 @@ public class TrainGANMnist {
             }
             
             long endTime = System.currentTimeMillis();
+            double avgDLoss = epochDLoss / batches;
+            double avgGLoss = epochGLoss / batches;
             System.out.printf("Epoch [%d/%d] | D Loss: %.4f | G Loss: %.4f | LR: %.6f | Time: %d ms%n",
-                epoch, epochs, epochDLoss / batches, epochGLoss / batches, gOpt.getLearningRate(), (endTime - startTime));
+                epoch, epochs, avgDLoss, avgGLoss, gOpt.getLearningRate(), (endTime - startTime));
             
             // Step Schedulers
             gSched.step();
             dSched.step();
+            dashboard.setCurrentEpoch(epoch);
+
+            // Broadcast GAN metrics + samples to dashboard
+            try {
+                Map<String, Float> metrics = new HashMap<>();
+                metrics.put("g_loss", (float) avgGLoss);
+                metrics.put("d_loss", (float) avgDLoss);
+                history.record(epoch, metrics);
+
+                // Generate 16 samples for dashboard
+                G.eval();
+                java.util.List<float[]> sampleList = new java.util.ArrayList<>();
+                try (MemoryScope sScope = new MemoryScope()) {
+                    Tensor sNoise = Torch.randn(new int[]{16, latentDim}).toGPU();
+                    Tensor sFake = G.forward(sNoise);
+                    sFake.toCPU();
+                    for (int s = 0; s < 16; s++) {
+                        float[] pixels = new float[784];
+                        System.arraycopy(sFake.data, s * 784, pixels, 0, 784);
+                        sampleList.add(pixels);
+                    }
+                }
+                DashboardIntegrationHelper.broadcastGANDetailed(
+                    dashboard, epoch, (float) avgGLoss, (float) avgDLoss, sampleList, 1, 28, 28);
+                G.train();
+            } catch (Exception dashEx) {}
 
             // Periodically log samples
             if (epoch % 5 == 0) {

@@ -1,0 +1,47 @@
+﻿To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.10.2/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+
+> Task :core:compileJava
+.\gradlew.bat : warning: using incubating module(s): jdk.incubator.vector
+At line:1 char:1
++ .\gradlew.bat :core:compileJava --no-daemon --console=plain > compile ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (warning: using ...ncubator.vector:String) [], Rem 
+   oteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\core\Tor
+ch.java:68: error: cannot declare both zeros(int...) and zeros(int[]) in Torch
+    public static Tensor zeros(int... shape) {
+                         ^
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\core\Tor
+ch.java:87: error: cannot declare both ones(int...) and ones(int[]) in Torch
+    public static Tensor ones(int... shape) {
+                         ^
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\core\Tor
+ch.java:131: error: cannot declare both randn(int...) and randn(int[]) in Torch
+    public static Tensor randn(int... shape) {
+                         ^
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\core\Tor
+ch.java:142: error: cannot declare both rand(int...) and rand(int[]) in Torch
+    public static Tensor rand(int... shape) {
+                         ^
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+4 errors
+1 warning
+
+> Task :core:compileJava FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':core:compileJava'.
+> Compilation failed; see the compiler error output for details.
+
+* Try:
+> Run with --info option to get more log output.
+> Run with --scan to get full insights.
+
+BUILD FAILED in 13s
+1 actionable task: 1 executed

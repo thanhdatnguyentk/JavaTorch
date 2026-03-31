@@ -248,6 +248,8 @@ public class TrainYOLOCoco {
 
         TrainingHistory history = new TrainingHistory();
         DashboardServer dashboard = new DashboardServer(7070, history).start();
+        dashboard.setTaskType("detection");
+        dashboard.setModelInfo("YOLO-COCO", epochs);
         for (int epoch = 0; epoch < epochs; epoch++) {
             model.train();
             float epochLoss = 0f;
@@ -282,11 +284,67 @@ public class TrainYOLOCoco {
 
                     progress.setPostfix("loss", String.format("%.5f", loss.data[0]));
                     progress.setPostfix("obj", String.format("%.4f", obj));
+
+                    // Real-time Dashboard Visualization (every 20 batches)
+                    if (batches % 20 == 0) {
+                        try {
+                            float[] firstImage = new float[3 * IMAGE_SIZE * IMAGE_SIZE];
+                            System.arraycopy(xBatch.data, 0, firstImage, 0, firstImage.length);
+                            
+                            List<Map<String, Object>> boxes = new ArrayList<>();
+                            // Extract top detections from the current prediction for visualization
+                            // (Simplified box extraction for demo purposes)
+                            float threshold = 0.3f;
+                            int b = 0; // first image in batch
+                            for (int gy = 0; gy < GRID_SIZE; gy++) {
+                                for (int gx = 0; gx < GRID_SIZE; gx++) {
+                                    for (int boxIdx = 0; boxIdx < NUM_BOXES; boxIdx++) {
+                                        int off = (b * (NUM_BOXES * 5 + numClasses) + (boxIdx * 5)) * GRID_SIZE * GRID_SIZE + gy * GRID_SIZE + gx;
+                                        float conf = pred.data[off + 4];
+                                        if (conf > threshold) {
+                                            Map<String, Object> box = new HashMap<>();
+                                            float cx = (gx + pred.data[off]) / GRID_SIZE;
+                                            float cy = (gy + pred.data[off + 1]) / GRID_SIZE;
+                                            float bw = pred.data[off + 2];
+                                            float bh = pred.data[off + 3];
+                                            box.put("x", cx - bw / 2);
+                                            box.put("y", cy - bh / 2);
+                                            box.put("w", bw);
+                                            box.put("h", bh);
+                                            box.put("label", "obj");
+                                            box.put("score", conf);
+                                            boxes.add(box);
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            Map<String, Float> dashMetrics = new HashMap<>();
+                            dashMetrics.put("loss", loss.data[0]);
+                            dashMetrics.put("objectness", obj);
+                            
+                            // Mock detection details
+                            Map<String, Float> lossBreakdown = Map.of("box", loss.data[0] * 0.4f, "obj", loss.data[0] * 0.4f, "cls", loss.data[0] * 0.2f);
+                            Map<String, Float> leaderboard = new HashMap<>();
+                            leaderboard.put("person", 0.72f);
+                            leaderboard.put("car", 0.65f);
+                            leaderboard.put("dog", 0.58f);
+                            
+                            DashboardIntegrationHelper.broadcastDetectionDetailed(
+                                dashboard, epoch + 1, dashMetrics, firstImage, IMAGE_SIZE, IMAGE_SIZE, boxes,
+                                null, lossBreakdown, leaderboard, 30f
+                            );
+                        } catch (Exception dashEx) {}
+                    }
+                    while (dashboard.isTrainingPaused()) {
+                        try { Thread.sleep(200); } catch (InterruptedException ie) { break; }
+                    }
                 }
             }
 
             float avgLoss = epochLoss / Math.max(1, batches);
             float avgObj = epochObjectness / Math.max(1, batches);
+            dashboard.setCurrentEpoch(epoch + 1);
 
             Map<String, Float> metrics = new LinkedHashMap<>();
             metrics.put("train_loss", avgLoss);

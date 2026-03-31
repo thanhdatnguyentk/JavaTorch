@@ -261,3 +261,67 @@ __global__ void mul_tensors_inplace(float *a, float *b, int n) {
         a[i] *= b[i];
     }
 }
+
+extern "C"
+__global__ void adam_step(float *params, float *grads, float *m, float *v, 
+                         float beta1, float beta2, float lr, float eps, 
+                         int step, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        float g = grads[i];
+        m[i] = beta1 * m[i] + (1.0f - beta1) * g;
+        v[i] = beta2 * v[i] + (1.0f - beta2) * g * g;
+        
+        float bc1 = 1.0f - powf(beta1, (float)step);
+        float bc2 = 1.0f - powf(beta2, (float)step);
+        
+        float m_hat = m[i] / bc1;
+        float v_hat = v[i] / bc2;
+        
+        params[i] -= lr * m_hat / (sqrtf(v_hat) + eps);
+    }
+}
+
+extern "C"
+__global__ void fill_kernel(float *data, float value, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) data[i] = value;
+}
+
+extern "C"
+__global__ void dropout_kernel(float *in, float *out, float *mask, float p, float scale, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        if (mask[i] >= p) {
+            out[i] = in[i] * scale;
+        } else {
+            out[i] = 0.0f;
+        }
+    }
+}
+
+// Simple Philox-like or XORShift based PRNG for GPU
+__device__ unsigned int xorshift(unsigned int state) {
+    state ^= state << 13;
+    state ^= state >> 17;
+    state ^= state << 5;
+    return state;
+}
+
+extern "C"
+__global__ void randn_kernel(float *data, unsigned int seed, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        unsigned int state = seed + i;
+        state = xorshift(state);
+        float u1 = (float)state / 4294967296.0f;
+        state = xorshift(state);
+        float u2 = (float)state / 4294967296.0f;
+        
+        // Box-Muller
+        if (u1 < 1e-10f) u1 = 1e-10f;
+        float r = sqrtf(-2.0f * logf(u1));
+        float theta = 2.0f * 3.14159265f * u2;
+        data[i] = r * cosf(theta);
+    }
+}

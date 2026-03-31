@@ -5,6 +5,8 @@ import com.user.nn.optim.*;
 import com.user.nn.dataloaders.*;
 import com.user.nn.metrics.*;
 import com.user.nn.models.cv.ResNet;
+import com.user.nn.utils.dashboard.DashboardServer;
+import com.user.nn.utils.dashboard.DashboardIntegrationHelper;
 import com.user.nn.utils.progress.ProgressDataLoader;
 import com.user.nn.utils.visualization.*;
 import com.user.nn.utils.visualization.exporters.*;
@@ -88,9 +90,16 @@ public class TrainResNetCifar10 {
         Data.DataLoader loader = new Data.DataLoader(trainDataset, batchSize, true, 4);
         Accuracy accMetric = new Accuracy();
         
-        // Initialize TrainingHistory for visualization
         TrainingHistory history = new TrainingHistory();
         System.out.println("\n=== Training with Progress Bar & Visualization ===\n");
+        DashboardServer dashboard = new DashboardServer(7070, history).start();
+        dashboard.setTaskType("classification");
+        dashboard.setModelInfo("ResNet-18", epochs);
+        String[] classLabels = com.user.nn.predict.ImagePredictor.CIFAR10_LABELS;
+        try {
+            com.user.nn.predict.ImagePredictor predictor = com.user.nn.predict.ImagePredictor.forCifar10(model);
+            DashboardIntegrationHelper.setupImagePredictorHandler(dashboard, "classify_image", predictor);
+        } catch(Exception e) {}
 
         for (int epoch = 0; epoch < epochs; epoch++) {
             float epochLoss = 0f;
@@ -123,15 +132,24 @@ public class TrainResNetCifar10 {
                     epochLoss += loss.data[0];
                     numBatches++;
                     accMetric.update(logits, batchLabels);
-                    
+
                     // Update progress bar with live metrics
                     progLoader.setPostfix("loss", String.format("%.4f", loss.data[0]));
                     progLoader.setPostfix("acc", String.format("%.4f", accMetric.compute()));
 
+                    // Batch-level dashboard broadcast
                     if (numBatches % 10 == 0) {
-                        System.out.printf("  Epoch %d batch %d/%d  loss=%.4f%n",
-                                epoch + 1, numBatches, N / batchSize, loss.data[0]);
-                        System.out.flush();
+                        try {
+                            Map<String, Object> bm = new HashMap<>();
+                            bm.put("loss", loss.data[0]);
+                            bm.put("batch", numBatches);
+                            bm.put("train_acc", accMetric.compute());
+                            dashboard.broadcastTaskMetrics(epoch + 1, bm);
+                        } catch (Exception e) {}
+                    }
+
+                    while (dashboard.isTrainingPaused()) {
+                        try { Thread.sleep(200); } catch (InterruptedException ie) { break; }
                     }
                 }
             }
@@ -139,7 +157,8 @@ public class TrainResNetCifar10 {
             long endTime = System.currentTimeMillis();
             float trainAcc = accMetric.compute();
             float avgLoss = epochLoss / numBatches;
-            
+            dashboard.setCurrentEpoch(epoch + 1);
+
             // Evaluation
             Data.Dataset testDataset = new Data.Dataset() {
                 @Override
@@ -153,17 +172,50 @@ public class TrainResNetCifar10 {
             };
             Data.DataLoader testLoader = new Data.DataLoader(testDataset, 128, false, 2);
             float testAcc = Evaluator.evaluate(model, testLoader, accMetric);
-            
+
+            // Confusion Matrix + Live Predictions
+            int numClasses = 10;
+            int[][] cm = new int[numClasses][numClasses];
+            List<Map<String, Object>> livePreds = new ArrayList<>();
+            model.eval();
+            for (int ti = 0; ti < Math.min(200, testImages.length); ti++) {
+                try (MemoryScope evalScope = new MemoryScope()) {
+                    Tensor tx = Torch.tensor(testImages[ti], 3, 32, 32);
+                    tx.toGPU();
+                    Tensor out = model.forward(Torch.reshape(tx, 1, 3, 32, 32));
+                    int pred = 0; float maxV = out.data[0];
+                    for (int c = 1; c < numClasses; c++) { if (out.data[c] > maxV) { maxV = out.data[c]; pred = c; } }
+                    cm[testLabels[ti]][pred]++;
+                    if (livePreds.size() < 9) {
+                        List<Map<String, Object>> topK = new ArrayList<>();
+                        float[] sc = new float[numClasses]; float sum = 0;
+                        for (int c = 0; c < numClasses; c++) { sc[c] = (float) Math.exp(out.data[c]); sum += sc[c]; }
+                        for (int c = 0; c < numClasses; c++) sc[c] /= sum;
+                        Integer[] idx = new Integer[numClasses];
+                        for (int c = 0; c < numClasses; c++) idx[c] = c;
+                        Arrays.sort(idx, (a, b) -> Float.compare(sc[b], sc[a]));
+                        for (int k = 0; k < 3; k++) topK.add(DashboardIntegrationHelper.buildTopKEntry(classLabels[idx[k]], sc[idx[k]]));
+                        livePreds.add(DashboardIntegrationHelper.buildLivePrediction(
+                            DashboardIntegrationHelper.encodePixelsToBase64(testImages[ti], 3, 32, 32),
+                            classLabels[pred], classLabels[testLabels[ti]], pred == testLabels[ti], topK));
+                    }
+                }
+            }
+
             System.out.printf("Epoch %d/%d  avg_loss=%.4f  train_acc=%.4f  test_acc=%.4f  time=%dms%n",
                     epoch + 1, epochs, avgLoss, trainAcc, testAcc, (endTime - startTime));
-                    
-            // Record metrics in training history
+
+            // Rich dashboard broadcast
             Map<String, Float> metrics = new HashMap<>();
-                metrics.put("train_loss", avgLoss);
+            metrics.put("train_loss", avgLoss);
             metrics.put("train_acc", trainAcc);
             metrics.put("test_acc", testAcc);
             history.record(epoch, metrics);
-                    
+            try {
+                DashboardIntegrationHelper.broadcastClassificationDetailed(
+                    dashboard, epoch + 1, metrics, cm, classLabels, livePreds);
+            } catch (Exception dashEx) {}
+
             testLoader.shutdown();
         }
         loader.shutdown();

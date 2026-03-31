@@ -54,9 +54,13 @@ public class CUDAOps {
     private static CUfunction logFunction;
     private static CUfunction embeddingForwardFunction;
     private static CUfunction embeddingBackwardFunction;
+    private static CUfunction mulInplaceFunction;
     private static CUfunction addInplaceFunction;
     private static CUfunction subInplaceFunction;
-    private static CUfunction mulInplaceFunction;
+    private static CUfunction adamStepFunction;
+    private static CUfunction fillFunction;
+    private static CUfunction dropoutFunction;
+    private static CUfunction randnFunction;
     
     // CUDA Streams for pipelining
     private static cudaStream_t computeStream;
@@ -154,6 +158,10 @@ public class CUDAOps {
                     addInplaceFunction = safeGetFunction("add_tensors_inplace");
                     subInplaceFunction = safeGetFunction("sub_tensors_inplace");
                     mulInplaceFunction = safeGetFunction("mul_tensors_inplace");
+                    adamStepFunction = safeGetFunction("adam_step");
+                    fillFunction = safeGetFunction("fill_kernel");
+                    dropoutFunction = safeGetFunction("dropout_kernel");
+                    randnFunction = safeGetFunction("randn_kernel");
                     System.out.println("[CUDAOps] PTX function resolution complete.");
                 } catch (Exception e) {
                     System.err.println("Warning: Could not load custom PTX kernels. GPU element-wise operations may fail.");
@@ -1495,5 +1503,120 @@ public class CUDAOps {
             cudnnDestroy(cudnnHandle);
             initialized = false;
         }
+    }
+
+    public static void adamStep(Tensor params, Tensor grads, Tensor m, Tensor v,
+                               float beta1, float beta2, float lr, float eps, int step) {
+        init();
+        if (!cudaAvailable || adamStepFunction == null) {
+            // CPU fallback logic (simplified)
+            params.toCPU(); grads.toCPU(); m.toCPU(); v.toCPU();
+            float bc1 = 1f - (float) Math.pow(beta1, step);
+            float bc2 = 1f - (float) Math.pow(beta2, step);
+            for (int i = 0; i < params.numel(); i++) {
+                float g = grads.data[i];
+                m.data[i] = beta1 * m.data[i] + (1f - beta1) * g;
+                v.data[i] = beta2 * v.data[i] + (1f - beta2) * g * g;
+                float mHat = m.data[i] / bc1;
+                float vHat = v.data[i] / bc2;
+                params.data[i] -= lr * mHat / ((float) Math.sqrt(vHat) + eps);
+            }
+            params.markDirtyOnCPU();
+            return;
+        }
+
+        int n = params.numel();
+        Pointer kParams = Pointer.to(
+            Pointer.to(params.getDevicePointer()),
+            Pointer.to(grads.getDevicePointer()),
+            Pointer.to(m.getDevicePointer()),
+            Pointer.to(v.getDevicePointer()),
+            Pointer.to(new float[]{beta1}),
+            Pointer.to(new float[]{beta2}),
+            Pointer.to(new float[]{lr}),
+            Pointer.to(new float[]{eps}),
+            Pointer.to(new int[]{step}),
+            Pointer.to(new int[]{n})
+        );
+
+        int blockSizeX = 256;
+        int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
+
+        cuLaunchKernel(adamStepFunction,
+            gridSizeX, 1, 1,
+            blockSizeX, 1, 1,
+            0, null,
+            kParams, null);
+
+        params.markDirtyOnGPU();
+        m.markDirtyOnGPU();
+        v.markDirtyOnGPU();
+    }
+
+    public static void fill(Tensor t, float value) {
+        init();
+        if (!cudaAvailable || fillFunction == null) {
+            t.toCPU();
+            for (int i = 0; i < t.numel(); i++) t.data[i] = value;
+            t.markDirtyOnCPU();
+            return;
+        }
+        int n = t.numel();
+        Pointer kParams = Pointer.to(
+            Pointer.to(t.getDevicePointer()),
+            Pointer.to(new float[]{value}),
+            Pointer.to(new int[]{n})
+        );
+        int blockSizeX = 256;
+        int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
+        cuLaunchKernel(fillFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kParams, null);
+        t.markDirtyOnGPU();
+    }
+
+    public static void dropout(Tensor in, Tensor out, Tensor mask, float p, float scale) {
+        init();
+        if (!cudaAvailable || dropoutFunction == null) {
+            in.toCPU(); out.toCPU(); mask.toCPU();
+            for (int i = 0; i < in.numel(); i++) {
+                if (mask.data[i] >= p) out.data[i] = in.data[i] * scale;
+                else out.data[i] = 0f;
+            }
+            out.markDirtyOnCPU();
+            return;
+        }
+        int n = in.numel();
+        Pointer kParams = Pointer.to(
+            Pointer.to(in.getDevicePointer()),
+            Pointer.to(out.getDevicePointer()),
+            Pointer.to(mask.getDevicePointer()),
+            Pointer.to(new float[]{p}),
+            Pointer.to(new float[]{scale}),
+            Pointer.to(new int[]{n})
+        );
+        int blockSizeX = 256;
+        int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
+        cuLaunchKernel(dropoutFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kParams, null);
+        out.markDirtyOnGPU();
+    }
+
+    public static void randomNormal(Tensor t, long seed) {
+        init();
+        if (!cudaAvailable || randnFunction == null) {
+            Random r = new Random(seed);
+            t.toCPU();
+            for (int i = 0; i < t.numel(); i++) t.data[i] = (float) r.nextGaussian();
+            t.markDirtyOnCPU();
+            return;
+        }
+        int n = t.numel();
+        Pointer kParams = Pointer.to(
+            Pointer.to(t.getDevicePointer()),
+            Pointer.to(new int[]{(int)seed}),
+            Pointer.to(new int[]{n})
+        );
+        int blockSizeX = 256;
+        int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
+        cuLaunchKernel(randnFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kParams, null);
+        t.markDirtyOnGPU();
     }
 }

@@ -169,6 +169,19 @@ public class TrainIris {
 
         Accuracy accMetric = new Accuracy();
         int epochs = 2000;
+
+        TrainingHistory history = new TrainingHistory();
+        DashboardServer dashboard = new DashboardServer(7070, history).start();
+        dashboard.setTaskType("classification");
+        dashboard.setModelInfo("MLP-Iris", epochs);
+        String[] irisLabels = {"Setosa", "Versicolor", "Virginica"};
+        
+        try {
+            com.user.nn.predict.Predictor predictor = new com.user.nn.predict.Predictor(model, irisLabels)
+                .topK(3).verbose(false);
+            // It's not strictly an ImagePredictor, but we can mock it for the dashboard if needed, 
+            // but the dashboard relies mostly on broadcast methods.
+        } catch(Exception e) {}
         
         Data.Dataset testDataset = new Data.Dataset() {
             @Override
@@ -227,13 +240,71 @@ public class TrainIris {
 
                     // Optimizer step (Adam)
                     optimizer.step();
+               
+                    // Real-time broadcast
+                    if (batchCount % 10 == 0) {
+                        try {
+                            float batchAcc = accMetric.compute();
+                            Map<String, Object> bm = new HashMap<>();
+                            bm.put("loss", loss.data[0]);
+                            bm.put("batch", batchCount);
+                            bm.put("train_acc", batchAcc);
+                            dashboard.broadcastTaskMetrics(e, bm);
+                        } catch(Exception ex) {}
+                    }
+                    while (dashboard.isTrainingPaused()) {
+                        try { Thread.sleep(200); } catch (InterruptedException ie) { break; }
+                    }
                 }
             }
 
             if (e % 100 == 0) {
                 float trainAcc = accMetric.compute();
+                dashboard.setCurrentEpoch(e);
+                
+                model.eval();
                 float testAcc = Evaluator.evaluate(model, testLoader, accMetric);
+
+                // Confusion Matrix + Live Predictions
+                int numClasses = 3;
+                int[][] cm = new int[numClasses][numClasses];
+                java.util.List<Map<String, Object>> livePreds = new java.util.ArrayList<>();
+                for (int ti = 0; ti < Math.min(20, testN); ti++) {
+                    try (MemoryScope evalScope = new MemoryScope()) {
+                        Tensor tx = Torch.tensor(data[numTrain + ti], 1, 4); tx.toGPU();
+                        Tensor out = model.forward(tx); out.toCPU();
+                        int actual = labelsData[numTrain + ti];
+                        int pred = 0; float maxV = out.data[0];
+                        for (int c = 1; c < numClasses; c++) { if (out.data[c] > maxV) { maxV = out.data[c]; pred = c; } }
+                        cm[actual][pred]++;
+                        
+                        // Fake an image for the Iris tabular data to fit the classification grid
+                        if (livePreds.size() < 9) {
+                            java.util.List<Map<String, Object>> topK = new java.util.ArrayList<>();
+                            float sum = 0; float[] sc = new float[numClasses];
+                            for (int c = 0; c < numClasses; c++) { sc[c] = (float) Math.exp(out.data[c]); sum += sc[c]; }
+                            for (int c = 0; c < numClasses; c++) sc[c] /= sum;
+                            Integer[] sortIdx = new Integer[numClasses]; for (int c = 0; c < numClasses; c++) sortIdx[c] = c;
+                            java.util.Arrays.sort(sortIdx, (a, b) -> Float.compare(sc[b], sc[a]));
+                            for (int k = 0; k < numClasses; k++) topK.add(DashboardIntegrationHelper.buildTopKEntry(irisLabels[sortIdx[k]], sc[sortIdx[k]]));
+                            livePreds.add(DashboardIntegrationHelper.buildLivePrediction(
+                                "", // no image
+                                irisLabels[pred], irisLabels[actual], pred == actual, topK));
+                        }
+                    }
+                }
+                model.train();
+
                 System.out.println(String.format("Epoch %d loss=%.6f train_acc=%.4f test_acc=%.4f", e, epochLoss / batchCount, trainAcc, testAcc));
+                try {
+                    Map<String, Float> metrics = new HashMap<>();
+                    metrics.put("loss", epochLoss / batchCount);
+                    metrics.put("train_acc", trainAcc);
+                    metrics.put("test_acc", testAcc);
+                    history.record(e, metrics);
+                    DashboardIntegrationHelper.broadcastClassificationDetailed(
+                        dashboard, e, metrics, cm, irisLabels, livePreds);
+                } catch (Exception dashEx) {}
             }
         }
 
@@ -252,7 +323,6 @@ public class TrainIris {
 
         model.save("iris_model.bin");
 
-        String[] irisLabels = {"Iris-setosa", "Iris-versicolor", "Iris-virginica"};
         com.user.nn.predict.Predictor predictor = new com.user.nn.predict.Predictor(model, irisLabels)
             .topK(3).verbose(true);
 

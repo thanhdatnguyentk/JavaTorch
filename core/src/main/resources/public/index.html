@@ -3,511 +3,445 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ML Dashboard</title>
-    <!-- Tailwind CSS -->
+    <title>JavaTorch - Neural Engine Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
             theme: {
                 extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    },
-                    colors: {
-                        darkBg: '#0f172a',
-                        glassBg: 'rgba(30, 41, 59, 0.7)',
-                        glassBorder: 'rgba(255, 255, 255, 0.1)',
-                        accent: '#38bdf8'
-                    }
+                    fontFamily: { sans: ['Inter', 'sans-serif'], display: ['Space Grotesk', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+                    colors: { bg: '#131313', s1: '#1c1b1b', s2: '#201f1f', s3: '#2a2a2a', s4: '#353534', accent: '#adc6ff', accentC: '#4d8eff', secondary: '#ffb690', secC: '#ec6a06', tertiary: '#4edea3', terC: '#00a572', err: '#ffb4ab', onSurf: '#e5e2e1', outline: '#8c909f', outV: '#424754' }
                 }
             }
         }
     </script>
-    <!-- Google Fonts: Inter -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Vue 3 -->
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Symbols+Outlined" rel="stylesheet">
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    
     <style>
-        body { font-family: 'Inter', sans-serif; background: #0f172a; color: #e2e8f0; }
-        
-        /* Glassmorphism Classes */
-        .glass-panel {
-            background: rgba(30, 41, 59, 0.6);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 1rem;
-            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
-        }
-        
-        .glass-input {
-            background: rgba(15, 23, 42, 0.5);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #f8fafc;
-        }
-        .glass-input:focus {
-            outline: none;
-            border-color: #38bdf8;
-            box-shadow: 0 0 0 1px #38bdf8;
-        }
-
-        /* Custom Scrollbar for Pre */
-        pre::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-        pre::-webkit-scrollbar-thumb {
-            background-color: rgba(255, 255, 255, 0.2);
-            border-radius: 3px;
-        }
-        
-        /* Table styles */
-        th, td { border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+        body { font-family: 'Inter', sans-serif; background: #131313; color: #e5e2e1; overflow: hidden; }
+        .glass { background: rgba(42,42,42,0.4); backdrop-filter: blur(20px); border: 1px solid rgba(66,71,84,0.15); border-radius: 0.125rem; }
+        .glass-bright { background: rgba(53,53,52,0.5); backdrop-filter: blur(20px); border: 1px solid rgba(66,71,84,0.15); }
+        .glow-primary { box-shadow: 0 0 20px rgba(77,142,255,0.2); }
+        .glow-tertiary { box-shadow: 0 0 16px rgba(78,222,163,0.15); }
+        .sidebar-item { transition: all 0.2s; border-left: 2px solid transparent; cursor: pointer; letter-spacing: -0.02em; }
+        .sidebar-item.active { background: rgba(173,198,255,0.05); border-left-color: #4d8eff; color: #adc6ff; }
+        .sidebar-item:hover { background: rgba(255,255,255,0.03); }
+        .gauge-ring { fill: none; stroke-linecap: round; transition: stroke-dashoffset 1s ease; }
+        .sweep-anim { animation: sweep 0.6s ease-out; }
+        @keyframes sweep { from { opacity: 0.3; filter: brightness(1.5); } to { opacity: 1; filter: brightness(1); } }
+        @keyframes pulse-glow { 0%,100% { box-shadow: 0 0 8px rgba(77,142,255,0.2); } 50% { box-shadow: 0 0 20px rgba(77,142,255,0.5); } }
+        .pulse-node { animation: pulse-glow 2s infinite; }
+        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 10px; }
+        .cm-cell { transition: all 0.2s; cursor: pointer; } .cm-cell:hover { filter: brightness(1.3); transform: scale(1.05); }
+        .text-highlight { transition: background 0.3s; border-radius: 2px; padding: 0 2px; }
+        .alert-card { border-left: 3px solid; transition: all 0.2s; }
+        .alert-warning { border-left-color: #ffb690; background: rgba(255,182,144,0.05); }
+        .alert-info { border-left-color: #adc6ff; background: rgba(173,198,255,0.05); }
+        .alert-error { border-left-color: #ffb4ab; background: rgba(255,180,171,0.05); }
+        input[type=range] { -webkit-appearance: none; appearance: none; background: #353534; height: 4px; border-radius: 2px; outline: none; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; background: #4d8eff; border-radius: 50%; cursor: pointer; }
+        .topbar-metric { letter-spacing: -0.02em; }
     </style>
 </head>
-<body class="antialiased selection:bg-accent selection:text-darkBg min-h-screen flex flex-col relative overflow-x-hidden">
-
-    <!-- Decorative background elements -->
-    <div class="absolute top-[-10%] left-[-10%] w-96 h-96 bg-blue-600/20 rounded-full blur-[100px] pointer-events-none"></div>
-    <div class="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-purple-600/20 rounded-full blur-[100px] pointer-events-none"></div>
-
-<div id="app" class="relative z-10 min-h-screen flex flex-col">
-    <!-- Navbar -->
-    <header class="glass-panel mx-6 mt-6 mb-8 px-6 py-4 flex justify-between items-center transition-all">
-        <div class="flex items-center gap-3">
-            <i data-lucide="activity" class="text-accent w-6 h-6"></i>
-            <h1 class="text-xl font-bold tracking-tight text-white">ML<span class="text-accent font-medium">Dash</span></h1>
+<body class="antialiased">
+<div id="app" class="flex h-screen w-full overflow-hidden">
+    <!-- SIDEBAR -->
+    <aside class="w-60 border-r border-outV/15 bg-[#0e0e0e] flex flex-col z-20 shrink-0">
+        <div class="px-5 py-6 flex items-center gap-3">
+            <div class="w-8 h-8 bg-gradient-to-br from-accentC to-accent rounded flex items-center justify-center glow-primary">
+                <span class="material-symbols-outlined text-bg text-lg">bolt</span>
+            </div>
+            <h1 class="text-lg font-display font-bold tracking-[-0.03em]">Java<span class="text-accent">Torch</span></h1>
         </div>
-        
-        <nav class="flex gap-2 bg-slate-800/50 p-1 rounded-lg border border-white/5">
-            <button @click="currentTab = 'training'" 
-                    class=" flex items-center gap-2 px-5 py-2 rounded-md font-medium text-sm transition-all duration-300"
-                    :class="currentTab === 'training' ? 'bg-accent text-darkBg shadow-md' : 'text-slate-400 hover:text-white hover:bg-white/5'">
-                <i data-lucide="trending-up" class="w-4 h-4"></i> Training
-            </button>
-            <button @click="currentTab = 'inference'" 
-                    class="flex items-center gap-2 px-5 py-2 rounded-md font-medium text-sm transition-all duration-300"
-                    :class="currentTab === 'inference' ? 'bg-accent text-darkBg shadow-md' : 'text-slate-400 hover:text-white hover:bg-white/5'">
-                <i data-lucide="cpu" class="w-4 h-4"></i> Inference
-            </button>
+        <div class="text-[9px] uppercase tracking-[0.2em] text-outline font-bold px-5 mb-3">Models</div>
+        <div class="text-[9px] uppercase tracking-[0.15em] text-tertiary font-medium px-5 mb-4">Active Session</div>
+        <nav class="flex-grow px-2 space-y-0.5 overflow-y-auto">
+            <div v-for="v in views" :key="v.id" @click="currentView=v.id" class="sidebar-item flex items-center gap-3 px-4 py-2.5 rounded text-[13px] font-medium" :class="{'active':currentView===v.id}">
+                <span class="material-symbols-outlined text-base">{{v.icon}}</span> {{v.name}}
+            </div>
         </nav>
-    </header>
-
-    <!-- Main Content -->
-    <main class="container mx-auto flex-grow px-6 pb-12 w-full max-w-7xl">
-        
-        <!-- ======================= -->
-        <!--      TRAINING TAB       -->
-        <!-- ======================= -->
-        <div v-show="currentTab === 'training'" class="space-y-8 animate-fade-in">
-            
-            <div class="glass-panel p-8">
-                <div class="flex justify-between items-center mb-8 border-b border-white/5 pb-4">
-                    <h2 class="text-2xl font-light text-white flex items-center gap-2">
-                        <i data-lucide="bar-chart-2" class="w-6 h-6 text-slate-400"></i> Metrics Overview
-                    </h2>
-                    
-                    <div class="flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium tracking-wide"
-                         :class="wsConnected ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'">
-                        <div class="w-2 h-2 rounded-full" :class="wsConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'"></div>
-                        {{ wsConnected ? 'LIVE' : 'DISCONNECTED' }}
-                    </div>
-                </div>
-                
-                
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8" v-if="sysStats">
-                    <div class="bg-slate-900/40 p-4 rounded-xl border border-white/5">
-                        <div class="text-xs text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1"><i data-lucide="cpu" class="w-3 h-3"></i> VRAM Used</div>
-                        <div class="text-lg font-mono text-accent">{{ sysStats.processUsedMB.toFixed(1) }} MB</div>
-                    </div>
-                    <div class="bg-slate-900/40 p-4 rounded-xl border border-white/5">
-                        <div class="text-xs text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1"><i data-lucide="database" class="w-3 h-3"></i> Pool Used</div>
-                        <div class="text-lg font-mono text-emerald-400">{{ sysStats.poolUsedMB.toFixed(1) }} MB</div>
-                    </div>
-                    <div class="bg-slate-900/40 p-4 rounded-xl border border-white/5">
-                        <div class="text-xs text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1"><i data-lucide="hard-drive" class="w-3 h-3"></i> VRAM Total</div>
-                        <div class="text-lg font-mono text-purple-400">{{ sysStats.totalMB.toFixed(1) }} MB</div>
-                    </div>
-                    <div class="bg-slate-900/40 p-4 rounded-xl border border-white/5">
-                        <div class="text-xs text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1"><i data-lucide="clock" class="w-3 h-3"></i> Last Update</div>
-                        <div class="text-lg font-mono text-slate-300">{{ lastUpdate }}</div>
-                    </div>
-                </div>
-
-                <!-- Chart Container -->
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <div class="bg-slate-900/40 p-4 rounded-xl border border-white/5">
-                        <div class="flex justify-between items-center mb-4 px-2">
-                            <h3 class="text-sm font-medium text-slate-400 uppercase tracking-wider">Loss Curve</h3>
-                        </div>
-                        <div class="relative h-[300px]">
-                            <canvas id="lossChart"></canvas>
-                        </div>
-                    </div>
-                    <div class="bg-slate-900/40 p-4 rounded-xl border border-white/5">
-                        <div class="flex justify-between items-center mb-4 px-2">
-                            <h3 class="text-sm font-medium text-slate-400 uppercase tracking-wider">Accuracy Curve</h3>
-                        </div>
-                        <div class="relative h-[300px]">
-                            <canvas id="accChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Data Table -->
-            <div class="glass-panel p-8">
-                <h2 class="text-2xl font-light text-white mb-6 flex items-center gap-2">
-                    <i data-lucide="table" class="w-6 h-6 text-slate-400"></i> History Log
-                </h2>
-                
-                <div class="overflow-x-auto rounded-lg border border-white/5 bg-slate-900/20">
-                    <table class="min-w-full table-auto text-sm text-left">
-                        <thead class="bg-slate-800/60 text-slate-300 font-medium">
-                            <tr>
-                                <th class="px-6 py-4 tracking-wider">Epoch</th>
-                                <th class="px-6 py-4 tracking-wider" v-for="key in metricKeys" :key="key">{{ key }}</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-white/5 text-slate-300">
-                            <tr v-for="(ep, idx) in epochs" :key="idx" class="hover:bg-white/5 transition-colors">
-                                <td class="px-6 py-4 font-mono text-accent">{{ ep }}</td>
-                                <td class="px-6 py-4 font-mono text-slate-400" v-for="key in metricKeys" :key="key">
-                                    {{ getMetricValue(key, idx) }}
-                                </td>
-                            </tr>
-                            <tr v-if="epochs.length === 0">
-                                <td colspan="100%" class="text-center p-8 text-slate-500 italic">No metrics recorded yet.</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+        <div class="p-3 border-t border-outV/15">
+            <div class="flex items-center gap-2 px-3 py-2.5 rounded glass text-xs">
+                <div class="w-2 h-2 rounded-full" :class="wsStatus==='LIVE'?'bg-tertiary animate-pulse':'bg-err'"></div>
+                <div><div class="text-outline text-[9px]">STATUS</div><div class="font-mono text-accent text-[11px]">{{wsStatus}}</div></div>
             </div>
         </div>
+    </aside>
 
-        <!-- ======================= -->
-        <!--    INFERENCE TAB        -->
-        <!-- ======================= -->
-        <div v-show="currentTab === 'inference'" class="max-w-5xl mx-auto animate-fade-in">
-            
-            <div class="glass-panel p-8">
-                
-                <div class="mb-10 text-center">
-                    <h2 class="text-3xl font-light text-white mb-3">Model Playground</h2>
-                    <p class="text-slate-400">Test your trained models strictly from the browser over REST API.</p>
-                </div>
-                
-                <div class="mb-8 p-1">
-                    <label class="block text-xs font-semibold tracking-wider text-slate-400 uppercase mb-2">Endpoint Route (Task Name)</label>
-                    <div class="relative">
-                        <i data-lucide="link-2" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"></i>
-                        <input type="text" v-model="inferenceTask" class="glass-input w-full rounded-lg pl-11 pr-4 py-3 text-sm transition-all" placeholder="e.g., classify_image">
+    <!-- MAIN -->
+    <main class="flex-grow flex flex-col min-w-0 bg-bg relative">
+        <!-- TOP BAR -->
+        <header class="h-14 border-b border-outV/15 flex items-center justify-between px-6 z-10 shrink-0 bg-s1/60 backdrop-blur-sm">
+            <div class="flex items-center gap-4">
+                <h2 class="text-sm font-display font-semibold topbar-metric">{{activeView.name}}</h2>
+                <template v-if="modelName"><span class="text-[10px] font-mono bg-s3 text-accent px-2 py-0.5 rounded">{{modelName}}</span></template>
+                <template v-if="totalEpochs">
+                    <span class="text-[10px] font-mono text-outline">Epoch {{currentEpoch}}/{{totalEpochs}}</span>
+                    <div class="w-24 h-1 bg-s4 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-accentC to-accent transition-all" :style="{width:(currentEpoch/totalEpochs*100)+'%'}"></div></div>
+                </template>
+            </div>
+            <div class="flex items-center gap-4">
+                <template v-if="sysStats">
+                    <div class="flex flex-col items-end">
+                        <span class="text-[9px] text-outline uppercase tracking-wide">GPU VRAM</span>
+                        <div class="flex items-center gap-2"><div class="h-1 w-20 bg-s4 rounded-full overflow-hidden"><div class="h-full rounded-full" :class="sysStats.utilizationPercent>90?'bg-err':'bg-accent'" :style="{width:sysStats.utilizationPercent+'%'}"></div></div><span class="text-[11px] font-mono">{{sysStats.processUsedMB.toFixed(0)}}MB</span></div>
                     </div>
-                </div>
+                </template>
+                <button v-if="totalEpochs" @click="togglePause" class="w-8 h-8 rounded border border-outV/15 flex items-center justify-center hover:bg-s3 transition-all">
+                    <span class="material-symbols-outlined text-sm">{{paused?'play_arrow':'pause'}}</span>
+                </button>
+            </div>
+        </header>
 
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    
-                    <!-- INPUT PANEL -->
-                    <div class="space-y-6">
-                        <div class="glass-input rounded-xl p-5 relative overflow-hidden group">
-                            <div class="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                            
-                            <label class="block text-xs font-semibold tracking-wider text-slate-400 uppercase mb-4 flex items-center gap-2">
-                                <i data-lucide="image" class="w-4 h-4"></i> Image Upload
-                            </label>
-                            
-                            <div class="flex items-center justify-center w-full">
-                                <label for="dropzone-file" class="flex flex-col items-center justify-center w-full h-32 border-2 border-slate-600 border-dashed rounded-lg cursor-pointer bg-slate-800/30 hover:bg-slate-700/50 hover:border-slate-500 transition-all">
-                                    <div class="flex flex-col items-center justify-center pt-5 pb-6">
-                                        <i data-lucide="upload-cloud" class="w-8 h-8 mb-3 text-slate-400"></i>
-                                        <p class="mb-1 text-sm text-slate-400"><span class="font-semibold text-white">Click to upload</span> or drag and drop</p>
+        <div class="flex-grow overflow-y-auto p-6 space-y-6 relative">
+            <!-- ============ CLASSIFICATION ============ -->
+            <template v-if="currentView==='classification'">
+                <div class="grid grid-cols-3 gap-4">
+                    <div class="col-span-2 space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="glass p-5 h-[300px] flex flex-col"><h3 class="text-[10px] font-bold uppercase tracking-widest text-outline mb-4">Loss Curve</h3><div class="flex-grow min-h-0"><canvas id="lossChart"></canvas></div></div>
+                            <div class="glass p-5 h-[300px] flex flex-col"><h3 class="text-[10px] font-bold uppercase tracking-widest text-outline mb-4">Accuracy (%)</h3><div class="flex-grow min-h-0"><canvas id="accChart"></canvas></div></div>
+                        </div>
+                        <div class="glass p-5" v-if="confusionMatrix.length">
+                            <h3 class="text-[10px] font-bold uppercase tracking-widest text-outline mb-4">Confusion Matrix (Normalized)</h3>
+                            <div class="overflow-x-auto"><table class="mx-auto"><tr><td></td><td v-for="l in confusionLabels" class="text-[9px] font-mono text-outline px-1 text-center">{{l.slice(0,6)}}</td></tr><tr v-for="(row,ri) in confusionMatrix"><td class="text-[9px] font-mono text-outline px-2">{{confusionLabels[ri]&&confusionLabels[ri].slice(0,6)}}</td><td v-for="(val,ci) in row" class="cm-cell" :style="{background:'rgba(77,142,255,'+Math.min(1,val/cmMax)+')',width:'28px',height:'28px',textAlign:'center',fontSize:'9px',fontFamily:'JetBrains Mono'}">{{typeof val==='number'?val:''}}</td></tr></table></div>
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="glass p-5">
+                            <h3 class="text-[10px] font-bold uppercase tracking-widest text-outline mb-4">Validation Stream</h3>
+                            <div class="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                                <div v-for="(p,i) in livePredictions.slice(0,9)" :key="i" class="flex items-center gap-3 p-2 rounded bg-s1/50">
+                                    <img v-if="p.image" :src="'data:image/png;base64,'+p.image" class="w-12 h-12 rounded object-cover border border-outV/15">
+                                    <div class="flex-grow min-w-0">
+                                        <div class="text-[11px] font-medium" :class="p.correct?'text-tertiary':'text-err'">{{p.predicted}}</div>
+                                        <div v-if="!p.correct" class="text-[9px] text-outline">Actual: {{p.actual}}</div>
+                                        <div v-if="p.topK" class="mt-1 space-y-0.5">
+                                            <div v-for="tk in p.topK.slice(0,3)" class="flex items-center gap-1">
+                                                <div class="h-1 rounded-full bg-accent/30 flex-grow"><div class="h-full rounded-full bg-accent" :style="{width:(tk.confidence*100)+'%'}"></div></div>
+                                                <span class="text-[8px] font-mono text-outline w-8 text-right">{{(tk.confidence*100).toFixed(0)}}%</span>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <input id="dropzone-file" type="file" class="hidden" @change="onFileChange" />
-                                </label>
-                            </div>
-                            <div v-if="fileObj" class="mt-3 text-xs text-accent flex items-center gap-1">
-                                <i data-lucide="check-circle-2" class="w-3 h-3"></i> {{ fileObj.name }}
-                            </div>
-                        </div>
-
-                        <div class="relative mt-4">
-                            <label class="block text-xs font-semibold tracking-wider text-slate-400 uppercase mb-2 flex items-center gap-2">
-                                <i data-lucide="align-left" class="w-4 h-4"></i> Text Input
-                            </label>
-                            <textarea v-model="inferenceText" rows="4" class="glass-input w-full rounded-lg p-4 text-sm transition-all resize-none" placeholder="Provide raw input text here for NLP tasks..."></textarea>
-                        </div>
-
-                        <button @click="runPredict" :disabled="isPredicting" 
-                                class="w-full relative overflow-hidden group bg-accent hover:bg-[#20a7df] text-darkBg font-bold py-4 px-6 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed transform active:scale-[0.98]">
-                            <span class="relative z-10 flex items-center justify-center gap-2">
-                                <i v-if="!isPredicting" data-lucide="play" class="w-5 h-5"></i>
-                                <i v-else data-lucide="loader-2" class="w-5 h-5 animate-spin"></i>
-                                {{ isPredicting ? 'Processing...' : 'Run Prediction' }}
-                            </span>
-                        </button>
-                    </div>
-
-                    <!-- OUTPUT PANEL -->
-                    <div class="glass-input rounded-xl border border-white/5 flex flex-col h-full min-h-[400px]">
-                        <div class="p-4 border-b border-white/5 bg-slate-900/40 flex items-center justify-between">
-                            <h3 class="text-xs font-semibold tracking-wider text-slate-400 uppercase flex items-center gap-2">
-                                <i data-lucide="terminal" class="w-4 h-4"></i> Output Result
-                            </h3>
-                        </div>
-                        
-                        <div class="p-5 flex-grow flex flex-col w-full">
-                            <pre v-if="predictResponse" class="flex-grow w-full text-xs font-mono text-emerald-400 bg-[#0c1222] p-4 rounded-lg overflow-auto border border-emerald-500/20 shadow-inner">{{ JSON.stringify(predictResponse, null, 2) }}</pre>
-                            
-                            <div v-else class="flex-grow flex flex-col items-center justify-center text-slate-500">
-                                <i data-lucide="code-2" class="w-12 h-12 mb-3 opacity-20"></i>
-                                <p class="text-sm font-light">Awaiting prediction output...</p>
-                            </div>
-
-                            <!-- Optional Image Preview -->
-                            <div v-if="previewSrc" class="mt-6 border-t border-white/10 pt-4 relative">
-                                <p class="text-[10px] uppercase text-slate-500 mb-2 font-semibold tracking-wider">Input Preview</p>
-                                <img :src="previewSrc" id="previewImg" class="max-h-48 rounded-lg outline outline-1 outline-white/10 object-contain shadow-lg" />
+                                </div>
+                                <div v-if="!livePredictions.length" class="text-outline italic text-xs text-center py-8">Awaiting data...</div>
                             </div>
                         </div>
                     </div>
-                    
                 </div>
-            </div>
-        </div>
+            </template>
 
+            <!-- ============ DETECTION ============ -->
+            <template v-if="currentView==='detection'">
+                <div class="grid grid-cols-12 gap-4">
+                    <div class="col-span-3 space-y-4">
+                        <div class="glass p-5"><h3 class="text-[10px] font-bold uppercase tracking-widest text-outline mb-4">Loss Functions</h3>
+                            <div class="space-y-4">
+                                <div v-for="(val,key) in detLossBreakdown" class="flex flex-col gap-1">
+                                    <div class="flex justify-between text-[10px]"><span class="text-outline uppercase">{{key}}</span><span class="font-mono">{{val.toFixed(4)}}</span></div>
+                                    <div class="h-1.5 bg-s4 rounded-full"><div class="h-full bg-secondary rounded-full" :style="{width:Math.min(100,val*20)+'%'}"></div></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="glass p-5"><h3 class="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">Spatial Accuracy</h3><canvas id="radarChart" height="180"></canvas></div>
+                    </div>
+                    <div class="col-span-6 glass p-5 min-h-[500px] flex flex-col">
+                        <div class="flex justify-between items-center mb-3">
+                            <h3 class="text-[10px] font-bold uppercase tracking-widest text-outline">Live Inference</h3>
+                            <div class="flex items-center gap-2 text-[10px]"><span class="text-outline">Threshold</span><input type="range" min="0" max="100" v-model="detThreshold" class="w-24"><span class="font-mono text-accent">{{(detThreshold/100).toFixed(2)}}</span></div>
+                        </div>
+                        <div class="flex-grow flex items-center justify-center relative bg-black/30 rounded overflow-hidden">
+                            <div v-if="detImage" class="relative"><img :src="'data:image/png;base64,'+detImage" class="max-w-full max-h-[450px] rounded">
+                                <svg class="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                    <g v-for="(b,i) in filteredGtBoxes" :key="'gt'+i"><rect :x="b.x*100" :y="b.y*100" :width="b.w*100" :height="b.h*100" fill="none" stroke="white" stroke-width="0.3" stroke-dasharray="1,1"/></g>
+                                    <g v-for="(b,i) in filteredDetBoxes" :key="'p'+i"><rect :x="b.x*100" :y="b.y*100" :width="b.w*100" :height="b.h*100" class="fill-accent/10 stroke-accent" stroke-width="0.4"/><text :x="b.x*100+0.5" :y="b.y*100-0.5" class="fill-accent" style="font-size:2px;font-family:JetBrains Mono">{{b.label}} {{(b.score*100).toFixed(0)}}%</text></g>
+                                </svg>
+                            </div>
+                            <div v-else class="text-outline italic text-xs flex flex-col items-center gap-2"><span class="material-symbols-outlined text-3xl animate-pulse">center_focus_strong</span>Awaiting stream...</div>
+                        </div>
+                    </div>
+                    <div class="col-span-3 glass p-5">
+                        <h3 class="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">Leaderboard</h3>
+                        <div class="space-y-2 max-h-[450px] overflow-y-auto pr-1">
+                            <div v-for="(val,key) in detLeaderboard" class="flex justify-between items-center p-2 bg-s1/50 rounded text-xs"><span class="font-medium">{{key}}</span><span class="font-mono text-tertiary">{{(val*100).toFixed(1)}}%</span></div>
+                            <div v-if="!Object.keys(detLeaderboard).length" class="text-outline italic text-[11px] text-center py-4">No class data</div>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- ============ GAN ============ -->
+            <template v-if="currentView==='gan'">
+                <div class="glass p-5">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-[10px] font-bold uppercase tracking-widest text-outline">Evolution Grid</h3>
+                        <span class="text-[10px] text-outline">Real-time generator output across {{ganSamples.length}} latent seeds</span>
+                    </div>
+                    <div class="grid grid-cols-8 gap-1.5">
+                        <div v-for="(img,i) in ganSamples" :key="i" class="aspect-square bg-s1 rounded overflow-hidden sweep-anim"><img :src="'data:image/png;base64,'+img" class="w-full h-full object-cover"></div>
+                        <div v-if="!ganSamples.length" class="col-span-8 h-40 flex items-center justify-center text-outline italic text-xs">Awaiting generator output...</div>
+                    </div>
+                    <div v-if="ganHistory.length>1" class="mt-4 flex items-center gap-3">
+                        <span class="text-[10px] text-outline font-mono">Epoch {{ganSliderEpoch}}</span>
+                        <input type="range" :min="0" :max="ganHistory.length-1" v-model="ganSliderIdx" @input="showGanHistoryEpoch" class="flex-grow">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="glass p-5 h-[280px] flex flex-col"><h3 class="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">Adversarial Loss</h3><div class="flex-grow min-h-0"><canvas id="ganLossChart"></canvas></div></div>
+                    <div class="glass p-5">
+                        <h3 class="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">Latent Space Explorer</h3>
+                        <p class="text-[10px] text-outline mb-3">Direct Z-Vector Manipulation</p>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div v-for="n in 4" :key="n" class="flex flex-col gap-1"><span class="text-[9px] font-mono text-outline">z[{{n-1}}]</span><input type="range" min="-300" max="300" :value="latentZ[n-1]||0" @input="latentZ[n-1]=parseInt($event.target.value)/100" class="w-full"></div>
+                        </div>
+                        <button @click="generateLatent" class="mt-3 w-full py-2 rounded text-[11px] font-medium bg-gradient-to-r from-accentC to-accent text-bg glow-primary hover:brightness-110 transition-all">Generate Sample</button>
+                        <div v-if="latentResult" class="mt-3 flex justify-center"><img :src="'data:image/png;base64,'+latentResult" class="w-32 h-32 rounded border border-outV/15"></div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- ============ NLP ============ -->
+            <template v-if="currentView==='nlp'">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="space-y-4">
+                        <div class="glass p-5 h-[300px] flex flex-col"><h3 class="text-[10px] font-bold uppercase tracking-widest text-outline mb-3"><span class="material-symbols-outlined text-xs align-middle">bar_chart</span> Sentiment Performance</h3><div class="flex-grow min-h-0"><canvas id="nlpMetricsChart"></canvas></div></div>
+                        <div class="glass p-5 h-[250px] flex flex-col"><h3 class="text-[10px] font-bold uppercase tracking-widest text-outline mb-3"><span class="material-symbols-outlined text-xs align-middle">analytics</span> Token Distribution</h3><div class="flex-grow min-h-0"><canvas id="tokenDistChart"></canvas></div></div>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="glass p-5 max-h-[350px] overflow-y-auto">
+                            <h3 class="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">Text Stream</h3>
+                            <div class="space-y-2">
+                                <div v-for="(item,i) in nlpTextStream" :key="i" class="p-3 rounded bg-s1/50 border-l-2" :class="item.label==='POSITIVE'?'border-l-tertiary':'border-l-secondary'">
+                                    <p class="text-[12px] leading-relaxed"><template v-if="item.tokenWeights"><span v-for="(w,tok) in item.tokenWeights" :style="{background:'rgba(77,142,255,'+Math.min(0.8,w)+')'}" class="text-highlight">{{tok}} </span></template><template v-else>{{item.text}}</template></p>
+                                    <div class="flex justify-between mt-1"><span class="text-[9px] font-mono" :class="item.label==='POSITIVE'?'text-tertiary':'text-secondary'">{{item.label}}</span><span class="text-[9px] font-mono text-outline">{{(item.confidence*100).toFixed(1)}}%</span></div>
+                                </div>
+                                <div v-if="!nlpTextStream.length" class="text-outline italic text-xs text-center py-8">Awaiting text samples...</div>
+                            </div>
+                        </div>
+                        <div class="glass p-5">
+                            <h3 class="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">Interactive Inference</h3>
+                            <div class="flex gap-2"><input v-model="nlpInputText" @keyup.enter="predictNLP" placeholder="Type a sentence..." class="flex-grow bg-[#0e0e0e] border border-outV/15 rounded px-3 py-2 text-xs text-onSurf focus:border-accent/50 outline-none transition-all"><button @click="predictNLP" class="px-4 py-2 rounded bg-gradient-to-r from-accentC to-accent text-bg text-[11px] font-medium glow-primary">Analyze</button></div>
+                            <div v-if="nlpPredResult" class="mt-3 flex items-center gap-4 p-3 rounded bg-s1/50">
+                                <div class="relative w-16 h-16 flex items-center justify-center shrink-0"><svg class="w-full h-full -rotate-90"><circle cx="50%" cy="50%" r="42%" class="fill-none stroke-s4" stroke-width="6"/><circle cx="50%" cy="50%" r="42%" class="fill-none stroke-accent" stroke-width="6" :style="{strokeDasharray:'264',strokeDashoffset:264-(264*nlpPredResult.confidence)}"/></svg><div class="absolute text-[11px] font-mono">{{(nlpPredResult.confidence*100).toFixed(0)}}%</div></div>
+                                <div><div class="text-xs font-medium" :class="nlpPredResult.label==='POSITIVE'?'text-tertiary':'text-secondary'">{{nlpPredResult.label}}</div><div class="text-[9px] text-outline mt-0.5">Confidence score</div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- ============ SYSTEM MONITOR ============ -->
+            <template v-if="currentView==='system'">
+                <div class="grid grid-cols-3 gap-4">
+                    <div v-for="g in gauges" :key="g.label" class="glass p-5 flex flex-col items-center">
+                        <div class="text-[9px] uppercase tracking-widest text-outline font-bold mb-3">{{g.label}}</div>
+                        <div class="relative w-28 h-28 flex items-center justify-center">
+                            <svg class="w-full h-full -rotate-90"><circle cx="50%" cy="50%" r="42%" class="fill-none stroke-s4" stroke-width="8"/><circle cx="50%" cy="50%" r="42%" class="fill-none gauge-ring" :stroke="g.color" stroke-width="8" :style="{strokeDasharray:'264',strokeDashoffset:264-(264*g.pct/100)}"/></svg>
+                            <div class="absolute text-center"><div class="text-xl font-display font-bold">{{g.value}}</div><div class="text-[9px] text-outline">{{g.unit}}</div></div>
+                        </div>
+                        <div class="text-[9px] mt-2 font-mono" :class="g.status==='OK'?'text-tertiary':'text-secondary'">{{g.status}}</div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="glass p-5">
+                        <h3 class="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">VRAM Status</h3>
+                        <div v-if="sysStats" class="space-y-2">
+                            <div class="flex justify-between text-[10px]"><span class="text-outline">Device: {{gpuName}}</span><span class="font-mono">{{sysStats.processUsedMB.toFixed(0)}}/{{sysStats.totalMB.toFixed(0)}} MB</span></div>
+                            <div class="h-4 bg-s4 rounded-full overflow-hidden relative"><div class="h-full rounded-full transition-all" :class="sysStats.utilizationPercent>95?'bg-err':sysStats.utilizationPercent>80?'bg-secondary':'bg-accent'" :style="{width:sysStats.utilizationPercent+'%'}"></div><div v-if="sysStats.utilizationPercent>90" class="absolute right-2 top-0.5 text-[8px] font-mono text-bg font-bold">⚠ HIGH</div></div>
+                        </div>
+                    </div>
+                    <div class="glass p-5">
+                        <h3 class="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">Pipeline Flow</h3>
+                        <div class="flex items-center gap-1 text-[10px]">
+                            <div v-for="(s,i) in pipelineStages" :key="i" class="flex items-center gap-1">
+                                <div class="px-2 py-1.5 rounded bg-s3 font-mono text-accent text-center" :style="{minWidth:s.w+'px'}">{{s.name}}<div class="text-[8px] text-outline">{{s.ms}}ms</div></div>
+                                <span v-if="i<pipelineStages.length-1" class="text-outline">→</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="glass p-5">
+                    <h3 class="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">Active Alerts</h3>
+                    <div class="space-y-2 max-h-[300px] overflow-y-auto">
+                        <div v-for="(a,i) in alerts" :key="i" class="alert-card p-3 rounded" :class="'alert-'+a.severity">
+                            <div class="text-[11px] font-semibold">{{a.title}}</div>
+                            <div class="text-[10px] text-outline mt-0.5">{{a.message}}</div>
+                        </div>
+                        <div v-if="!alerts.length" class="text-outline italic text-xs text-center py-4">No active alerts</div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- ============ LOGS ============ -->
+            <template v-if="currentView==='logs'">
+                <div class="glass overflow-hidden flex flex-col" style="height:calc(100vh - 140px)">
+                    <div class="px-5 py-3 border-b border-outV/15 bg-s3/30 flex justify-between items-center"><h3 class="text-[10px] font-bold uppercase tracking-widest text-outline">Raw Telemetry</h3><span class="text-[9px] font-mono text-outline">{{logStream.length}} entries</span></div>
+                    <div class="flex-grow bg-[#0a0a0a] p-4 font-mono text-[11px] overflow-y-auto space-y-0.5">
+                        <div v-for="(l,i) in logStream" :key="i" class="flex gap-3"><span class="text-outline/50 shrink-0">[{{l.time}}]</span><span :class="l.type==='error'?'text-err':'text-tertiary'">{{l.msg}}</span></div>
+                    </div>
+                </div>
+            </template>
+        </div>
     </main>
 </div>
 
-<style>
-    .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-</style>
-
 <script>
-    const { createApp, ref, reactive, onMounted, nextTick } = Vue;
+const{createApp,ref,reactive,onMounted,computed,watch,nextTick}=Vue;
+createApp({
+    setup(){
+        const currentView=ref('classification');
+        const wsStatus=ref('CONNECTING...');
+        const sysStats=ref(null);
+        const logStream=ref([]);
+        const modelName=ref('');
+        const currentEpoch=ref(0);
+        const totalEpochs=ref(0);
+        const paused=ref(false);
 
-    // Set Chart.js Defaults for Dark Mode
-    Chart.defaults.color = '#94a3b8';
-    Chart.defaults.borderColor = 'rgba(255, 255, 255, 0.05)';
-    Chart.defaults.font.family = "'Inter', sans-serif";
+        // Classification
+        const epochs=ref([]),trainLosses=ref([]),valLosses=ref([]),trainAccs=ref([]),testAccs=ref([]);
+        const confusionMatrix=ref([]),confusionLabels=ref([]);
+        const livePredictions=ref([]);
+        const cmMax=computed(()=>{let m=1;confusionMatrix.value.forEach(r=>r.forEach(v=>{if(v>m)m=v}));return m});
 
-    createApp({
-        setup() {
-            const currentTab = ref('training'); 
-            const epochs = ref([]);
-            const metrics = reactive({}); 
-            const metricKeys = ref([]);
-            const wsConnected = ref(false);
+        // GAN
+        const ganSamples=ref([]),gLosses=ref([]),dLosses=ref([]),ganEpochs=ref([]);
+        const ganHistory=ref([]),ganSliderIdx=ref(0);
+        const ganSliderEpoch=computed(()=>ganHistory.value.length?ganHistory.value[ganSliderIdx.value]?.epoch||0:0);
+        const latentZ=reactive([0,0,0,0]);
+        const latentResult=ref(null);
 
-            let lossChartInstance = null;
-            let accChartInstance = null;
+        // Detection
+        const detImage=ref(null),detPredBoxes=ref([]),detGtBoxes=ref([]),detThreshold=ref(50);
+        const detLossBreakdown=ref({}),detLeaderboard=ref({});
+        const filteredDetBoxes=computed(()=>detPredBoxes.value.filter(b=>b.score>=detThreshold.value/100));
+        const filteredGtBoxes=computed(()=>detGtBoxes.value);
 
-            
-            const sysStats = ref(null);
-            const lastUpdate = ref("-");
-            const inferenceTask = ref('classify_image'); 
-            const inferenceText = ref('');
-            const fileObj = ref(null);
-            const previewSrc = ref('');
-            const isPredicting = ref(false);
-            const predictResponse = ref(null);
+        // NLP
+        const nlpTextStream=ref([]),nlpInputText=ref(''),nlpPredResult=ref(null);
 
-            onMounted(() => {
-                // Initialize Lucide Icons
-                lucide.createIcons();
-                
-                initCharts();
-                fetchHistory();
-                connectWebSocket();
+        // System
+        const alerts=ref([]),gpuName=ref('GPU');
+        const gauges=computed(()=>{
+            const sys=sysStats.value?.system||sysStats.value||{};
+            const temp=sys.gpu_temp||0,gpuU=sys.gpu_util||0,cpuU=sys.cpu_util||0;
+            return[
+                {label:'GPU Thermal',value:temp.toFixed(0),unit:'°C',pct:Math.min(100,temp),color:temp>85?'#ffb4ab':temp>70?'#ffb690':'#4edea3',status:temp>85?'HOT':temp>70?'WARM':'OK'},
+                {label:'GPU Utilization',value:gpuU.toFixed(0),unit:'%',pct:gpuU,color:gpuU>90?'#ffb690':'#adc6ff',status:gpuU>90?'LOAD_MAX':'IDLE_BALANCED'},
+                {label:'CPU Compute',value:cpuU.toFixed(0),unit:'%',pct:cpuU,color:'#4edea3',status:'OK'}
+            ]
+        });
+        const pipelineStages=computed(()=>{
+            const p=sysStats.value?.pipeline||{};
+            return[{name:'Disk IO',ms:(p.disk_io||0).toFixed(0),w:60},{name:'DataLoader',ms:(p.dataloader_cpu||0).toFixed(0),w:70},{name:'PCIe',ms:(p.pcie_transfer||0).toFixed(0),w:50},{name:'GPU',ms:(p.gpu_compute||0).toFixed(0),w:50}]
+        });
 
-                // Re-init icons when tab changes
-                Vue.watch(currentTab, () => {
-                    nextTick(() => lucide.createIcons());
-                });
-            });
+        const views=[
+            {id:'classification',name:'Classification',icon:'category'},
+            {id:'detection',name:'Detection',icon:'analytics'},
+            {id:'gan',name:'GAN',icon:'psychology'},
+            {id:'nlp',name:'NLP',icon:'translate'},
+            {id:'system',name:'System Monitor',icon:'monitoring'},
+            {id:'logs',name:'Telemetry',icon:'terminal'}
+        ];
+        const activeView=computed(()=>views.find(v=>v.id===currentView.value)||views[0]);
 
-            const fetchHistory = async () => {
-                try {
-                    const res = await fetch('/api/metrics');
-                    if(res.ok) {
-                        const data = await res.json();
-                        epochs.value = data.epochs || [];
-                        Object.keys(data.series || {}).forEach(k => {
-                            metrics[k] = data.series[k];
-                        });
-                        metricKeys.value = Object.keys(metrics);
-                        updateCharts();
-                            lucide.createIcons();
+        let charts={};
+        const chartOpts={responsive:true,maintainAspectRatio:false,animation:{duration:300},plugins:{legend:{display:true,labels:{color:'#8c909f',font:{size:9,family:'JetBrains Mono'},boxWidth:8}}},scales:{y:{beginAtZero:true,grid:{color:'rgba(66,71,84,0.1)'},ticks:{color:'#8c909f',font:{size:9}}},x:{display:false}}};
+
+        const initCharts=()=>{
+            Chart.defaults.color='#8c909f';Chart.defaults.borderColor='rgba(66,71,84,0.1)';
+            const el=id=>document.getElementById(id);
+            if(el('lossChart')&&!charts.loss){charts.loss=new Chart(el('lossChart'),{type:'line',data:{labels:epochs.value,datasets:[{label:'Train',data:trainLosses.value,borderColor:'#adc6ff',tension:.4,borderWidth:1.5,pointRadius:0},{label:'Val',data:valLosses.value,borderColor:'#ffb690',tension:.4,borderWidth:1.5,pointRadius:0}]},options:chartOpts})}
+            if(el('accChart')&&!charts.acc){charts.acc=new Chart(el('accChart'),{type:'line',data:{labels:epochs.value,datasets:[{label:'Train',data:trainAccs.value,borderColor:'#4edea3',tension:.4,borderWidth:1.5,pointRadius:0},{label:'Test',data:testAccs.value,borderColor:'#adc6ff',tension:.4,borderWidth:1.5,pointRadius:0}]},options:chartOpts})}
+            if(el('ganLossChart')&&!charts.gan){charts.gan=new Chart(el('ganLossChart'),{type:'line',data:{labels:ganEpochs.value,datasets:[{label:'G-Loss',data:gLosses.value,borderColor:'#ffb4ab',backgroundColor:'rgba(255,180,171,0.05)',fill:true,tension:.4,borderWidth:1.5,pointRadius:0},{label:'D-Loss',data:dLosses.value,borderColor:'#adc6ff',backgroundColor:'rgba(173,198,255,0.05)',fill:true,tension:.4,borderWidth:1.5,pointRadius:0}]},options:chartOpts})}
+            if(el('nlpMetricsChart')&&!charts.nlpM){charts.nlpM=new Chart(el('nlpMetricsChart'),{type:'bar',data:{labels:['Positive','Negative','Neutral'],datasets:[]},options:{...chartOpts,scales:{...chartOpts.scales,x:{display:true,ticks:{color:'#8c909f',font:{size:9}}}}}})}
+        };
+        const updateCharts=()=>{Object.values(charts).forEach(c=>{try{c.update('none')}catch(e){}})};
+        const destroyCharts=()=>{Object.entries(charts).forEach(([k,c])=>{try{c.destroy()}catch(e){}});charts={}};
+
+        const connectWS=()=>{
+            const ws=new WebSocket(`${location.protocol==='https:'?'wss:':'ws:'}//${location.host}/ws/metrics`);
+            ws.onopen=()=>{wsStatus.value='LIVE'};
+            ws.onclose=()=>{wsStatus.value='OFFLINE';setTimeout(connectWS,2000)};
+            ws.onmessage=(e)=>{
+                const d=JSON.parse(e.data);
+                if(d.vram)sysStats.value={...sysStats.value,...d.vram};
+                if(d.system){sysStats.value={...(sysStats.value||{}),system:d.system,...(d.vram||{})};if(d.system.gpu_name)gpuName.value=d.system.gpu_name}
+                if(d.modelName)modelName.value=d.modelName;
+                if(d.totalEpochs)totalEpochs.value=d.totalEpochs;
+                if(d.epoch)currentEpoch.value=d.epoch;
+                if(d.paused!==undefined)paused.value=d.paused;
+
+                const task=d.taskType==='generic'?'classification':d.taskType;
+                if(task&&!['logs','system','system_alert'].includes(task)&&!['logs','system'].includes(currentView.value)){currentView.value=task}
+
+                if(['classification','generic'].includes(d.taskType)){
+                    const m=d.metrics||{};const isBatch=m.batch!==undefined;
+                    const lbl=isBatch?`${d.epoch}.${m.batch}`:`${d.epoch}`;
+                    epochs.value.push(lbl);trainLosses.value.push(m.loss||m.train_loss||0);
+                    if(m.val_loss!==undefined)valLosses.value.push(m.val_loss);
+                    if(!isBatch){if(m.train_acc!==undefined)trainAccs.value.push(m.train_acc);if(m.test_acc!==undefined)testAccs.value.push(m.test_acc)}
+                    if(m.confusionMatrix)confusionMatrix.value=m.confusionMatrix;
+                    if(m.classLabels)confusionLabels.value=m.classLabels;
+                    if(m.livePredictions)livePredictions.value=m.livePredictions;
+                    if(epochs.value.length>200){epochs.value.shift();trainLosses.value.shift();valLosses.value.shift();trainAccs.value.shift();testAccs.value.shift()}
+                    if(!charts.loss)nextTick(initCharts);else updateCharts();
+                }else if(d.taskType==='gan'){
+                    ganEpochs.value.push(d.epoch);gLosses.value.push(d.metrics.g_loss);dLosses.value.push(d.metrics.d_loss);
+                    if(d.metrics.samples)ganSamples.value=d.metrics.samples;
+                    if(!charts.gan)nextTick(initCharts);else updateCharts();
+                }else if(d.taskType==='detection'){
+                    const m=d.metrics||{};
+                    if(m.image)detImage.value=m.image;
+                    detPredBoxes.value=m.predBoxes||m.boxes||[];
+                    detGtBoxes.value=m.gtBoxes||[];
+                    if(m.lossBreakdown)detLossBreakdown.value=m.lossBreakdown;
+                    if(m.leaderboard)detLeaderboard.value=m.leaderboard;
+                }else if(d.taskType==='nlp'){
+                    const m=d.metrics||{};
+                    if(m.textStream)nlpTextStream.value=m.textStream;
+                    else if(m.sampleText)nlpTextStream.value=[{text:m.sampleText,label:m.predictedLabel,confidence:m.confidence,tokenWeights:m.tokenWeights},...nlpTextStream.value].slice(0,30);
+                    if(m.f1Scores&&charts.nlpM){
+                        const labels=Object.keys(m.f1Scores);
+                        charts.nlpM.data.labels=labels;
+                        charts.nlpM.data.datasets=[
+                            {label:'F1',data:labels.map(l=>m.f1Scores[l]),backgroundColor:'rgba(173,198,255,0.6)'},
+                            {label:'Precision',data:labels.map(l=>(m.precision||{})[l]||0),backgroundColor:'rgba(78,222,163,0.6)'},
+                            {label:'Recall',data:labels.map(l=>(m.recall||{})[l]||0),backgroundColor:'rgba(255,182,144,0.6)'}
+                        ];charts.nlpM.update('none');
                     }
-                } catch(e) {
-                    console.log("Offline or no history", e);
+                }else if(d.taskType==='system_alert'){
+                    if(d.alerts)alerts.value=d.alerts;
                 }
-            };
+                logStream.value.unshift({time:new Date().toLocaleTimeString(),msg:`Epoch ${d.epoch}: ${d.taskType} metrics`,type:'info'});
+                if(logStream.value.length>100)logStream.value.pop();
+            }
+        };
 
-            const connectWebSocket = () => {
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const ws = new WebSocket(`${protocol}//${window.location.host}/ws/metrics`);
-                
-                ws.onopen = () => { wsConnected.value = true; };
+        const fetchHistory=async()=>{try{const r=await fetch('/api/metrics');const d=await r.json();if(d.taskType)currentView.value=d.taskType==='generic'?'classification':d.taskType;if(d.modelName)modelName.value=d.modelName;if(d.totalEpochs)totalEpochs.value=d.totalEpochs;if(d.currentEpoch)currentEpoch.value=d.currentEpoch;if(d.series){const s=d.series;const lk=s.loss?'loss':s.g_loss?'g_loss':s.train_loss?'train_loss':null;if(lk&&s[lk]){epochs.value=Array.from({length:s[lk].length},(_,i)=>i+1);if(currentView.value==='classification'){trainLosses.value=s.loss||s.train_loss||[];trainAccs.value=s.train_acc||[];testAccs.value=s.test_acc||[]}else if(currentView.value==='gan'){ganEpochs.value=[...epochs.value];gLosses.value=s.g_loss||[];dLosses.value=s.d_loss||[]}nextTick(()=>{initCharts();updateCharts()})}}}catch(e){}};
+        const fetchAlerts=async()=>{try{const r=await fetch('/api/alerts');alerts.value=await r.json()}catch(e){}};
+        const fetchGanHistory=async()=>{try{const r=await fetch('/api/gan/history');ganHistory.value=await r.json();ganSliderIdx.value=ganHistory.value.length-1}catch(e){}};
+        const showGanHistoryEpoch=()=>{const h=ganHistory.value[ganSliderIdx.value];if(h&&h.samples)ganSamples.value=h.samples};
+        const togglePause=async()=>{try{await fetch(`/api/training/${paused.value?'resume':'pause'}`,{method:'POST'});paused.value=!paused.value}catch(e){}};
+        const predictNLP=async()=>{if(!nlpInputText.value.trim())return;try{const fd=new FormData();fd.append('text',nlpInputText.value);const r=await fetch('/api/predict/sentiment',{method:'POST',body:fd});const d=await r.json();if(d.result)nlpPredResult.value=d.result}catch(e){}};
+        const generateLatent=async()=>{try{const fd=new FormData();fd.append('text',JSON.stringify(latentZ));const r=await fetch('/api/predict/gan_latent',{method:'POST',body:fd});const d=await r.json();if(d.result&&d.result.image)latentResult.value=d.result.image}catch(e){}};
 
-                ws.onmessage = (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        console.log("WS received:", data);
+        onMounted(()=>{connectWS();fetchHistory();fetchAlerts();fetchGanHistory()});
+        watch(currentView,()=>{destroyCharts();nextTick(initCharts)});
 
-                        if (data.vram) {
-                            sysStats.value = data.vram;
-                        }
-                        if (data.timestamp) {
-                            const d = new Date(data.timestamp);
-                            lastUpdate.value = d.toLocaleTimeString() + "." + d.getMilliseconds().toString().padStart(3, '0');
-                        }
-                        
-                        if(!epochs.value.includes(data.epoch)) {
-                            epochs.value.push(data.epoch);
-                        }
-                        
-                        Object.keys(data.metrics).forEach(k => {
-                            if(!metrics[k]) {
-                                metrics[k] = [];
-                                if (!metricKeys.value.includes(k)) {
-                                    metricKeys.value.push(k);
-                                }
-                            }
-                            metrics[k].push(data.metrics[k]);
-                        });
-                        
-                        // Cập nhật biểu đồ sau khi Vue đã render data mới ở Table
-                        nextTick(() => {
-                            updateCharts();
-                            lucide.createIcons();
-                        });
-                    } catch(err) {
-                        console.error("Lỗi khi xử lý WS message:", err);
-                    }
-                };
-
-                ws.onclose = () => {
-                    wsConnected.value = false;
-                    setTimeout(connectWebSocket, 3000); 
-                };
-            };
-
-            const getMetricValue = (key, idx) => {
-                if(!metrics[key] || metrics[key].length <= idx) return '-';
-                return Number(metrics[key][idx]).toFixed(4);
-            };
-
-            const initCharts = () => {
-                const ctxL = document.getElementById('lossChart').getContext('2d');
-                const ctxA = document.getElementById('accChart').getContext('2d');
-                
-                const commonOptions = { 
-                    responsive: true, maintainAspectRatio: false, animation: {duration: 400},
-                    elements: {
-                        line: { tension: 0.3, borderWidth: 2 },
-                        point: { radius: 0, hitRadius: 8, hoverRadius: 4 }
-                    },
-                    plugins: { legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 6 } } },
-                    scales: {
-                        x: { grid: { display: false } },
-                        y: { border: { dash: [4, 4] } }
-                    }
-                };
-
-                lossChartInstance = new Chart(ctxL, { type: 'line', data: { labels: [], datasets: [] }, options: commonOptions });
-                accChartInstance = new Chart(ctxA, { type: 'line', data: { labels: [], datasets: [] }, options: commonOptions });
-            };
-
-            const updateCharts = () => {
-                const labels = [...epochs.value]; // Copy to avoid Vue proxy issues
-                const colors = ['#38bdf8', '#818cf8', '#6366f1', '#e879f9']; 
-                const colorsAcc = ['#34d399', '#10b981', '#fbbf24', '#f59e0b'];
-                
-                let lossData = [];
-                let accData = [];
-                let c1=0, c2=0;
-
-                metricKeys.value.forEach(k => {
-                    const ds = {
-                        label: k,
-                        data: [...metrics[k]], // Copy to avoid Vue proxy issues with Chart.js
-                        fill: true,
-                    };
-                    if(k.toLowerCase().includes('acc')) {
-                        ds.borderColor = colorsAcc[c2 % colorsAcc.length];
-                        ds.backgroundColor = ds.borderColor + '15'; // 15% opacity target
-                        accData.push(ds);
-                        c2++;
-                    } else {
-                        ds.borderColor = colors[c1 % colors.length];
-                        ds.backgroundColor = ds.borderColor + '15';
-                        lossData.push(ds);
-                        c1++;
-                    }
-                });
-
-                lossChartInstance.data.labels = labels;
-                lossChartInstance.data.datasets = lossData;
-                lossChartInstance.update();
-
-                accChartInstance.data.labels = labels;
-                accChartInstance.data.datasets = accData;
-                accChartInstance.update();
-            };
-
-            const onFileChange = (e) => {
-                const files = e.target.files;
-                if (!files.length) return;
-                fileObj.value = files[0];
-                
-                if (fileObj.value.type.startsWith('image/')) {
-                    previewSrc.value = URL.createObjectURL(fileObj.value);
-                } else {
-                    previewSrc.value = '';
-                }
-            };
-
-            const runPredict = async () => {
-                isPredicting.value = true;
-                predictResponse.value = null;
-
-                const formData = new FormData();
-                if (fileObj.value) formData.append("file", fileObj.value);
-                if (inferenceText.value) formData.append("text", inferenceText.value);
-
-                try {
-                    const res = await fetch(`/api/predict/${inferenceTask.value}`, {
-                        method: 'POST',
-                        body: formData
-                    });
-                    const json = await res.json();
-                    predictResponse.value = json;
-                } catch(err) {
-                    predictResponse.value = { error: err.message };
-                } finally {
-                    isPredicting.value = false;
-                    nextTick(() => lucide.createIcons());
-                }
-            };
-
-            return {
-                currentTab, epochs, metricKeys, getMetricValue, wsConnected,
-                sysStats, lastUpdate,
-                inferenceTask, inferenceText, fileObj, previewSrc, isPredicting, predictResponse,
-                onFileChange, runPredict
-            };
-        }
-    }).mount('#app');
+        return{currentView,views,activeView,wsStatus,sysStats,logStream,modelName,currentEpoch,totalEpochs,paused,
+            epochs,trainLosses,valLosses,trainAccs,testAccs,confusionMatrix,confusionLabels,cmMax,livePredictions,
+            ganSamples,gLosses,dLosses,ganHistory,ganSliderIdx,ganSliderEpoch,latentZ,latentResult,
+            detImage,detPredBoxes,detGtBoxes,detThreshold,filteredDetBoxes,filteredGtBoxes,detLossBreakdown,detLeaderboard,
+            nlpTextStream,nlpInputText,nlpPredResult,
+            alerts,gpuName,gauges,pipelineStages,
+            togglePause,predictNLP,generateLatent,showGanHistoryEpoch}
+    }
+}).mount('#app');
 </script>
 </body>
 </html>

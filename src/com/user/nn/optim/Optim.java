@@ -67,24 +67,43 @@ public class Optim {
                 if (t.grad == null)
                     continue;
 
-                t.toCPU();
-                t.grad.toCPU();
-
-                if (momentum > 0) {
-                    Tensor vel = v.get(p);
-                    vel.toCPU();
-                    for (int i = 0; i < vel.data.length; i++) {
-                        vel.data[i] = momentum * vel.data[i] + t.grad.data[i];
-                        t.data[i] -= lr * vel.data[i];
+                if (t.isGPU() && t.grad.isGPU()) {
+                    if (momentum > 0) {
+                        Tensor vel = v.get(p);
+                        vel.toGPU();
+                        // v = momentum * v + grad
+                        CUDAOps.mul(vel, momentum, vel);
+                        CUDAOps.add(vel, t.grad, vel);
+                        // t = t - lr * v
+                        Tensor delta = new Tensor(t.shape);
+                        delta.toGPU();
+                        CUDAOps.mul(vel, lr, delta);
+                        CUDAOps.sub(t, delta, t);
+                    } else {
+                        // t = t - lr * grad
+                        Tensor delta = new Tensor(t.shape);
+                        delta.toGPU();
+                        CUDAOps.mul(t.grad, lr, delta);
+                        CUDAOps.sub(t, delta, t);
                     }
-                    vel.markDirtyOnCPU();
                 } else {
-                    for (int i = 0; i < t.data.length; i++) {
-                        t.data[i] -= lr * t.grad.data[i];
+                    t.toCPU();
+                    t.grad.toCPU();
+                    if (momentum > 0) {
+                        Tensor vel = v.get(p);
+                        vel.toCPU();
+                        for (int i = 0; i < vel.data.length; i++) {
+                            vel.data[i] = momentum * vel.data[i] + t.grad.data[i];
+                            t.data[i] -= lr * vel.data[i];
+                        }
+                        vel.markDirtyOnCPU();
+                    } else {
+                        for (int i = 0; i < t.data.length; i++) {
+                            t.data[i] -= lr * t.grad.data[i];
+                        }
                     }
+                    t.markDirtyOnCPU();
                 }
-
-                t.markDirtyOnCPU();
             }
         }
 
@@ -104,8 +123,8 @@ public class Optim {
         private float beta1;
         private float beta2;
         private float eps;
-        private float[][] m; // first moment
-        private float[][] v; // second moment
+        private Tensor[] m; // first moment
+        private Tensor[] v; // second moment
         private int stepCount;
 
         public Adam(List<Parameter> params, float lr) {
@@ -124,12 +143,12 @@ public class Optim {
             this.beta2 = beta2;
             this.eps = eps;
             this.stepCount = 0;
-            this.m = new float[params.size()][];
-            this.v = new float[params.size()][];
+            this.m = new Tensor[params.size()];
+            this.v = new Tensor[params.size()];
             for (int i = 0; i < params.size(); i++) {
-                int n = params.get(i).getTensor().data.length;
-                this.m[i] = new float[n];
-                this.v[i] = new float[n];
+                int[] shape = params.get(i).getTensor().shape;
+                this.m[i] = new Tensor(shape);
+                this.v[i] = new Tensor(shape);
             }
         }
 
@@ -142,22 +161,33 @@ public class Optim {
                 Tensor t = parameters.get(i).getTensor();
                 if (t.grad == null)
                     continue;
-                
-                t.toCPU();
-                t.grad.toCPU();
 
-                float[] mi = this.m[i];
-                float[] vi = this.v[i];
-                for (int j = 0; j < t.data.length; j++) {
-                    float g = t.grad.data[j];
-                    mi[j] = beta1 * mi[j] + (1f - beta1) * g;
-                    vi[j] = beta2 * vi[j] + (1f - beta2) * g * g;
-                    float mHat = mi[j] / bc1;
-                    float vHat = vi[j] / bc2;
-                    t.data[j] -= lr * mHat / ((float) Math.sqrt(vHat) + eps);
+                Tensor mi = this.m[i];
+                Tensor vi = this.v[i];
+
+                if (t.isGPU() && t.grad.isGPU()) {
+                    mi.toGPU();
+                    vi.toGPU();
+                    CUDAOps.adamStep(t, t.grad, mi, vi, beta1, beta2, lr, eps, stepCount);
+                } else {
+                    t.toCPU();
+                    t.grad.toCPU();
+                    mi.toCPU();
+                    vi.toCPU();
+
+                    for (int j = 0; j < t.data.length; j++) {
+                        float g = t.grad.data[j];
+                        mi.data[j] = beta1 * mi.data[j] + (1f - beta1) * g;
+                        vi.data[j] = beta2 * vi.data[j] + (1f - beta2) * g * g;
+                        float mHat = mi.data[j] / bc1;
+                        float vHat = vi.data[j] / bc2;
+                        t.data[j] -= lr * mHat / ((float) Math.sqrt(vHat) + eps);
+                    }
+
+                    t.markDirtyOnCPU();
+                    mi.markDirtyOnCPU();
+                    vi.markDirtyOnCPU();
                 }
-
-                t.markDirtyOnCPU();
             }
         }
 

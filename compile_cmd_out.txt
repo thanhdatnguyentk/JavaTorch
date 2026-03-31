@@ -1,0 +1,51 @@
+> Task :compileJava NO-SOURCE
+
+> Task :core:compileJava FAILED
+warning: using incubating module(s): jdk.incubator.vector
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples\TrainGANAnime.java:169: error: method full in class Torch cannot be applied to given types;
+                    Tensor realLabels = Torch.full(new int[] {bSize, 1}, 0.9f, useGpu ? "cuda" : "cpu");
+                                             ^
+  required: int[],float
+  found:    int[],float,useGpu ? "[...]"cpu"
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples\TrainGANAnime.java:173: error: method randn in class Torch cannot be applied to given types;
+                    Tensor noise = Torch.randn(new int[] {bSize, latentDim}, useGpu ? "cuda" : "cpu");
+                                        ^
+  required: int[]
+  found:    int[],useGpu ? "[...]"cpu"
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples\TrainGANAnime.java:176: error: method full in class Torch cannot be applied to given types;
+                    Tensor fakeLabels = Torch.full(new int[] {bSize, 1}, 0.1f, useGpu ? "cuda" : "cpu");
+                                             ^
+  required: int[],float
+  found:    int[],float,useGpu ? "[...]"cpu"
+  reason: actual and formal argument lists differ in length
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples\TrainIris.java:287: error: variable idx is already defined in method main(String[])
+                            Integer[] idx = new Integer[numClasses]; for (int c = 0; c < numClasses; c++) idx[c] = c;
+                                      ^
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples\TrainIris.java:326: error: variable irisLabels is already defined in method main(String[])
+        String[] irisLabels = {"Iris-setosa", "Iris-versicolor", "Iris-virginica"};
+                 ^
+D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\src\com\user\nn\examples\TrainYOLOCoco.java:333: error: method broadcastDetectionDetailed in class DashboardIntegrationHelper cannot be applied to given types;
+                            DashboardIntegrationHelper.broadcastDetectionDetailed(
+                                                      ^
+  required: DashboardServer,int,Map<String,Float>,float[],int,int,List<Map<String,Object>>,List<Map<String,Object>>,Map<String,Float>,Map<String,Float>,float
+  found:    DashboardServer,int,Map<String,Float>,float[],int,int,List<Map<String,Object>>,Map<String,Float>,List<Map<String,Object>>
+  reason: actual and formal argument lists differ in length
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+6 errors
+1 warning
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':core:compileJava'.
+> Compilation failed; see the compiler error output for details.
+
+* Try:
+> Run with --info option to get more log output.
+> Run with --scan to get full insights.
+
+BUILD FAILED in 2s
+1 actionable task: 1 executed

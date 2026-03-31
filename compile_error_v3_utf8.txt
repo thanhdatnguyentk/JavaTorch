@@ -1,0 +1,18 @@
+﻿To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.10.2/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+
+> Task :core:compileJava
+.\gradlew.bat : warning: using incubating module(s): jdk.incubator.vector
+At line:1 char:1
++ .\gradlew.bat :core:compileJava --no-daemon --console=plain > compile ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (warning: using ...ncubator.vector:String) [], Rem 
+   oteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+1 warning
+
+BUILD SUCCESSFUL in 15s
+1 actionable task: 1 executed

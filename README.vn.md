@@ -54,8 +54,15 @@ flowchart LR
 - CPU acceleration bang Java Vector API va OpenBLAS qua JavaCPP/bytedeco.
 - GPU acceleration bang JCuda, cuBLAS, cuDNN, **memory pool tu dong mo rong**, CUDA streams, PTX kernels tuy bien, va theo doi VRAM voi `GpuMemoryMonitor`.
 - Thu vien predict voi `Predictor`, `ImagePredictor`, `TextPredictor`, `BatchPredictor` va `PredictionPipeline` cho inference.
-- **Dashboard realtime:** Tich hop san server Web tren cong 7070 phuc vu Theo doi bieu do huan luyen realtime qua Chart.js, giam sat VRAM va thu nghiem Inference playground (hinh anh & text).
-- Vi du end-to-end cho Iris, Fashion-MNIST, CIFAR-10, Sentiment Analysis, ViT, GAN, VAE — tat ca deu tich hop predict demo.
+- **Neural Dashboard (Phiên bản cao cấp)**: Dashboard web hiệu năng cao được xây dựng với Vue 3, Tailwind CSS và WebSocket. Giao diện tối chuyên nghiệp (Neural Overlay) với hiệu ứng kính mờ (glassmorphism).
+- **Giao diện chuyên biệt thời gian thực**:
+  - **Phân loại (Classification)**: Lưới dự đoán trực tiếp với thanh độ tin cậy và bản đồ nhiệt ma trận nhầm lẫn (Confusion Matrix).
+  - **Phát hiện đối tượng (Detection)**: Hiển thị bounding box thời gian thực trên khung hình, bảng xếp hạng IOU/mAP và biểu đồ phân tích loss (box/cls/obj).
+  - **GAN / Generative**: Thư viện mẫu ảnh sinh ra trực tiếp với khả năng xem lại lịch sử (Time-lapse) để theo dõi tiến trình của Generator.
+  - **NLP**: Telemetry đa nhiệm với biểu đồ phân phối cảm xúc/chủ đề, đánh dấu trọng số token (Attention) và dòng văn bản đang sinh ra.
+  - **Giám sát hệ thống (System Monitor)**: Các đồng hồ đo (gauges) theo phong cách hiện đại cho GPU VRAM (System, Pool, Runtime), CPU utilization và độ trễ các giai đoạn pipeline.
+- **Điều khiển huấn luyện**: Tích hợp nút tạm dừng (Pause), tiếp tục (Resume) và sân chơi thử nghiệm inference trực tiếp từ giao diện web.
+- Các ví dụ End-to-end cho Iris, Fashion-MNIST, CIFAR-10, Sentiment Analysis, ViT, GAN, VAE và YOLO — tất cả đều tích hợp telemetry dashboard phong phú.
 - Bo test PowerShell hien dang ky 45 test class va dang pass toan bo.
 
 ## Prediction / Inference

@@ -17,6 +17,7 @@ public class DashboardServer {
     private final int port;
     private Javalin app;
     private final TrainingHistory history;
+    private String currentTaskType = "generic"; // e.g., "classification", "detection", "gan", "nlp"
     
     // Store registered prediction handlers per task path
     private final Map<String, PredictHandler> predictHandlers = new ConcurrentHashMap<>();
@@ -25,31 +26,72 @@ public class DashboardServer {
     private final Queue<WsContext> wsSessions = new ConcurrentLinkedQueue<>();
     private final ObjectMapper mapper = new ObjectMapper();
 
+    // Rich metrics collector for dashboard features
+    private final DashboardMetricsCollector metricsCollector = new DashboardMetricsCollector();
+
+    // Training control
+    private volatile boolean trainingPaused = false;
+    private volatile String modelName = "Model";
+    private volatile int currentEpoch = 0;
+    private volatile int totalEpochs = 0;
+
     public DashboardServer(int port, TrainingHistory history) {
         this.port = port;
         this.history = history;
     }
 
+    public void setTaskType(String taskType) {
+        this.currentTaskType = taskType;
+    }
+
+    public void setModelInfo(String name, int totalEpochs) {
+        this.modelName = name;
+        this.totalEpochs = totalEpochs;
+    }
+
+    public void setCurrentEpoch(int epoch) {
+        this.currentEpoch = epoch;
+    }
+
+    public boolean isTrainingPaused() {
+        return trainingPaused;
+    }
+
+    public DashboardMetricsCollector getMetricsCollector() {
+        return metricsCollector;
+    }
+
     public DashboardServer start() {
         if (app != null) return this;
+
+        // Start GPU metrics collection in background
+        metricsCollector.startPeriodicCollection();
 
         ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         
         app = Javalin.create(config -> {
             config.plugins.enableCors(cors -> cors.add(it -> it.anyHost()));
             config.staticFiles.add(staticFileConfig -> {
-                staticFileConfig.directory = "public"; // Points to src/main/resources/public
-                staticFileConfig.location = Location.CLASSPATH;
+                // Use external path for development to allow instant UI updates without rebuild
+                String devPath = "core/src/main/resources/public";
+                if (new File(devPath).exists()) {
+                    staticFileConfig.directory = devPath;
+                    staticFileConfig.location = Location.EXTERNAL;
+                } else {
+                    staticFileConfig.directory = "public";
+                    staticFileConfig.location = Location.CLASSPATH;
+                }
             });
             config.jsonMapper(new io.javalin.json.JavalinJackson(mapper));
         }).start(port);
 
         setupRoutes();
-        System.out.println("[DashboardServer] Started at http://localhost:" + port);
+        System.out.println("[DashboardServer] Started at http://localhost:" + port + " [Task: " + currentTaskType + "]");
         return this;
     }
     
     public void stop() {
+        metricsCollector.stop();
         if (app != null) {
             app.stop();
             app = null;
@@ -59,20 +101,72 @@ public class DashboardServer {
     private void setupRoutes() {
         // API để load lịch sử train (Offline viewing / initial load)
         app.get("/api/metrics", ctx -> {
-            // Lấy dữ liệu từ TrainingHistory trả về list các history points
             Map<String, Object> data = new HashMap<>();
+            data.put("taskType", currentTaskType);
             data.put("epochs", history.getEpochs());
+            data.put("modelName", modelName);
+            data.put("currentEpoch", currentEpoch);
+            data.put("totalEpochs", totalEpochs);
             Map<String, List<Float>> series = new HashMap<>();
-            // Assuming TrainingHistory has getMetrics() Map
             try {
-                // Tạm thời tự extract thông qua list custom nếu có
                 var map = history.getMetrics();
                 series.putAll(map);
-            } catch(Exception e) {
-                // ignore
-            }
+            } catch(Exception e) {}
             data.put("series", series);
             ctx.json(data);
+        });
+
+        // System metrics endpoint
+        app.get("/api/system", ctx -> {
+            ctx.json(metricsCollector.buildSystemPayload());
+        });
+
+        // Alerts endpoint
+        app.get("/api/alerts", ctx -> {
+            ctx.json(metricsCollector.getAlerts());
+        });
+
+        // Confusion matrix endpoint
+        app.get("/api/confusion", ctx -> {
+            Map<String, Object> cm = metricsCollector.getLatestConfusionMatrix();
+            if (cm != null) {
+                ctx.json(cm);
+            } else {
+                ctx.json(Map.of("matrix", new int[0][0], "labels", new String[0]));
+            }
+        });
+
+        // Live predictions endpoint
+        app.get("/api/predictions", ctx -> {
+            ctx.json(metricsCollector.getLivePredictions());
+        });
+
+        // GAN sample history for time-lapse
+        app.get("/api/gan/history", ctx -> {
+            ctx.json(metricsCollector.getGANSampleHistory());
+        });
+
+        // NLP text stream
+        app.get("/api/nlp/stream", ctx -> {
+            ctx.json(metricsCollector.getNLPTextStream());
+        });
+
+        // Detection leaderboard
+        app.get("/api/detection/leaderboard", ctx -> {
+            ctx.json(metricsCollector.getPerClassMAP());
+        });
+
+        // Training control (pause / resume)
+        app.post("/api/training/pause", ctx -> {
+            trainingPaused = true;
+            ctx.json(Map.of("status", "paused"));
+        });
+        app.post("/api/training/resume", ctx -> {
+            trainingPaused = false;
+            ctx.json(Map.of("status", "running"));
+        });
+        app.get("/api/training/status", ctx -> {
+            ctx.json(Map.of("paused", trainingPaused, "epoch", currentEpoch, "totalEpochs", totalEpochs, "modelName", modelName));
         });
 
         // Đăng kí nhận predict 
@@ -112,15 +206,27 @@ public class DashboardServer {
     }
 
     /**
-     * Broadcast 1 log mới nhất từ Training loop lên tát cả Web users.
+     * Broadcast 1 log mới nhất từ Training loop lên tất cả Web users (Generic / Rich data).
      */
-    public void broadcastMetrics(int epoch, Map<String, Float> metrics) {
+    public void broadcastTaskMetrics(int epoch, Map<String, Object> metrics) {
         if (wsSessions.isEmpty()) return;
 
+        this.currentEpoch = epoch;
+
         Map<String, Object> payload = new HashMap<>();
+        payload.put("taskType", currentTaskType);
         payload.put("epoch", epoch);
         payload.put("metrics", metrics);
         payload.put("timestamp", System.currentTimeMillis());
+        payload.put("modelName", modelName);
+        payload.put("totalEpochs", totalEpochs);
+        payload.put("paused", trainingPaused);
+
+        // Attach system metrics
+        try {
+            Map<String, Object> sys = metricsCollector.getSystemMetrics();
+            if (!sys.isEmpty()) payload.put("system", sys);
+        } catch (Throwable t) {}
 
         try {
             if (com.user.nn.core.CUDAOps.isAvailable()) {
@@ -134,11 +240,11 @@ public class DashboardServer {
                 vram.put("processUsedMB", processUsed / (1024.0 * 1024.0));
                 vram.put("poolUsedMB", poolUsed / (1024.0 * 1024.0));
                 vram.put("totalMB", total[0] / (1024.0 * 1024.0));
+                vram.put("freeMB", free[0] / (1024.0 * 1024.0));
+                vram.put("utilizationPercent", (double) processUsed / total[0] * 100.0);
                 payload.put("vram", vram);
             }
-        } catch (Throwable t) {
-            // ignore
-        }
+        } catch (Throwable t) {}
 
         String json;
         try {
@@ -154,6 +260,14 @@ public class DashboardServer {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    /**
+     * Backward compatibility for legacy training loops using Float metrics.
+     */
+    public void broadcastMetrics(int epoch, Map<String, Float> metrics) {
+        Map<String, Object> objMetrics = new HashMap<>(metrics);
+        broadcastTaskMetrics(epoch, objMetrics);
     }
 
     /**
@@ -188,7 +302,6 @@ public class DashboardServer {
         }
 
         try {
-            // Read saved state
             Map<?, ?> data = mapper.readValue(dataFile, Map.class);
             
             Javalin offlineApp = Javalin.create(config -> {
@@ -209,10 +322,6 @@ public class DashboardServer {
         }
     }
     
-    /**
-     * CLI entry point cho chế độ Offline.
-     * Sử dụng: java com.user.nn.utils.dashboard.DashboardServer <port> <path_to_json>
-     */
     public static void main(String[] args) {
         if (args.length < 2) {
             System.out.println("Usage: DashboardServer <port> <path_to_json>");

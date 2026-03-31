@@ -102,6 +102,11 @@ public class TrainVAEMnist {
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), lr);
         com.user.nn.optim.Scheduler.StepLR scheduler = new com.user.nn.optim.Scheduler.StepLR(optimizer, 10, 0.5f);
 
+        TrainingHistory history = new TrainingHistory();
+        DashboardServer dashboard = new DashboardServer(7070, history).start();
+        dashboard.setTaskType("gan");
+        dashboard.setModelInfo("VAE-MNIST", epochs);
+
         System.out.println("Starting Training Loop...");
         for (int epoch = 1; epoch <= epochs; epoch++) {
             double totalLoss = 0;
@@ -146,9 +151,39 @@ public class TrainVAEMnist {
                     totalLoss += loss.item();
                     count++;
                 }
+                while (dashboard.isTrainingPaused()) {
+                    try { Thread.sleep(200); } catch (InterruptedException ie) { break; }
+                }
             }
-            System.out.printf("Epoch %d | Loss: %.4f | LR: %.6f%n", epoch, totalLoss / count, optimizer.getLearningRate());
+            float avgLoss = (float)(totalLoss / count);
+            dashboard.setCurrentEpoch(epoch);
+            System.out.printf("Epoch %d | Loss: %.4f | LR: %.6f%n", epoch, avgLoss, optimizer.getLearningRate());
             scheduler.step();
+
+            try {
+                Map<String, Float> metricsMap = new HashMap<>();
+                metricsMap.put("loss", avgLoss);
+                metricsMap.put("g_loss", avgLoss); // map to gan loss for ui
+                metricsMap.put("d_loss", 0f);      // mock
+                history.record(epoch, metricsMap);
+
+                // Generate 16 samples for dashboard
+                model.eval();
+                java.util.List<float[]> sampleList = new java.util.ArrayList<>();
+                try (MemoryScope sScope = new MemoryScope()) {
+                    Tensor sNoise = Torch.randn(new int[]{16, latentDim}).toGPU();
+                    Tensor sFake = model.decode(sNoise);
+                    sFake.toCPU();
+                    for (int s = 0; s < 16; s++) {
+                        float[] pixels = new float[784];
+                        System.arraycopy(sFake.data, s * 784, pixels, 0, 784);
+                        sampleList.add(pixels);
+                    }
+                }
+                DashboardIntegrationHelper.broadcastGANDetailed(
+                    dashboard, epoch, avgLoss, 0f, sampleList, 1, 28, 28);
+                model.train();
+            } catch (Exception dashEx) {}
         }
         
         System.out.println("Saving model...");
