@@ -24,6 +24,30 @@ public class Data {
     }
 
     /**
+     * Dataset backed by a N-dimensional Tensor. 
+     * The first dimension is assumed to be the sample dimension.
+     * Returns a slice of the tensor at the given index.
+     */
+    public static class TensorDataset implements Dataset {
+        private final Tensor data;
+
+        public TensorDataset(Tensor data) {
+            this.data = data;
+        }
+
+        @Override
+        public int len() {
+            return data.shape[0];
+        }
+
+        @Override
+        public Tensor[] get(int index) {
+            // slice along dimension 0
+            return new Tensor[]{ Torch.narrow(data, 0, index, 1).squeeze() };
+        }
+    }
+
+    /**
      * Simple in-memory dataset backed by a float[][] array where each row is a
      * sample. Returns a single-tensor sample (e.g., image vector) by default.
      */

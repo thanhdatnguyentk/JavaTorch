@@ -5,34 +5,37 @@ import com.user.nn.core.Module;
 
 public class ConvTranspose2d extends Module {
     public int inChannels, outChannels, kernelH, kernelW;
-    public int inH, inW;
-    public int strideH = 1, strideW = 1;
-    public int padH = 0, padW = 0;
-    public int outputPadH = 0, outputPadW = 0;
+    public int strideH, strideW;
+    public int padH, padW;
+    public int outputPadH, outputPadW;
     public Parameter weight;
     public Parameter bias;
 
-    public ConvTranspose2d(int inChannels, int outChannels, int kernelH, int kernelW,
-            int inH, int inW, int stride, int padding, int outputPadding, boolean biasFlag) {
+    public ConvTranspose2d(int inChannels, int outChannels, int kernelSize) {
+        this(inChannels, outChannels, kernelSize, 1, 0, 0, true);
+    }
+
+    public ConvTranspose2d(int inChannels, int outChannels, int kernelSize, int stride, int padding, int outputPadding, boolean biasFlag) {
         this.inChannels = inChannels;
         this.outChannels = outChannels;
-        this.kernelH = kernelH;
-        this.kernelW = kernelW;
-        this.inH = inH;
-        this.inW = inW;
+        this.kernelH = kernelSize;
+        this.kernelW = kernelSize;
         this.strideH = stride;
         this.strideW = stride;
         this.padH = padding;
         this.padW = padding;
         this.outputPadH = outputPadding;
         this.outputPadW = outputPadding;
-        NN.Mat w = NN.mat_alloc(inChannels, outChannels * kernelH * kernelW);
+
+        // Weight shape: [inChannels, outChannels, kernelH, kernelW]
+        Tensor w = new Tensor(inChannels, outChannels, kernelH, kernelW);
         this.weight = new Parameter(w);
         Torch.nn.init.kaiming_uniform_(this.weight.getTensor());
         addParameter("weight", this.weight);
+
         if (biasFlag) {
-            NN.Mat b = NN.mat_alloc(1, outChannels);
-            NN.mat_fill(b, 0f);
+            Tensor b = new Tensor(outChannels);
+            Torch.nn.init.zeros_(b);
             this.bias = new Parameter(b);
             addParameter("bias", this.bias);
         }
@@ -40,106 +43,78 @@ public class ConvTranspose2d extends Module {
 
     @Override
     public Tensor forward(Tensor x) {
+        if (!x.isGPU()) x.toGPU();
+        
         int batch = x.shape[0];
-        int inSize = inChannels * inH * inW;
+        int inC = x.shape[1];
+        int inH = x.shape[2];
+        int inW = x.shape[3];
+
+        if (inC != inChannels) {
+            throw new IllegalArgumentException("Input channels mismatch: expected " + inChannels + " got " + inC);
+        }
+
         int outH = (inH - 1) * strideH - 2 * padH + kernelH + outputPadH;
         int outW = (inW - 1) * strideW - 2 * padW + kernelW + outputPadW;
-        int outSize = outChannels * outH * outW;
-        Tensor wt = this.weight.getTensor();
-        Tensor bt = this.bias != null ? this.bias.getTensor() : null;
+
         Tensor out = new Tensor(batch, outChannels, outH, outW);
-        x.toCPU();
-        wt.toCPU();
-        for (int b = 0; b < batch; b++) {
-            for (int ic = 0; ic < inChannels; ic++) {
-                for (int ih = 0; ih < inH; ih++) {
-                    for (int iw = 0; iw < inW; iw++) {
-                        float xVal = x.data[b * inSize + ic * inH * inW + ih * inW + iw];
-                        for (int oc = 0; oc < outChannels; oc++) {
-                            for (int kh = 0; kh < kernelH; kh++) {
-                                for (int kw = 0; kw < kernelW; kw++) {
-                                    int oh = ih * strideH - padH + kh;
-                                    int ow = iw * strideW - padW + kw;
-                                    if (oh >= 0 && oh < outH && ow >= 0 && ow < outW) {
-                                        int wIdx = ic * (outChannels * kernelH * kernelW) + oc * kernelH * kernelW
-                                                + kh * kernelW + kw;
-                                        out.data[b * outSize + oc * outH * outW + oh * outW + ow] += xVal
-                                                * wt.data[wIdx];
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if (bt != null) {
-                bt.toCPU();
-                for (int oc = 0; oc < outChannels; oc++)
-                    for (int pos = 0; pos < outH * outW; pos++)
-                        out.data[b * outSize + oc * outH * outW + pos] += bt.data[oc];
-            }
+        out.toGPU();
+
+        Tensor wt = this.weight.getTensor();
+        Tensor bt = (this.bias != null) ? this.bias.getTensor() : null;
+
+        // ConvTranspose forward is cuDNN conv backward_data
+        CUDAOps.conv2dBackwardData(x, wt, out, 
+            outChannels, outH, outW,  // in cuDNN context, out is the 'input' we are reconstructing
+            kernelH, kernelW,
+            inChannels, inH, inW,     // in cuDNN context, x is the 'dy' gradient
+            padH, padW, strideH, strideW);
+
+        if (bt != null) {
+            // Apply bias on GPU
+            // cuDNN's cudnnAddTensor expects bias of size [1, outC, 1, 1]
+            CUDAOps.add(out, bt.reshape(1, outChannels, 1, 1), out);
         }
-        if (x.isGPU()) out.toGPU();
+
         if (Torch.is_grad_enabled() && (x.requires_grad || wt.requires_grad || (bt != null && bt.requires_grad))) {
             out.requires_grad = true;
-            out.grad_fn = new Tensor.GradFn(x, weight.getTensor(), bias == null ? null : bias.getTensor()) {
-                public void apply(Tensor outGrad) {
+            out.grad_fn = new Tensor.GradFn(x, wt, bt) {
+                @Override
+                public void apply(Tensor gradOutput) {
+                    if (!gradOutput.isGPU()) gradOutput.toGPU();
+
                     if (x.requires_grad) {
-                        Tensor gx = new Tensor(x.shape);
-                        for (int b = 0; b < batch; b++)
-                            for (int ic = 0; ic < inChannels; ic++)
-                                for (int ih = 0; ih < inH; ih++)
-                                    for (int iw = 0; iw < inW; iw++) {
-                                        float sum = 0f;
-                                        for (int oc = 0; oc < outChannels; oc++)
-                                            for (int kh = 0; kh < kernelH; kh++)
-                                                for (int kw = 0; kw < kernelW; kw++) {
-                                                    int oh = ih * strideH - padH + kh;
-                                                    int ow = iw * strideW - padW + kw;
-                                                    if (oh >= 0 && oh < outH && ow >= 0 && ow < outW) {
-                                                        int wIdx = ic * (outChannels * kernelH * kernelW)
-                                                                + oc * kernelH * kernelW + kh * kernelW + kw;
-                                                        sum += outGrad.data[b * outSize + oc * outH * outW
-                                                                + oh * outW + ow] * wt.data[wIdx];
-                                                    }
-                                                }
-                                        gx.data[b * inSize + ic * inH * inW + ih * inW + iw] = sum;
-                                    }
-                        x.backwardStep(gx);
+                        Tensor dx = new Tensor(x.shape);
+                        dx.toGPU();
+                        // Transpose backward for input is forward convolution
+                        CUDAOps.conv2dForward(gradOutput, wt, null, dx,
+                            outChannels, outH, outW, kernelH, kernelW,
+                            inChannels, inH, inW, padH, padW, strideH, strideW);
+                        x.backwardStep(dx);
                     }
+
                     if (wt.requires_grad) {
-                        Tensor gw = new Tensor(wt.shape);
-                        for (int b = 0; b < batch; b++)
-                            for (int ic = 0; ic < inChannels; ic++)
-                                for (int ih = 0; ih < inH; ih++)
-                                    for (int iw = 0; iw < inW; iw++) {
-                                        float xVal = x.data[b * inSize + ic * inH * inW + ih * inW + iw];
-                                        for (int oc = 0; oc < outChannels; oc++)
-                                            for (int kh = 0; kh < kernelH; kh++)
-                                                for (int kw = 0; kw < kernelW; kw++) {
-                                                    int oh = ih * strideH - padH + kh;
-                                                    int ow = iw * strideW - padW + kw;
-                                                    if (oh >= 0 && oh < outH && ow >= 0 && ow < outW) {
-                                                        int wIdx = ic * (outChannels * kernelH * kernelW)
-                                                                + oc * kernelH * kernelW + kh * kernelW + kw;
-                                                        gw.data[wIdx] += xVal * outGrad.data[b * outSize
-                                                                + oc * outH * outW + oh * outW + ow];
-                                                    }
-                                                }
-                                    }
-                        wt.backwardStep(gw);
+                        Tensor dw = new Tensor(wt.shape);
+                        dw.toGPU();
+                        // Transpose backward for weights is backward_filter(dy=input, x=grad_output)
+                        // Wait, in regular conv: dw = backward_filter(x=in, dy=grad_out)
+                        // In transpose: dw = backward_filter(x=grad_out, dy=in)
+                        CUDAOps.conv2dBackwardFilter(gradOutput, x, dw,
+                            outChannels, outH, outW, kernelH, kernelW,
+                            inChannels, inH, inW, padH, padW, strideH, strideW);
+                        wt.backwardStep(dw);
                     }
+
                     if (bt != null && bt.requires_grad) {
-                        Tensor gb = new Tensor(bt.shape);
-                        for (int b = 0; b < batch; b++)
-                            for (int oc = 0; oc < outChannels; oc++)
-                                for (int pos = 0; pos < outH * outW; pos++)
-                                    gb.data[oc] += outGrad.data[b * outSize + oc * outH * outW + pos];
-                        bt.backwardStep(gb);
+                        Tensor db = new Tensor(bt.shape);
+                        db.toGPU();
+                        CUDAOps.conv2dBackwardBias(gradOutput, db, outChannels, outH, outW);
+                        bt.backwardStep(db);
                     }
                 }
             };
         }
+
         return out;
     }
 }

@@ -1,5 +1,7 @@
 package com.user.nn.dataloaders;
 
+import com.user.nn.core.Tensor;
+import com.user.nn.core.Torch;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
@@ -14,8 +16,7 @@ import javax.imageio.ImageIO;
 /**
  * Loader for Anime Face datasets stored as image folders.
  *
- * Output format is CHW flattened vector (C=3, H=imageSize, W=imageSize):
- * [R_plane | G_plane | B_plane].
+ * Output format is NCHW Tensor (Batch, Channels=3, H, W).
  */
 public class AnimeFaceLoader {
 
@@ -25,17 +26,17 @@ public class AnimeFaceLoader {
     /**
      * Load images recursively and normalize to [-1, 1].
      */
-    public static float[][] loadImages(File root, int imageSize, int maxImages) throws IOException {
-        return loadImages(root, imageSize, maxImages, true);
+    public static Tensor loadImagesToTensor(File root, int imageSize, int maxImages) throws IOException {
+        return loadImagesToTensor(root, imageSize, maxImages, true);
     }
 
     /**
-     * Load images recursively and return CHW vectors.
+     * Load images recursively and return NCHW Tensor.
      *
      * If normalizeToMinusOneOne=true, pixel range is [-1, 1].
      * Otherwise, pixel range is [0, 1].
      */
-    public static float[][] loadImages(File root, int imageSize, int maxImages, boolean normalizeToMinusOneOne)
+    public static Tensor loadImagesToTensor(File root, int imageSize, int maxImages, boolean normalizeToMinusOneOne)
             throws IOException {
         if (root == null || !root.exists() || !root.isDirectory()) {
             throw new IllegalArgumentException("Dataset folder not found: " + (root == null ? "null" : root.getAbsolutePath()));
@@ -50,24 +51,20 @@ public class AnimeFaceLoader {
             imageFiles = imageFiles.subList(0, maxImages);
         }
 
+        int count = imageFiles.size();
         int imageDim = imageSize * imageSize * 3;
-        float[][] data = new float[imageFiles.size()][];
-        for (int i = 0; i < imageFiles.size(); i++) {
-            data[i] = loadImageAsChwVector(imageFiles.get(i), imageSize, imageDim, normalizeToMinusOneOne);
-            if ((i + 1) % 500 == 0 || (i + 1) == imageFiles.size()) {
-                System.out.printf(Locale.US, "Loaded %d/%d images\r", i + 1, imageFiles.size());
+        Tensor batchTensor = new Tensor(count, 3, imageSize, imageSize);
+        
+        for (int i = 0; i < count; i++) {
+            loadImageToNCHWTensor(imageFiles.get(i), batchTensor, i, imageSize, normalizeToMinusOneOne);
+            if ((i + 1) % 500 == 0 || (i + 1) == count) {
+                System.out.printf(Locale.US, "Loaded %d/%d images\r", i + 1, count);
             }
         }
-        if (!imageFiles.isEmpty()) {
+        if (count > 0) {
             System.out.println();
         }
-        return data;
-    }
-
-    public static List<File> listImageFiles(File root) {
-        List<File> out = new ArrayList<>();
-        collectImageFiles(root, out);
-        return out;
+        return batchTensor;
     }
 
     private static void collectImageFiles(File dir, List<File> out) {
@@ -87,7 +84,7 @@ public class AnimeFaceLoader {
         }
     }
 
-    private static float[] loadImageAsChwVector(File imageFile, int imageSize, int imageDim,
+    private static void loadImageToNCHWTensor(File imageFile, Tensor batchTensor, int bIndex, int imageSize,
             boolean normalizeToMinusOneOne) throws IOException {
         BufferedImage src = ImageIO.read(imageFile);
         if (src == null) {
@@ -100,8 +97,8 @@ public class AnimeFaceLoader {
         g.drawImage(src, 0, 0, imageSize, imageSize, null);
         g.dispose();
 
-        float[] out = new float[imageDim];
         int hw = imageSize * imageSize;
+        int sampleOffset = bIndex * 3 * hw;
 
         for (int y = 0; y < imageSize; y++) {
             for (int x = 0; x < imageSize; x++) {
@@ -112,17 +109,15 @@ public class AnimeFaceLoader {
                 int idx = y * imageSize + x;
 
                 if (normalizeToMinusOneOne) {
-                    out[idx] = (r / 127.5f) - 1.0f;
-                    out[hw + idx] = (gch / 127.5f) - 1.0f;
-                    out[2 * hw + idx] = (b / 127.5f) - 1.0f;
+                    batchTensor.data[sampleOffset + idx] = (r / 127.5f) - 1.0f;
+                    batchTensor.data[sampleOffset + hw + idx] = (gch / 127.5f) - 1.0f;
+                    batchTensor.data[sampleOffset + 2 * hw + idx] = (b / 127.5f) - 1.0f;
                 } else {
-                    out[idx] = r / 255.0f;
-                    out[hw + idx] = gch / 255.0f;
-                    out[2 * hw + idx] = b / 255.0f;
+                    batchTensor.data[sampleOffset + idx] = r / 255.0f;
+                    batchTensor.data[sampleOffset + hw + idx] = gch / 255.0f;
+                    batchTensor.data[sampleOffset + 2 * hw + idx] = b / 255.0f;
                 }
             }
         }
-
-        return out;
     }
 }

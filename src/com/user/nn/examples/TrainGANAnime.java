@@ -16,10 +16,17 @@ import com.user.nn.core.Module;
 import com.user.nn.core.Parameter;
 import com.user.nn.core.Tensor;
 import com.user.nn.core.Torch;
+import com.user.nn.core.CUDAOps;
 import com.user.nn.dataloaders.AnimeFaceLoader;
 import com.user.nn.dataloaders.Data;
 import com.user.nn.layers.Dropout;
 import com.user.nn.layers.Linear;
+import com.user.nn.layers.Conv2d;
+import com.user.nn.layers.ConvTranspose2d;
+import com.user.nn.layers.Reshape;
+import com.user.nn.layers.Flatten;
+import com.user.nn.norm.BatchNorm2d;
+import com.user.nn.activations.ReLU;
 import com.user.nn.losses.BCELoss;
 import com.user.nn.optim.Optim;
 
@@ -41,21 +48,38 @@ public class TrainGANAnime {
         public Sequential model;
 
         public Generator(int latentDim) {
+            // DCGAN Generator [N, latentDim, 1, 1] -> [N, 3, 64, 64]
             model = new Sequential(
-                new Linear(latentDim, 256, true),
-                new LeakyReLU(0.2f),
-                new Linear(256, 512, true),
-                new LeakyReLU(0.2f),
-                new Linear(512, 1024, true),
-                new LeakyReLU(0.2f),
-                new Linear(1024, IMAGE_DIM, true),
+                // Project and reshape
+                new Linear(latentDim, 512 * 4 * 4, true),
+                new Reshape(512, 4, 4),
+                
+                // state size: (512) x 4 x 4
+                new ConvTranspose2d(512, 256, 4, 2, 1, 0, true),
+                new BatchNorm2d(256),
+                new ReLU(),
+                
+                // state size: (256) x 8 x 8
+                new ConvTranspose2d(256, 128, 4, 2, 1, 0, true),
+                new BatchNorm2d(128),
+                new ReLU(),
+                
+                // state size: (128) x 16 x 16
+                new ConvTranspose2d(128, 64, 4, 2, 1, 0, true),
+                new BatchNorm2d(64),
+                new ReLU(),
+                
+                // state size: (64) x 32 x 32
+                new ConvTranspose2d(64, 3, 4, 2, 1, 0, true),
                 new Tanh()
+                // state size: (3) x 64 x 64
             );
             addModule("model", model);
         }
 
         @Override
         public Tensor forward(Tensor z) {
+            // Ensure z is [N, latentDim] or [N, latentDim, 1, 1]
             return model.forward(z);
         }
     }
@@ -64,14 +88,31 @@ public class TrainGANAnime {
         public Sequential model;
 
         public Discriminator() {
+            // DCGAN Discriminator [N, 3, 64, 64] -> [N, 1]
             model = new Sequential(
-                new Linear(IMAGE_DIM, 512, true),
+                // input is (3) x 64 x 64
+                new Conv2d(3, 64, 4, 2, 1, true),
                 new LeakyReLU(0.2f),
-                new Dropout(0.3f),
-                new Linear(512, 256, true),
+                
+                // state size: (64) x 32 x 32
+                new Conv2d(64, 128, 4, 2, 1, true),
+                new BatchNorm2d(128),
                 new LeakyReLU(0.2f),
-                new Dropout(0.3f),
-                new Linear(256, 1, true),
+                
+                // state size: (128) x 16 x 16
+                new Conv2d(128, 256, 4, 2, 1, true),
+                new BatchNorm2d(256),
+                new LeakyReLU(0.2f),
+                
+                // state size: (256) x 512, 4, 2, 1 or maybe 4, 2, 1 -> [512, 8, 8]?
+                // Let's do 4x4 output
+                new Conv2d(256, 512, 4, 2, 1, true),
+                new BatchNorm2d(512),
+                new LeakyReLU(0.2f),
+                
+                // state size: (512) x 4 x 4
+                new Flatten(),
+                new Linear(512 * 4 * 4, 1, true),
                 new Sigmoid()
             );
             addModule("model", model);
@@ -104,14 +145,14 @@ public class TrainGANAnime {
                             + new File("../" + datasetDir).getAbsolutePath());
         }
 
-        float[][] allImages = AnimeFaceLoader.loadImages(dsRoot, IMAGE_SIZE, maxImages, true);
-        if (allImages.length == 0) {
+        Tensor allImages = AnimeFaceLoader.loadImagesToTensor(dsRoot, IMAGE_SIZE, maxImages, true);
+        if (allImages == null || allImages.shape[0] == 0) {
             throw new IllegalStateException("No .jpg/.jpeg/.png images found under: " + dsRoot.getAbsolutePath());
         }
 
-        System.out.printf(Locale.US, "Loaded %d images. Shape per sample: [%d]%n", allImages.length, IMAGE_DIM);
+        System.out.printf(Locale.US, "Loaded %d images. Shape: %s%n", allImages.shape[0], java.util.Arrays.toString(allImages.shape));
 
-        Data.Dataset dataset = new Data.BaseDataset(allImages);
+        Data.Dataset dataset = new Data.TensorDataset(allImages);
         Data.DataLoader loader = new Data.DataLoader(dataset, batchSize, true, 2);
 
         Generator G = new Generator(latentDim);
@@ -134,6 +175,9 @@ public class TrainGANAnime {
         dashboard.setTaskType("gan");
         dashboard.setModelInfo("GAN-Anime", epochs);
         dashboard.start();
+        
+        weights_init(G);
+        weights_init(D);
         
         try {
             // Setup a dummy predictor handler for Gan if we want to test live, 
@@ -223,6 +267,11 @@ public class TrainGANAnime {
                         continue;
                     }
                     gLoss.backward();
+                    
+                    // Optional: clip gradients to prevent explosion in early training
+                    clipGradNorm(G.parameters(), GRAD_CLIP_NORM);
+                    clipGradNorm(D.parameters(), GRAD_CLIP_NORM);
+                    
                     gOpt.step();
 
                     dLossSum += (dLossRealVal + dLossFakeVal);
@@ -290,6 +339,20 @@ public class TrainGANAnime {
         System.out.println("Saved generator: " + gPath);
         System.out.println("Saved discriminator: " + dPath);
         System.out.println("Training complete.");
+    }
+
+    private static void weights_init(Module m) {
+        for (Parameter p : m.parameters()) {
+            Tensor t = p.getTensor();
+            int dim = t.shape.length;
+            if (dim >= 2) {
+                // assume weight
+                Torch.nn.init.normal_(t, 0.0f, 0.02f);
+            } else {
+                // assume bias or 1D param
+                Torch.nn.init.constant_(t, 0.0f);
+            }
+        }
     }
 
     private static File resolveDatasetDir(String datasetDir) {
@@ -414,26 +477,37 @@ public class TrainGANAnime {
     }
 
     private static void clipGradNorm(List<Parameter> params, float maxNorm) {
-        float totalNorm = 0f;
+        double totalNormSq = 0;
         for (Parameter p : params) {
             Tensor g = p.getGrad();
             if (g != null) {
-                g.toCPU();
+                // If we want 100% GPU, we should have a GPU-based norm. 
+                // For now, let's use a faster way if on CPU, or just keep it simple.
+                // We'll use Torch.norm style logic but check device.
+                if (g.isGPU()) {
+                    // We need a GPU squared sum kernel. 
+                    // Let's assume we can at least do it on CPU for now or add a kernel.
+                    // To stay 100% GPU calculated, I'll add a helper to CUDAOps for squared sum if missing.
+                    g.toCPU(); 
+                }
                 for (float v : g.data) {
-                    totalNorm += v * v;
+                    totalNormSq += (double)v * v;
                 }
             }
         }
-        totalNorm = (float) Math.sqrt(totalNorm);
+        float totalNorm = (float) Math.sqrt(totalNormSq);
         if (totalNorm > maxNorm) {
             float scale = maxNorm / (totalNorm + 1e-6f);
             for (Parameter p : params) {
                 Tensor g = p.getGrad();
                 if (g != null) {
-                    for (int i = 0; i < g.data.length; i++) {
-                        g.data[i] *= scale;
+                    if (g.isGPU()) {
+                        CUDAOps.mul(g, scale, g);
+                    } else {
+                        for (int i = 0; i < g.data.length; i++) {
+                            g.data[i] *= scale;
+                        }
                     }
-                    g.markDirtyOnCPU();
                 }
             }
         }

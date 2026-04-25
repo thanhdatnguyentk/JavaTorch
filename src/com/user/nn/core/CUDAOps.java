@@ -13,6 +13,8 @@ import static jcuda.jcudnn.cudnnConvolutionMode.*;
 import static jcuda.jcudnn.cudnnConvolutionFwdAlgo.*;
 import static jcuda.jcudnn.cudnnPoolingMode.*;
 import static jcuda.jcudnn.cudnnNanPropagation.*;
+import jcuda.jcudnn.cudnnConvolutionBwdDataAlgo;
+import jcuda.jcudnn.cudnnConvolutionBwdFilterAlgo;
 import jcuda.jcublas.cublasHandle;
 import static jcuda.jcublas.JCublas2.*;
 import static jcuda.jcublas.cublasOperation.*;
@@ -648,6 +650,65 @@ public class CUDAOps {
      * @param weight filter weights in cuDNN layout [outC, inC, kH, kW]
      * @param dx output: gradient w.r.t input [batch, inC, inH, inW]
      */
+    /**
+     * Transposed Convolution 2D Forward using cuDNN (via Backward Data)
+     */
+    public static void convTranspose2dForward(Tensor x, Tensor weight, Tensor bias,
+                                              int[] stride, int[] padding, Tensor out) {
+        init();
+        int batch = x.shape[0];
+        int inC = x.shape[1], inH = x.shape[2], inW = x.shape[3];
+        int outC = out.shape[1], outH = out.shape[2], outW = out.shape[3];
+        int kH = weight.shape[2], kW = weight.shape[3];
+
+        cudnnTensorDescriptor xDesc = new cudnnTensorDescriptor();
+        cudnnTensorDescriptor yDesc = new cudnnTensorDescriptor();
+        cudnnFilterDescriptor wDesc = new cudnnFilterDescriptor();
+        cudnnConvolutionDescriptor convDesc = new cudnnConvolutionDescriptor();
+
+        cudnnCreateTensorDescriptor(xDesc);
+        cudnnSetTensor4dDescriptor(xDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, inC, inH, inW);
+
+        cudnnCreateFilterDescriptor(wDesc);
+        // Weight shape [inC, outC, kH, kW] for transposed conv in cuDNN
+        cudnnSetFilter4dDescriptor(wDesc, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NCHW, inC, outC, kH, kW);
+
+        cudnnCreateConvolutionDescriptor(convDesc);
+        cudnnSetConvolution2dDescriptor(convDesc, padding[0], padding[1], stride[0], stride[1], 1, 1, CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT);
+
+        cudnnCreateTensorDescriptor(yDesc);
+        cudnnSetTensor4dDescriptor(yDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, outC, outH, outW);
+
+        int algo = cudnnConvolutionBwdDataAlgo.CUDNN_CONVOLUTION_BWD_DATA_ALGO_1;
+        long[] workspaceSize = {0};
+        cudnnGetConvolutionBackwardDataWorkspaceSize(cudnnHandle, wDesc, xDesc, convDesc, yDesc, algo, workspaceSize);
+
+        Pointer workspace = new Pointer();
+        if (workspaceSize[0] > 0) cudaMalloc(workspace, workspaceSize[0]);
+
+        Pointer pAlpha = Pointer.to(new float[]{1.0f});
+        Pointer pBeta = Pointer.to(new float[]{0.0f});
+
+        // Transposed Conv Forward = Convolution Backward Data
+        cudnnConvolutionBackwardData(cudnnHandle, pAlpha, wDesc, weight.getDevicePointer(), xDesc, x.getDevicePointer(),
+                                     convDesc, algo, workspace, workspaceSize[0], pBeta, yDesc, out.getDevicePointer());
+
+        if (bias != null) {
+            cudnnTensorDescriptor bDesc = new cudnnTensorDescriptor();
+            cudnnCreateTensorDescriptor(bDesc);
+            cudnnSetTensor4dDescriptor(bDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, outC, 1, 1);
+            cudnnAddTensor(cudnnHandle, pAlpha, bDesc, bias.getDevicePointer(), pAlpha, yDesc, out.getDevicePointer());
+            cudnnDestroyTensorDescriptor(bDesc);
+        }
+
+        if (workspaceSize[0] > 0) cudaFree(workspace);
+        cudnnDestroyTensorDescriptor(xDesc);
+        cudnnDestroyTensorDescriptor(yDesc);
+        cudnnDestroyFilterDescriptor(wDesc);
+        cudnnDestroyConvolutionDescriptor(convDesc);
+        out.markDirtyOnGPU();
+    }
+
     public static void conv2dBackwardData(Tensor dy, Tensor weight, Tensor dx,
                                            int inC, int inH, int inW,
                                            int kH, int kW,
@@ -1599,6 +1660,83 @@ public class CUDAOps {
         out.markDirtyOnGPU();
     }
 
+    public static void convTranspose2dBackward(Tensor x, Tensor weight, Tensor dy,
+                                               int[] stride, int[] padding,
+                                               Tensor dx, Tensor dw, Tensor db) {
+        init();
+        int batch = x.shape[0];
+        int inC = x.shape[1], inH = x.shape[2], inW = x.shape[3];
+        int outC = dy.shape[1], outH = dy.shape[2], outW = dy.shape[3];
+        int kH = weight.shape[2], kW = weight.shape[3];
+
+        cudnnTensorDescriptor xDesc = new cudnnTensorDescriptor();
+        cudnnTensorDescriptor dyDesc = new cudnnTensorDescriptor();
+        cudnnFilterDescriptor wDesc = new cudnnFilterDescriptor();
+        cudnnConvolutionDescriptor convDesc = new cudnnConvolutionDescriptor();
+
+        cudnnCreateTensorDescriptor(xDesc);
+        cudnnSetTensor4dDescriptor(xDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, inC, inH, inW);
+        cudnnCreateTensorDescriptor(dyDesc);
+        cudnnSetTensor4dDescriptor(dyDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, outC, outH, outW);
+        cudnnCreateFilterDescriptor(wDesc);
+        cudnnSetFilter4dDescriptor(wDesc, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NCHW, inC, outC, kH, kW);
+        cudnnCreateConvolutionDescriptor(convDesc);
+        cudnnSetConvolution2dDescriptor(convDesc, padding[0], padding[1], stride[0], stride[1], 1, 1, CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT);
+
+        Pointer pAlpha = Pointer.to(new float[]{1.0f});
+        Pointer pBeta = Pointer.to(new float[]{0.0f});
+
+        // 1. dx (Backward Data of Transposed Conv = Forward of standard conv)
+        if (dx != null) {
+            cudnnTensorDescriptor dxDesc = new cudnnTensorDescriptor();
+            cudnnCreateTensorDescriptor(dxDesc);
+            cudnnSetTensor4dDescriptor(dxDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, inC, inH, inW);
+            
+            int algo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM;
+            long[] ws = {0};
+            cudnnGetConvolutionForwardWorkspaceSize(cudnnHandle, dyDesc, wDesc, convDesc, dxDesc, algo, ws);
+            Pointer pWS = new Pointer();
+            if (ws[0] > 0) cudaMalloc(pWS, ws[0]);
+            
+            // X grad = dy (output grad) conv W
+            cudnnConvolutionForward(cudnnHandle, pAlpha, dyDesc, dy.getDevicePointer(), wDesc, weight.getDevicePointer(), convDesc, algo, pWS, ws[0], pBeta, dxDesc, dx.getDevicePointer());
+            
+            if (ws[0] > 0) cudaFree(pWS);
+            cudnnDestroyTensorDescriptor(dxDesc);
+            dx.markDirtyOnGPU();
+        }
+
+        // 2. dw (Backward Filter)
+        if (dw != null) {
+            int algo = cudnnConvolutionBwdFilterAlgo.CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1;
+            long[] ws = {0};
+            cudnnGetConvolutionBackwardFilterWorkspaceSize(cudnnHandle, dyDesc, xDesc, convDesc, wDesc, algo, ws);
+            Pointer pWS = new Pointer();
+            if (ws[0] > 0) cudaMalloc(pWS, ws[0]);
+
+            // W grad = backward filter with x and dy
+            cudnnConvolutionBackwardFilter(cudnnHandle, pAlpha, dyDesc, dy.getDevicePointer(), xDesc, x.getDevicePointer(), convDesc, algo, pWS, ws[0], pBeta, wDesc, dw.getDevicePointer());
+            
+            if (ws[0] > 0) cudaFree(pWS);
+            dw.markDirtyOnGPU();
+        }
+
+        // 3. db (Backward Bias)
+        if (db != null) {
+            cudnnTensorDescriptor dbDesc = new cudnnTensorDescriptor();
+            cudnnCreateTensorDescriptor(dbDesc);
+            cudnnSetTensor4dDescriptor(dbDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, outC, 1, 1);
+            cudnnConvolutionBackwardBias(cudnnHandle, pAlpha, dyDesc, dy.getDevicePointer(), pBeta, dbDesc, db.getDevicePointer());
+            cudnnDestroyTensorDescriptor(dbDesc);
+            db.markDirtyOnGPU();
+        }
+
+        cudnnDestroyTensorDescriptor(xDesc);
+        cudnnDestroyTensorDescriptor(dyDesc);
+        cudnnDestroyFilterDescriptor(wDesc);
+        cudnnDestroyConvolutionDescriptor(convDesc);
+    }
+
     public static void randomNormal(Tensor t, long seed) {
         init();
         if (!cudaAvailable || randnFunction == null) {
@@ -1618,5 +1756,118 @@ public class CUDAOps {
         int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
         cuLaunchKernel(randnFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kParams, null);
         t.markDirtyOnGPU();
+    }
+    public static void batchNorm2dForwardTraining(Tensor x, Tensor out, Tensor gamma, Tensor beta, Tensor runningMean, Tensor runningVar, float momentum, float epsilon) {
+        init();
+        int batch = x.shape[0];
+        int channels = x.shape[1];
+        int h = x.shape[2];
+        int w = x.shape[3];
+
+        cudnnTensorDescriptor xDesc = new cudnnTensorDescriptor();
+        cudnnTensorDescriptor yDesc = new cudnnTensorDescriptor();
+        cudnnTensorDescriptor bnDesc = new cudnnTensorDescriptor();
+
+        cudnnCreateTensorDescriptor(xDesc);
+        cudnnSetTensor4dDescriptor(xDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, channels, h, w);
+        
+        cudnnCreateTensorDescriptor(yDesc);
+        cudnnSetTensor4dDescriptor(yDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, channels, h, w);
+
+        cudnnCreateTensorDescriptor(bnDesc);
+        cudnnSetTensor4dDescriptor(bnDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, channels, 1, 1);
+
+        Pointer pAlpha = Pointer.to(new float[]{1.0f});
+        Pointer pBeta = Pointer.to(new float[]{0.0f});
+
+        cudnnBatchNormalizationForwardTraining(cudnnHandle, 
+            jcuda.jcudnn.cudnnBatchNormMode.CUDNN_BATCHNORM_SPATIAL, 
+            pAlpha, pBeta, xDesc, x.getDevicePointer(), 
+            yDesc, out.getDevicePointer(), bnDesc, gamma.getDevicePointer(), beta.getDevicePointer(), 
+            momentum, runningMean.getDevicePointer(), runningVar.getDevicePointer(), epsilon, null, null);
+
+        cudnnDestroyTensorDescriptor(xDesc);
+        cudnnDestroyTensorDescriptor(yDesc);
+        cudnnDestroyTensorDescriptor(bnDesc);
+
+        out.markDirtyOnGPU();
+    }
+
+    public static void batchNorm2dForwardInference(Tensor x, Tensor out, Tensor gamma, Tensor beta, Tensor runningMean, Tensor runningVar, float epsilon) {
+        init();
+        int batch = x.shape[0];
+        int channels = x.shape[1];
+        int h = x.shape[2];
+        int w = x.shape[3];
+
+        cudnnTensorDescriptor xDesc = new cudnnTensorDescriptor();
+        cudnnTensorDescriptor yDesc = new cudnnTensorDescriptor();
+        cudnnTensorDescriptor bnDesc = new cudnnTensorDescriptor();
+
+        cudnnCreateTensorDescriptor(xDesc);
+        cudnnSetTensor4dDescriptor(xDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, channels, h, w);
+        
+        cudnnCreateTensorDescriptor(yDesc);
+        cudnnSetTensor4dDescriptor(yDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, channels, h, w);
+
+        cudnnCreateTensorDescriptor(bnDesc);
+        cudnnSetTensor4dDescriptor(bnDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, channels, 1, 1);
+
+        Pointer pAlpha = Pointer.to(new float[]{1.0f});
+        Pointer pBeta = Pointer.to(new float[]{0.0f});
+
+        cudnnBatchNormalizationForwardInference(cudnnHandle, 
+            jcuda.jcudnn.cudnnBatchNormMode.CUDNN_BATCHNORM_SPATIAL, 
+            pAlpha, pBeta, xDesc, x.getDevicePointer(), 
+            yDesc, out.getDevicePointer(), bnDesc, gamma.getDevicePointer(), beta.getDevicePointer(), 
+            runningMean.getDevicePointer(), runningVar.getDevicePointer(), epsilon);
+
+        cudnnDestroyTensorDescriptor(xDesc);
+        cudnnDestroyTensorDescriptor(yDesc);
+        cudnnDestroyTensorDescriptor(bnDesc);
+
+        out.markDirtyOnGPU();
+    }
+
+    public static void batchNorm2dBackward(Tensor x, Tensor dy, Tensor dx, Tensor gamma, Tensor dGamma, Tensor dBeta, float epsilon) {
+        init();
+        int batch = x.shape[0];
+        int channels = x.shape[1];
+        int h = x.shape[2];
+        int w = x.shape[3];
+
+        cudnnTensorDescriptor xDesc = new cudnnTensorDescriptor();
+        cudnnTensorDescriptor dyDesc = new cudnnTensorDescriptor();
+        cudnnTensorDescriptor dxDesc = new cudnnTensorDescriptor();
+        cudnnTensorDescriptor bnDesc = new cudnnTensorDescriptor();
+
+        cudnnCreateTensorDescriptor(xDesc);
+        cudnnSetTensor4dDescriptor(xDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, channels, h, w);
+        
+        cudnnCreateTensorDescriptor(dyDesc);
+        cudnnSetTensor4dDescriptor(dyDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, channels, h, w);
+
+        cudnnCreateTensorDescriptor(dxDesc);
+        cudnnSetTensor4dDescriptor(dxDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, channels, h, w);
+
+        cudnnCreateTensorDescriptor(bnDesc);
+        cudnnSetTensor4dDescriptor(bnDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, 1, channels, 1, 1);
+
+        Pointer pAlpha = Pointer.to(new float[]{1.0f});
+        Pointer pBeta = Pointer.to(new float[]{0.0f});
+
+        cudnnBatchNormalizationBackward(cudnnHandle, 
+            jcuda.jcudnn.cudnnBatchNormMode.CUDNN_BATCHNORM_SPATIAL, 
+            pAlpha, pBeta, pAlpha, pBeta, xDesc, x.getDevicePointer(), dyDesc, dy.getDevicePointer(), 
+            dxDesc, dx.getDevicePointer(), bnDesc, gamma.getDevicePointer(), dGamma.getDevicePointer(), dBeta.getDevicePointer(), epsilon, null, null);
+
+        cudnnDestroyTensorDescriptor(xDesc);
+        cudnnDestroyTensorDescriptor(dyDesc);
+        cudnnDestroyTensorDescriptor(dxDesc);
+        cudnnDestroyTensorDescriptor(bnDesc);
+
+        dx.markDirtyOnGPU();
+        dGamma.markDirtyOnGPU();
+        dBeta.markDirtyOnGPU();
     }
 }

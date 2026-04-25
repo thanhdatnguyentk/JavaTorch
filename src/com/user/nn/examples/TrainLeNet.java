@@ -101,9 +101,6 @@ public class TrainLeNet {
         int totalBatches = N / batchSize;
         TrainingHistory history = new TrainingHistory();
         DashboardServer dashboard = new DashboardServer(7075, history).start();
-        dashboard.setTaskType("classification");
-        dashboard.setModelInfo("LeNet-5", epochs);
-        String[] classLabels = com.user.nn.predict.ImagePredictor.MNIST_LABELS;
         try {
             com.user.nn.predict.ImagePredictor predictor = com.user.nn.predict.ImagePredictor.forMnist(model);
             DashboardIntegrationHelper.setupImagePredictorHandler(dashboard, "classify_image", predictor);
@@ -141,31 +138,20 @@ public class TrainLeNet {
                     numBatches++;
                     trainAccMetric.update(logits, batchLabels);
 
-                    // Batch-level broadcast
-                    if (numBatches % 50 == 0) {
-                        try {
-                            Map<String, Object> bm = new HashMap<>();
-                            bm.put("loss", loss.data[0]);
-                            bm.put("batch", numBatches);
-                            bm.put("train_acc", trainAccMetric.compute());
-                            dashboard.broadcastTaskMetrics(epoch + 1, bm);
-                        } catch (Exception e) {}
+                    if (numBatches % 100 == 0) {
                         System.out.printf("  Epoch %d batch %d/%d  loss=%.4f%n",
                                 epoch + 1, numBatches, totalBatches, loss.data[0]);
-                    }
-                    while (dashboard.isTrainingPaused()) {
-                        try { Thread.sleep(200); } catch (InterruptedException ie) { break; }
                     }
                 }
             }
 
             float trainAcc = trainAccMetric.compute();
             float avgLoss = epochLoss / numBatches;
-            dashboard.setCurrentEpoch(epoch + 1);
-
+            
             Data.Dataset testDataset = new Data.Dataset() {
                 @Override
                 public int len() { return testImages.length; }
+
                 @Override
                 public Tensor[] get(int index) {
                     Tensor x = Torch.tensor(testImages[index], 1, 28, 28);
@@ -174,50 +160,24 @@ public class TrainLeNet {
                 }
             };
             Data.DataLoader testLoader = new Data.DataLoader(testDataset, 256, false, 2);
+            
             float testAcc = Evaluator.evaluate(model, testLoader, testAccMetric);
-
-            // Confusion Matrix + Live Predictions
-            int numClasses = 10;
-            int[][] cm = new int[numClasses][numClasses];
-            java.util.List<Map<String, Object>> livePreds = new java.util.ArrayList<>();
-            model.eval();
-            for (int ti = 0; ti < Math.min(200, testImages.length); ti++) {
-                try (MemoryScope evalScope = new MemoryScope()) {
-                    Tensor tx = Torch.tensor(testImages[ti], 1, 28, 28);
-                    tx.toGPU();
-                    Tensor out = model.forward(Torch.reshape(tx, 1, 1, 28, 28));
-                    int pred = 0; float maxV = out.data[0];
-                    for (int c = 1; c < numClasses; c++) { if (out.data[c] > maxV) { maxV = out.data[c]; pred = c; } }
-                    cm[testLabels[ti]][pred]++;
-                    if (livePreds.size() < 9) {
-                        java.util.List<Map<String, Object>> topK = new java.util.ArrayList<>();
-                        float[] sc = new float[numClasses]; float sum = 0;
-                        for (int c = 0; c < numClasses; c++) { sc[c] = (float) Math.exp(out.data[c]); sum += sc[c]; }
-                        for (int c = 0; c < numClasses; c++) sc[c] /= sum;
-                        Integer[] idx = new Integer[numClasses]; for (int c = 0; c < numClasses; c++) idx[c] = c;
-                        java.util.Arrays.sort(idx, (a, b) -> Float.compare(sc[b], sc[a]));
-                        for (int k = 0; k < 3; k++) topK.add(DashboardIntegrationHelper.buildTopKEntry(classLabels[idx[k]], sc[idx[k]]));
-                        livePreds.add(DashboardIntegrationHelper.buildLivePrediction(
-                            DashboardIntegrationHelper.encodePixelsToBase64(testImages[ti], 1, 28, 28),
-                            classLabels[pred], classLabels[testLabels[ti]], pred == testLabels[ti], topK));
-                    }
-                }
-            }
 
             System.out.printf("Epoch %d/%d  avg_loss=%.4f  train_acc=%.4f  test_acc=%.4f%n",
                     epoch + 1, epochs, avgLoss, trainAcc, testAcc);
+                    
             testLoader.shutdown();
-
+        
             try {
                 Map<String, Float> metrics = new HashMap<>();
                 metrics.put("loss", avgLoss);
                 metrics.put("train_acc", trainAcc);
                 metrics.put("test_acc", testAcc);
                 history.record(epoch + 1, metrics);
-                DashboardIntegrationHelper.broadcastClassificationDetailed(
-                    dashboard, epoch + 1, metrics, cm, classLabels, livePreds);
+                dashboard.broadcastMetrics(epoch + 1, metrics);
             } catch (Exception dashEx) {}
-        }
+}
+        
         trainLoader.shutdown();
 
         // ============================================================
