@@ -66,7 +66,7 @@ public class TrainLeNet {
 
         // --- Optimizer ---
         float lr = 0.001f;
-        int epochs = 15;
+        int epochs = SmokeTest.getEpochs(15);
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), lr);
 
         // Initialize GPU Memory Pool based on model size

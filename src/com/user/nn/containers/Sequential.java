@@ -36,8 +36,10 @@ public class Sequential extends Module {
                 Conv2d conv = (Conv2d) m;
                 if (conv.bias != null) {
                     int batch = out.shape[0];
-                    int outH = (conv.inH + 2 * conv.padH - conv.kernelH) / conv.strideH + 1;
-                    int outW = (conv.inW + 2 * conv.padW - conv.kernelW) / conv.strideW + 1;
+                    int inH = out.shape[2];
+                    int inW = out.shape[3];
+                    int outH = (inH + 2 * conv.padH - conv.kernelH) / conv.strideH + 1;
+                    int outW = (inW + 2 * conv.padW - conv.kernelW) / conv.strideW + 1;
                     int ksz = conv.inChannels * conv.kernelH * conv.kernelW;
                     int outSize = conv.outChannels * outH * outW;
 
@@ -51,7 +53,7 @@ public class Sequential extends Module {
                     CUDAOps.transpose(wt, wtT);
                     
                     CUDAOps.conv2dBiasReluForward(out, wtT, bt, fusedOut,
-                        conv.inChannels, conv.inH, conv.inW,
+                        conv.inChannels, inH, inW,
                         conv.kernelH, conv.kernelW,
                         conv.outChannels, outH, outW,
                         conv.padH, conv.padW, conv.strideH, conv.strideW);

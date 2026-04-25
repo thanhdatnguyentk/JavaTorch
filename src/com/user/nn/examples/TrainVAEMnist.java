@@ -83,7 +83,7 @@ public class TrainVAEMnist {
         
         int latentDim = 20;
         int batchSize = 128;
-        int epochs = 20;
+        int epochs = SmokeTest.getEpochs(20);
         float lr = 1e-3f;
         
         // Data

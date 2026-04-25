@@ -60,7 +60,7 @@ public class TrainSentiment {
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), lr);
         
         Accuracy accMetric = new Accuracy();
-        int epochs = 10;
+        int epochs = SmokeTest.getEpochs(10);
         System.out.println("\nTraining on " + trainEntries.size() + " samples...");
         TrainingHistory history = new TrainingHistory();
         DashboardServer dashboard = new DashboardServer(7070, history).start();

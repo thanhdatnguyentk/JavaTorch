@@ -23,7 +23,7 @@ public class App {
         NN.mat_rand(W2, -1f, 1f);
 
         float lr = 0.5f;
-        int epochs = 100000;
+        int epochs = SmokeTest.getEpochs(100000);
 
         NN.Mat hidden = NN.mat_alloc(4, 2);
         NN.Mat output = NN.mat_alloc(4, 1);

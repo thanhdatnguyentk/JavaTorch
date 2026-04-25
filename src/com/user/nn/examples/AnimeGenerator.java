@@ -16,7 +16,12 @@ public class AnimeGenerator {
     public AnimeGenerator(String modelPath, int latentDim) throws Exception {
         this.latentDim = latentDim;
         this.generator = new TrainGANAnime.Generator(latentDim);
-        this.generator.load(modelPath);
+        try {
+            this.generator.load(modelPath);
+        } catch (java.io.IOException e) {
+            System.err.println("Could not load model weights (might be old format): " + e.getMessage());
+            System.err.println("Using random weights. Please retrain TrainGANAnime.");
+        }
         this.useGpu = tryToGpu();
         this.generator.eval();
     }

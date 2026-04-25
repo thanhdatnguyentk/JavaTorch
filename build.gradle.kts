@@ -22,6 +22,7 @@ subprojects {
     }
 
     tasks.withType(JavaCompile::class.java) {
+        options.encoding = "UTF-8"
         options.compilerArgs.addAll(listOf("--add-modules", "jdk.incubator.vector"))
     }
 

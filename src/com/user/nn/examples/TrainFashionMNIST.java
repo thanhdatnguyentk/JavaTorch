@@ -67,8 +67,8 @@ public class TrainFashionMNIST {
         model.add(new Linear(256, 10, true));
 
         // --- Optimizer & Params ---
-        float lr = 0.002f;
-        int epochs = 30;
+        float lr = 0.01f;
+        int epochs = SmokeTest.getEpochs(30);
         int batchSize = 1024; // Faster on GPU
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), lr);
 

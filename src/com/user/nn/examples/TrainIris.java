@@ -168,7 +168,7 @@ public class TrainIris {
         }
 
         Accuracy accMetric = new Accuracy();
-        int epochs = 2000;
+        int epochs = SmokeTest.getEpochs(2000);
 
         TrainingHistory history = new TrainingHistory();
         DashboardServer dashboard = new DashboardServer(7070, history).start();

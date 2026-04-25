@@ -18,11 +18,7 @@ val jcudaClassifier = run {
     "$osPart-$archPart"
 }
 
-configurations.configureEach {
-    exclude(group = "org.jcuda", module = "jcuda-natives")
-    exclude(group = "org.jcuda", module = "jcublas-natives")
-    exclude(group = "org.jcuda", module = "jcudnn-natives")
-}
+// Removed global exclude to allow native classifiers to load
 
 dependencies {
     implementation("org.bytedeco:javacpp:${property("javacppVersion")}")
@@ -33,9 +29,12 @@ dependencies {
     }
     implementation("org.jcuda:jcublas:${property("jcudaVersion")}") {
         exclude(group = "org.jcuda", module = "jcublas-natives")
+        exclude(group = "org.jcuda", module = "jcuda-natives")
     }
     implementation("org.jcuda:jcudnn:${property("jcudaVersion")}") {
         exclude(group = "org.jcuda", module = "jcudnn-natives")
+        exclude(group = "org.jcuda", module = "jcublas-natives")
+        exclude(group = "org.jcuda", module = "jcuda-natives")
     }
     runtimeOnly("org.jcuda:jcuda-natives:${property("jcudaVersion")}:$jcudaClassifier")
     runtimeOnly("org.jcuda:jcublas-natives:${property("jcudaVersion")}:$jcudaClassifier")

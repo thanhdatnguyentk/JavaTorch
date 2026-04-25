@@ -78,7 +78,7 @@ public class TrainGANMnist {
         // Settings
         int latentDim = 100;
         int batchSize = 64;
-        int epochs = 50;
+        int epochs = SmokeTest.getEpochs(50);
         float lr = 0.0002f;
         
         // Data

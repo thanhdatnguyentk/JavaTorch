@@ -26,7 +26,7 @@ public class TrainResNetCifar10 {
         Cifar10Loader.prepareData();
 
         System.out.println("Loading CIFAR-10 data into memory...");
-        int trainBatches = 5;
+        int trainBatches = SmokeTest.getBatches(5);
         float[][] trainImages = new float[trainBatches * 10000][3072];
         int[] trainLabels = new int[trainBatches * 10000];
 
@@ -63,7 +63,7 @@ public class TrainResNetCifar10 {
         }
 
         float lr = 0.001f;
-        int epochs = 2; 
+        int epochs = SmokeTest.getEpochs(2); 
         int batchSize = 64; // Reduced batch size for ResNet-18 on 3050 (4GB-8GB VRAM)
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), lr);
 

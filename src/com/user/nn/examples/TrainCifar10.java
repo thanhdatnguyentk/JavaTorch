@@ -33,7 +33,7 @@ public class TrainCifar10 {
         Cifar10Loader.prepareData();
 
         System.out.println("Loading CIFAR-10 data into memory...");
-        int trainBatches = 5;
+        int trainBatches = SmokeTest.getBatches(5);
         float[][] trainImages = new float[trainBatches * 10000][3072];
         int[] trainLabels = new int[trainBatches * 10000];
 
@@ -78,7 +78,7 @@ public class TrainCifar10 {
         }
 
         float lr = 0.001f;
-        int epochs = 100; 
+        int epochs = SmokeTest.getEpochs(100); 
         int batchSize = 128;
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), lr);
 

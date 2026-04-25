@@ -28,7 +28,7 @@ public class TrainViTCifar10 {
 
         System.out.println("Loading subsets of CIFAR-10 clusters...");
         // Use fewer batches for the example demonstration to save time
-        int trainBatches = 2; 
+        int trainBatches = SmokeTest.getBatches(2); 
         float[][] trainImages = new float[trainBatches * 10000][3072];
         int[] trainLabels = new int[trainBatches * 10000];
 
@@ -57,7 +57,7 @@ public class TrainViTCifar10 {
         model.to(Tensor.Device.GPU);
 
         float lr = 0.0005f; // ViT often needs smaller learning rate than CNN
-        int epochs = 20; 
+        int epochs = SmokeTest.getEpochs(20); 
         int batchSize = 128;
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), lr);
 
