@@ -63,6 +63,10 @@ public class CUDAOps {
     private static CUfunction fillFunction;
     private static CUfunction dropoutFunction;
     private static CUfunction randnFunction;
+    private static CUfunction divFunction;
+    private static CUfunction powTensorsFunction;
+    private static CUfunction powScalarFunction;
+    private static CUfunction sqrtFunction;
     
     // CUDA Streams for pipelining
     private static cudaStream_t computeStream;
@@ -164,6 +168,10 @@ public class CUDAOps {
                     fillFunction = safeGetFunction("fill_kernel");
                     dropoutFunction = safeGetFunction("dropout_kernel");
                     randnFunction = safeGetFunction("randn_kernel");
+                    divFunction = safeGetFunction("div_tensors");
+                    powTensorsFunction = safeGetFunction("pow_tensors");
+                    powScalarFunction = safeGetFunction("pow_scalar");
+                    sqrtFunction = safeGetFunction("sqrt_kernel");
                     System.out.println("[CUDAOps] PTX function resolution complete.");
                 } catch (Exception e) {
                     System.err.println("Warning: Could not load custom PTX kernels. GPU element-wise operations may fail.");
@@ -329,6 +337,30 @@ public class CUDAOps {
         }
         launchElementwiseKernel(mulFunction, a, b, out);
     }
+
+    public static void div(Tensor a, Tensor b, Tensor out) {
+        init();
+        if (!cudaAvailable || divFunction == null) {
+            a.toCPU(); b.toCPU(); out.toCPU();
+            int n = a.numel();
+            for (int i = 0; i < n; i++) out.data[i] = a.data[i] / (b.data[i] + 1e-12f);
+            out.markDirtyOnCPU();
+            return;
+        }
+        launchElementwiseKernel(divFunction, a, b, out);
+    }
+
+    public static void pow(Tensor a, Tensor b, Tensor out) {
+        init();
+        if (!cudaAvailable || powTensorsFunction == null) {
+            a.toCPU(); b.toCPU(); out.toCPU();
+            int n = a.numel();
+            for (int i = 0; i < n; i++) out.data[i] = (float) Math.pow(a.data[i], b.data[i]);
+            out.markDirtyOnCPU();
+            return;
+        }
+        launchElementwiseKernel(powTensorsFunction, a, b, out);
+    }
     
     public static void add(Tensor x, float scalar, Tensor out) {
         init();
@@ -359,6 +391,42 @@ public class CUDAOps {
             cudaMemcpy(out.getDevicePointer(), x.getDevicePointer(), (long) x.numel() * jcuda.Sizeof.FLOAT, cudaMemcpyDeviceToDevice);
         }
         launchScalarKernel(mulScalarFunction, out, scalar, out);
+    }
+
+    public static void pow(Tensor x, float exp, Tensor out) {
+        init();
+        if (!cudaAvailable || powScalarFunction == null) {
+            x.toCPU(); out.toCPU();
+            int n = x.numel();
+            for (int i = 0; i < n; i++) out.data[i] = (float) Math.pow(x.data[i], exp);
+            out.markDirtyOnCPU();
+            return;
+        }
+        if (x != out) {
+            cudaMemcpy(out.getDevicePointer(), x.getDevicePointer(), (long) x.numel() * jcuda.Sizeof.FLOAT, cudaMemcpyDeviceToDevice);
+        }
+        launchScalarKernel(powScalarFunction, out, exp, out);
+    }
+
+    public static void sqrt(Tensor x, Tensor out) {
+        init();
+        if (!cudaAvailable || sqrtFunction == null) {
+            x.toCPU(); out.toCPU();
+            int n = x.numel();
+            for (int i = 0; i < n; i++) out.data[i] = (float) Math.sqrt(Math.max(0.0, x.data[i]));
+            out.markDirtyOnCPU();
+            return;
+        }
+        // sqrt is not in-place in kernel but we can handle out-of-place easily
+        int n = x.numel();
+        Pointer px = Pointer.to(x.getDevicePointer());
+        Pointer pout = Pointer.to(out.getDevicePointer());
+        Pointer pn = Pointer.to(new int[]{n});
+        Pointer kernelParameters = Pointer.to(px, pout, pn);
+        int blockSizeX = 256;
+        int gridSizeX = (int) Math.ceil((double) n / blockSizeX);
+        cuLaunchKernel(sqrtFunction, gridSizeX, 1, 1, blockSizeX, 1, 1, 0, null, kernelParameters, null);
+        out.markDirtyOnGPU();
     }
 
     /**
@@ -877,7 +945,22 @@ public class CUDAOps {
                                          int kH, int kW,
                                          int outH, int outW,
                                          int padH, int padW, int strideH, int strideW) {
+        poolingForward(CUDNN_POOLING_MAX, x, out, inC, inH, inW, kH, kW, outH, outW, padH, padW, strideH, strideW);
+    }
+
+    /**
+     * Generalized Pooling Forward using cuDNN (Max or Avg)
+     */
+    public static void poolingForward(int mode, Tensor x, Tensor out,
+                                      int inC, int inH, int inW,
+                                      int kH, int kW,
+                                      int outH, int outW,
+                                      int padH, int padW, int strideH, int strideW) {
         init();
+        if (!cudaAvailable) {
+            System.err.println("CUDA not available for poolingForward");
+            return;
+        }
         int batch = x.shape[0];
 
         cudnnTensorDescriptor xDesc = new cudnnTensorDescriptor();
@@ -891,7 +974,7 @@ public class CUDAOps {
         cudnnSetTensor4dDescriptor(yDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, inC, outH, outW);
 
         cudnnCreatePoolingDescriptor(poolDesc);
-        cudnnSetPooling2dDescriptor(poolDesc, CUDNN_POOLING_MAX, CUDNN_PROPAGATE_NAN, kH, kW, padH, padW, strideH, strideW);
+        cudnnSetPooling2dDescriptor(poolDesc, mode, CUDNN_PROPAGATE_NAN, kH, kW, padH, padW, strideH, strideW);
 
         Pointer pAlpha = Pointer.to(new float[]{1.0f});
         Pointer pBeta = Pointer.to(new float[]{0.0f});
@@ -903,6 +986,55 @@ public class CUDAOps {
         cudnnDestroyPoolingDescriptor(poolDesc);
 
         out.markDirtyOnGPU();
+    }
+
+    /**
+     * Generalized Pooling Backward using cuDNN (Max or Avg)
+     */
+    public static void poolingBackward(int mode, Tensor x, Tensor y, Tensor dy, Tensor dx,
+                                       int inC, int inH, int inW,
+                                       int kH, int kW,
+                                       int outH, int outW,
+                                       int padH, int padW, int strideH, int strideW) {
+        init();
+        if (!cudaAvailable) {
+            System.err.println("CUDA not available for poolingBackward");
+            return;
+        }
+        int batch = x.shape[0];
+
+        cudnnTensorDescriptor xDesc = new cudnnTensorDescriptor();
+        cudnnTensorDescriptor yDesc = new cudnnTensorDescriptor();
+        cudnnTensorDescriptor dxDesc = new cudnnTensorDescriptor();
+        cudnnTensorDescriptor dyDesc = new cudnnTensorDescriptor();
+        jcuda.jcudnn.cudnnPoolingDescriptor poolDesc = new jcuda.jcudnn.cudnnPoolingDescriptor();
+
+        cudnnCreateTensorDescriptor(xDesc);
+        cudnnSetTensor4dDescriptor(xDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, inC, inH, inW);
+        cudnnCreateTensorDescriptor(dxDesc);
+        cudnnSetTensor4dDescriptor(dxDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, inC, inH, inW);
+
+        cudnnCreateTensorDescriptor(yDesc);
+        cudnnSetTensor4dDescriptor(yDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, inC, outH, outW);
+        cudnnCreateTensorDescriptor(dyDesc);
+        cudnnSetTensor4dDescriptor(dyDesc, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, inC, outH, outW);
+
+        cudnnCreatePoolingDescriptor(poolDesc);
+        cudnnSetPooling2dDescriptor(poolDesc, mode, CUDNN_PROPAGATE_NAN, kH, kW, padH, padW, strideH, strideW);
+
+        Pointer pAlpha = Pointer.to(new float[]{1.0f});
+        Pointer pBeta = Pointer.to(new float[]{0.0f});
+
+        cudnnPoolingBackward(cudnnHandle, poolDesc, pAlpha, yDesc, y.getDevicePointer(), dyDesc, dy.getDevicePointer(), 
+                             xDesc, x.getDevicePointer(), pBeta, dxDesc, dx.getDevicePointer());
+
+        cudnnDestroyTensorDescriptor(xDesc);
+        cudnnDestroyTensorDescriptor(yDesc);
+        cudnnDestroyTensorDescriptor(dxDesc);
+        cudnnDestroyTensorDescriptor(dyDesc);
+        cudnnDestroyPoolingDescriptor(poolDesc);
+
+        dx.markDirtyOnGPU();
     }
 
     /**

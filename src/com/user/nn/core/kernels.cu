@@ -325,3 +325,35 @@ __global__ void randn_kernel(float *data, unsigned int seed, int n) {
         data[i] = r * cosf(theta);
     }
 }
+
+extern "C"
+__global__ void div_tensors(float *a, float *b, float *out, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        out[i] = a[i] / (b[i] + 1e-12f);
+    }
+}
+
+extern "C"
+__global__ void pow_tensors(float *a, float *b, float *out, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        out[i] = powf(a[i], b[i]);
+    }
+}
+
+extern "C"
+__global__ void pow_scalar(float *data, float exp, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        data[i] = powf(data[i], exp);
+    }
+}
+
+extern "C"
+__global__ void sqrt_kernel(float *a, float *out, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        out[i] = sqrtf(fmaxf(0.0f, a[i]));
+    }
+}

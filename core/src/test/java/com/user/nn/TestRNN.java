@@ -1,17 +1,14 @@
 package com.user.nn;
+
 import com.user.nn.core.*;
 import com.user.nn.rnn.*;
-
-import java.util.List;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class TestRNN {
-    public static void main(String[] args) {
-        testRNNForwardBackward();
-        testLSTMForwardBackward();
-    }
 
-    public static void testRNNForwardBackward() {
-        System.out.println("Testing RNN Forward/Backward...");
+    @Test
+    void testRNNForwardBackward() {
         int inputSize = 4;
         int hiddenSize = 8;
         int seqLen = 5;
@@ -23,25 +20,17 @@ public class TestRNN {
 
         Tensor out = rnn.forward(x);
 
-        if (out.shape[0] != batch || out.shape[1] != seqLen || out.shape[2] != hiddenSize) {
-            throw new RuntimeException("RNN output shape mismatch: " + java.util.Arrays.toString(out.shape));
-        }
+        assertArrayEquals(new int[]{batch, seqLen, hiddenSize}, out.shape, "RNN output shape mismatch");
 
-        // Loss = sum(out)
-        float sum = 0;
-        for (float f : out.data)
-            sum += f;
-        out.backward();
+        // Use proper sumTensor for autograd
+        Tensor loss = Torch.sumTensor(out);
+        loss.backward();
 
-        if (x.grad == null) {
-            throw new RuntimeException("RNN backward failed: x.grad is null");
-        }
-
-        System.out.println("RNN Test PASSED.");
+        assertNotNull(x.grad, "RNN backward failed: x.grad is null");
     }
 
-    public static void testLSTMForwardBackward() {
-        System.out.println("Testing LSTM Forward/Backward...");
+    @Test
+    void testLSTMForwardBackward() {
         int inputSize = 4;
         int hiddenSize = 8;
         int seqLen = 5;
@@ -53,16 +42,11 @@ public class TestRNN {
 
         Tensor out = lstm.forward(x);
 
-        if (out.shape[0] != batch || out.shape[1] != seqLen || out.shape[2] != hiddenSize) {
-            throw new RuntimeException("LSTM output shape mismatch: " + java.util.Arrays.toString(out.shape));
-        }
+        assertArrayEquals(new int[]{batch, seqLen, hiddenSize}, out.shape, "LSTM output shape mismatch");
 
-        out.backward();
+        Tensor loss = Torch.sumTensor(out);
+        loss.backward();
 
-        if (x.grad == null) {
-            throw new RuntimeException("LSTM backward failed: x.grad is null");
-        }
-
-        System.out.println("LSTM Test PASSED.");
+        assertNotNull(x.grad, "LSTM backward failed: x.grad is null");
     }
 }

@@ -2,25 +2,13 @@ package com.user.nn;
 
 import com.user.nn.core.*;
 import com.user.nn.metrics.*;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class TestMetrics {
-    public static void main(String[] args) {
-        System.out.println("Running TestMetrics...");
 
-        testAccuracy();
-        testMSE();
-        testMAE();
-
-        System.out.println("TestMetrics PASSED.");
-    }
-
-    private static void check(boolean condition, String msg) {
-        if (!condition) {
-            throw new RuntimeException("Assertion failed: " + msg);
-        }
-    }
-
-    private static void testAccuracy() {
+    @Test
+    void testAccuracy() {
         Accuracy acc = new Accuracy();
         
         // Batch 1: 3 samples, 2 classes
@@ -32,7 +20,7 @@ public class TestMetrics {
         int[] targets1 = new int[] { 0, 1, 1 };
         
         acc.update(logits1, targets1);
-        check(Math.abs(acc.compute() - 0.6666667f) < 1e-5, "Accuracy batch 1");
+        assertEquals(2.0f/3.0f, acc.compute(), 1e-5f, "Accuracy batch 1 mismatch");
 
         // Batch 2: 1 sample
         Tensor logits2 = Torch.tensor(new float[] { 0.5f, 1.0f }, 1, 2); // Pred 1, Target 1 -> Correct
@@ -40,13 +28,14 @@ public class TestMetrics {
         acc.update(logits2, targets2);
         
         // Total: 3/4 correct = 0.75
-        check(acc.compute() == 0.75f, "Accuracy cumulative");
+        assertEquals(0.75f, acc.compute(), 1e-6f, "Accuracy cumulative mismatch");
 
         acc.reset();
-        check(acc.compute() == 0f, "Accuracy reset");
+        assertEquals(0.0f, acc.compute(), "Accuracy reset failed");
     }
 
-    private static void testMSE() {
+    @Test
+    void testMSE() {
         MeanSquaredError mse = new MeanSquaredError();
         
         Tensor p = Torch.tensor(new float[] { 1f, 2f, 3f }, 3);
@@ -54,10 +43,11 @@ public class TestMetrics {
         
         mse.update(p, t);
         // Errors: 0.5, 0.5, 0.5 -> Squares: 0.25, 0.25, 0.25 -> Sum: 0.75 -> Mean: 0.25
-        check(mse.compute() == 0.25f, "MSE batch 1");
+        assertEquals(0.25f, mse.compute(), 1e-6f, "MSE mismatch");
     }
 
-    private static void testMAE() {
+    @Test
+    void testMAE() {
         MeanAbsoluteError mae = new MeanAbsoluteError();
         
         Tensor p = Torch.tensor(new float[] { 1f, 2f, 3f }, 3);
@@ -65,6 +55,6 @@ public class TestMetrics {
         
         mae.update(p, t);
         // Errors: 0.5, 0.5, 0.5 -> Mean: 0.5
-        check(mae.compute() == 0.5f, "MAE batch 1");
+        assertEquals(0.5f, mae.compute(), 1e-6f, "MAE mismatch");
     }
 }

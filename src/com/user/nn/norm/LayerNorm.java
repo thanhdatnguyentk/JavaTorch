@@ -28,6 +28,7 @@ public class LayerNorm extends Module {
 
     @Override
     public Tensor forward(Tensor x) {
+        boolean wasGPU = x.isGPU();
         x.toCPU();
         final int[] originalShape = x.shape;
         final int D = normalizedSize;
@@ -61,7 +62,7 @@ public class LayerNorm extends Module {
                 out.data[i * D + d] = gamma.data[d] * norm + beta.data[d];
             }
         }
-        if (x.isGPU()) out.toGPU();
+        if (wasGPU) out.toGPU();
 
         if (Torch.is_grad_enabled() && (x.requires_grad || gamma.requires_grad || beta.requires_grad)) {
             out.requires_grad = true;
@@ -104,6 +105,7 @@ public class LayerNorm extends Module {
                                 gx.data[i * D + d] = invStd / D * (D * dxhat[d] - sumDxhat - xhat * sumDxhatXhat);
                             }
                         }
+                        if (wasGPU) gx.toGPU();
                         x.backwardStep(gx);
                     }
                 }

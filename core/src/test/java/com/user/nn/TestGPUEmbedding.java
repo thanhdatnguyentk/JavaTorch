@@ -1,35 +1,31 @@
 package com.user.nn;
 
 import com.user.nn.core.*;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.*;
 
 public class TestGPUEmbedding {
-    static int passed = 0, failed = 0;
 
-    static void check(String name, boolean ok) {
-        if (ok) { passed++; }
-        else { failed++; System.out.println("FAIL: " + name); }
-    }
-
-    static boolean allClose(float[] a, float[] b, float tol) {
+    private boolean allClose(float[] a, float[] b, float tol) {
         if (a.length != b.length) return false;
         for (int i = 0; i < a.length; i++)
             if (Math.abs(a[i] - b[i]) > tol) return false;
         return true;
     }
 
-    public static void main(String[] args) {
-        if (!CUDAOps.isAvailable()) {
-            System.out.println("CUDA not available, skipping TestGPUEmbedding");
-            return;
-        }
+    @Test
+    @Tag("gpu")
+    void testForward() {
+        assumeTrue(CUDAOps.isAvailable(), "CUDA not available");
 
-        // --- Forward test ---
         int numEmb = 5, embDim = 4;
         float[] wData = new float[numEmb * embDim];
         for (int i = 0; i < wData.length; i++) wData[i] = i * 0.1f;
         Tensor weight = new Tensor(wData, numEmb, embDim);
 
-        float[] idxData = {0f, 2f, 4f, 1f, 2f}; // 5 indices, including duplicate 2
+        float[] idxData = {0f, 2f, 4f, 1f, 2f};
         Tensor indices = new Tensor(idxData, 5);
 
         // CPU reference
@@ -45,9 +41,19 @@ public class TestGPUEmbedding {
         Tensor gpuOut = Torch.embedding(weight, indices);
         gpuOut.toCPU();
 
-        check("embedding_forward", allClose(cpuOut.data, gpuOut.data, 1e-5f));
+        assertTrue(allClose(cpuOut.data, gpuOut.data, 1e-5f), "embedding_forward mismatch");
+    }
 
-        // --- Backward test ---
+    @Test
+    @Tag("gpu")
+    void testBackward() {
+        assumeTrue(CUDAOps.isAvailable(), "CUDA not available");
+
+        int numEmb = 5, embDim = 4;
+        float[] wData = new float[numEmb * embDim];
+        for (int i = 0; i < wData.length; i++) wData[i] = i * 0.1f;
+        
+        float[] idxData = {0f, 2f, 4f, 1f, 2f};
         Tensor weight2 = new Tensor(wData.clone(), numEmb, embDim);
         weight2.requires_grad = true;
         weight2.toGPU();
@@ -55,7 +61,6 @@ public class TestGPUEmbedding {
         indices2.toGPU();
 
         Tensor out2 = Torch.embedding(weight2, indices2);
-        // Create gradient of ones
         Tensor gradOut = Torch.ones(5, embDim);
         gradOut.toGPU();
         out2.backward(gradOut);
@@ -68,32 +73,36 @@ public class TestGPUEmbedding {
                 expectedGrad[idx * embDim + j] += 1.0f;
             }
         }
-        // idx=0: 1 time, idx=1: 1 time, idx=2: 2 times, idx=3: 0, idx=4: 1 time
+        
         weight2.grad.toCPU();
-        check("embedding_backward", allClose(expectedGrad, weight2.grad.data, 1e-5f));
+        assertTrue(allClose(expectedGrad, weight2.grad.data, 1e-5f), "embedding_backward mismatch");
+    }
 
-        // --- Duplicate indices (atomicAdd correctness) ---
+    @Test
+    @Tag("gpu")
+    void testDuplicateIndicesAtomicAdd() {
+        assumeTrue(CUDAOps.isAvailable(), "CUDA not available");
+
+        int numEmb = 5, embDim = 4;
+        float[] wData = new float[numEmb * embDim];
         float[] idxDup = {3f, 3f, 3f, 3f};
-        Tensor weight3 = new Tensor(wData.clone(), numEmb, embDim);
-        weight3.requires_grad = true;
-        weight3.toGPU();
+        
+        Tensor weight = new Tensor(wData, numEmb, embDim);
+        weight.requires_grad = true;
+        weight.toGPU();
         Tensor idxTensor = new Tensor(idxDup, 4);
         idxTensor.toGPU();
-        Tensor out3 = Torch.embedding(weight3, idxTensor);
-        Tensor gradOut3 = Torch.ones(4, embDim);
-        gradOut3.toGPU();
-        out3.backward(gradOut3);
-        weight3.grad.toCPU();
-        // All 4 indices point to row 3, so row 3 grad should be 4.0 for each dim
-        boolean dupOk = true;
+        
+        Tensor out = Torch.embedding(weight, idxTensor);
+        Tensor gradOut = Torch.ones(4, embDim);
+        gradOut.toGPU();
+        out.backward(gradOut);
+        
+        weight.grad.toCPU();
+        // Row 3 grad should be 4.0 for each dim
         for (int j = 0; j < embDim; j++) {
-            if (Math.abs(weight3.grad.data[3 * embDim + j] - 4.0f) > 1e-4f) dupOk = false;
-            // Other rows should be 0
-            if (Math.abs(weight3.grad.data[0 * embDim + j]) > 1e-4f) dupOk = false;
+            assertEquals(4.0f, weight.grad.data[3 * embDim + j], 1e-4f);
+            assertEquals(0.0f, weight.grad.data[0 * embDim + j], 1e-4f);
         }
-        check("embedding_backward_duplicate_indices", dupOk);
-
-        System.out.println("TestGPUEmbedding: " + passed + " passed, " + failed + " failed.");
-        if (failed > 0) System.exit(1);
     }
 }

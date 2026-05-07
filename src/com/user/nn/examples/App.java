@@ -1,126 +1,105 @@
 package com.user.nn.examples;
 
 import com.user.nn.core.*;
+import com.user.nn.core.Module;
+import com.user.nn.layers.Linear;
+import com.user.nn.optim.Optim;
+import com.user.nn.utils.dashboard.DashboardServer;
+import com.user.nn.utils.visualization.TrainingHistory;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class App {
+    
+    // Modern XOR Model using high-level API
+    public static class XORModel extends Module {
+        public Linear fc1;
+        public Linear fc2;
+
+        public XORModel() {
+            this.fc1 = new Linear(2, 4, true);
+            this.fc2 = new Linear(4, 1, true);
+            
+            addModule("fc1", fc1);
+            addModule("fc2", fc2);
+        }
+
+        @Override
+        public Tensor forward(Tensor x) {
+            Tensor h = fc1.forward(x);
+            h = Torch.sigmoid(h);
+            return Torch.sigmoid(fc2.forward(h));
+        }
+    }
+
     public static void main(String[] args) throws Exception {
-        System.out.println("Hello, World!");
+        System.out.println("=== JavaTorch Modern XOR Example ===");
 
-        // Prepare XOR dataset (4 samples)
-        NN.Mat X = NN.mat_alloc(4, 3); // inputs with bias as last column
-        X.es[0] = 0; X.es[1] = 0; X.es[2] = 1;
-        X.es[3] = 0; X.es[4] = 1; X.es[5] = 1;
-        X.es[6] = 1; X.es[7] = 0; X.es[8] = 1;
-        X.es[9] = 1; X.es[10] = 1; X.es[11] = 1;
+        // 1. Data Setup (XOR)
+        float[] xData = {
+            0, 0,
+            0, 1,
+            1, 0,
+            1, 1
+        };
+        float[] yData = { 0, 1, 1, 0 };
 
-        NN.Mat Y = NN.mat_alloc(4, 1);
-        Y.es[0] = 0; Y.es[1] = 1; Y.es[2] = 1; Y.es[3] = 0;
+        Tensor X = Torch.tensor(xData, 4, 2);
+        Tensor Y = Torch.tensor(yData, 4, 1);
 
-        // Network: 3 -> 2 -> 1 (includes bias in input)
-        NN.Mat W1 = NN.mat_alloc(3, 2);
-        NN.Mat W2 = NN.mat_alloc(2, 1);
-        NN.mat_rand(W1, -1f, 1f);
-        NN.mat_rand(W2, -1f, 1f);
-
+        // 2. Model & Optimizer
+        XORModel model = new XORModel();
         float lr = 0.5f;
-        int epochs = SmokeTest.getEpochs(100000);
+        int epochs = SmokeTest.getEpochs(2000); // 2k is enough for XOR with modern init
+        Optim.SGD optimizer = new Optim.SGD(model.parameters(), lr);
 
-        NN.Mat hidden = NN.mat_alloc(4, 2);
-        NN.Mat output = NN.mat_alloc(4, 1);
+        // 3. Dashboard setup (optional visualization)
+        TrainingHistory history = new TrainingHistory();
+        DashboardServer dashboard = new DashboardServer(7070, history).start();
+        dashboard.setTaskType("classification");
+        dashboard.setModelInfo("Modern XOR MLP", epochs);
 
+        // 4. Training Loop
         for (int e = 0; e < epochs; e++) {
-            // forward: hidden = sigmoid(X * W1)
-            NN.mat_dot(hidden, X, W1);
-            applySigmoid(hidden);
+            optimizer.zero_grad();
+            
+            // Forward
+            Tensor output = model.forward(X);
+            
+            // Binary Cross Entropy or MSE
+            Tensor loss = Functional.mse_loss_tensor(output, Y);
+            
+            // Backward
+            loss.backward();
+            
+            // Update
+            optimizer.step();
 
-            // forward: output = sigmoid(hidden * W2)
-            NN.mat_dot(output, hidden, W2);
-            applySigmoid(output);
-
-            // compute output error: delta_out = (output - Y) * output*(1-output)
-            NN.Mat delta_out = NN.mat_alloc(output.rows, output.cols);
-            // copy output into delta_out
-            for (int i = 0; i < output.rows * output.cols; i++) delta_out.es[i] = output.es[i];
-            NN.mat_sub(delta_out, Y); // delta_out = output - Y
-            // multiply by sigmoid derivative
-            for (int i = 0; i < delta_out.rows * delta_out.cols; i++) {
-                float o = output.es[i];
-                delta_out.es[i] = delta_out.es[i] * o * (1 - o);
+            if (e % 100 == 0 || e == epochs - 1) {
+                float lossVal = loss.data[0];
+                System.out.printf("Epoch %d | Loss: %.6f%n", e, lossVal);
+                
+                // Dashboard update
+                Map<String, Float> metrics = new HashMap<>();
+                metrics.put("loss", lossVal);
+                dashboard.broadcastMetrics(e + 1, metrics);
             }
-
-            // grad W2 = hidden^T * delta_out
-            NN.Mat hidden_t = transpose(hidden);
-            NN.Mat gradW2 = NN.mat_alloc(hidden_t.rows, delta_out.cols);
-            NN.mat_dot(gradW2, hidden_t, delta_out);
-
-            // update W2: W2 -= lr * gradW2
-            for (int i = 0; i < W2.rows * W2.cols; i++) {
-                W2.es[i] -= lr * gradW2.es[i];
-            }
-
-            // backprop to hidden: delta_hidden = (delta_out * W2^T) .* hidden*(1-hidden)
-            NN.Mat W2_t = transpose(W2);
-            NN.Mat delta_hidden = NN.mat_alloc(delta_out.rows, W2_t.cols);
-            NN.mat_dot(delta_hidden, delta_out, W2_t);
-            for (int i = 0; i < delta_hidden.rows * delta_hidden.cols; i++) {
-                float h = hidden.es[i];
-                delta_hidden.es[i] = delta_hidden.es[i] * h * (1 - h);
-            }
-
-            // grad W1 = X^T * delta_hidden
-            NN.Mat X_t = transpose(X);
-            NN.Mat gradW1 = NN.mat_alloc(X_t.rows, delta_hidden.cols);
-            NN.mat_dot(gradW1, X_t, delta_hidden);
-
-            // update W1
-            for (int i = 0; i < W1.rows * W1.cols; i++) {
-                W1.es[i] -= lr * gradW1.es[i];
-            }
-
-            if (e % 1000 == 0) {
-                float loss = mse(output, Y);
-                System.out.println("Epoch " + e + " loss=" + loss);
+            
+            while (dashboard.isTrainingPaused()) {
+                Thread.sleep(200);
             }
         }
 
-        // Final predictions
-        NN.mat_dot(hidden, X, W1);
-        applySigmoid(hidden);
-        NN.mat_dot(output, hidden, W2);
-        applySigmoid(output);
-
-        System.out.println("Final outputs:");
-        for (int i = 0; i < output.rows; i++) {
-            System.out.println(output.es[i]);
+        // 5. Final Evaluation
+        model.eval();
+        Tensor finalOut = model.forward(X);
+        System.out.println("\nFinal Results:");
+        for (int i = 0; i < 4; i++) {
+            System.out.printf("Input: [%.0f, %.0f] -> Predict: %.4f (Actual: %.0f)%n", 
+                X.data[i*2], X.data[i*2+1], finalOut.data[i], Y.data[i]);
         }
-
-    }
-
-    static float sigmoid(float x) {
-        return 1.0f / (1.0f + (float)Math.exp(-x));
-    }
-
-    static void applySigmoid(NN.Mat m) {
-        for (int i = 0; i < m.rows * m.cols; i++) m.es[i] = sigmoid(m.es[i]);
-    }
-
-    static NN.Mat transpose(NN.Mat a) {
-        NN.Mat t = NN.mat_alloc(a.cols, a.rows);
-        for (int i = 0; i < a.rows; i++) {
-            for (int j = 0; j < a.cols; j++) {
-                t.es[j * t.cols + i] = a.es[i * a.cols + j];
-            }
-        }
-        return t;
-    }
-
-    static float mse(NN.Mat out, NN.Mat y) {
-        float s = 0f;
-        int n = out.rows * out.cols;
-        for (int i = 0; i < n; i++) {
-            float d = out.es[i] - y.es[i];
-            s += d * d;
-        }
-        return s / n;
+        
+        System.out.println("\nTraining complete. You can view progress at http://localhost:7070");
     }
 }

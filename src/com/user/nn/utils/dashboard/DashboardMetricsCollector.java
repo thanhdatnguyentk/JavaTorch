@@ -170,7 +170,8 @@ public class DashboardMetricsCollector {
         return sampleHistory.getOrDefault("gan", new ArrayList<>());
     }
 
-    // ==================== NLP TEXT STREAM ====================
+    private Map<String, Float> tokenImportanceSum = new HashMap<>();
+    private Map<String, Integer> tokenImportanceCount = new HashMap<>();
 
     /** Add a text sample to the NLP stream (chat-log style) */
     public void addNLPTextSample(String text, String predictedLabel, float confidence, Map<String, Float> tokenWeights) {
@@ -178,7 +179,14 @@ public class DashboardMetricsCollector {
         entry.put("text", text);
         entry.put("label", predictedLabel);
         entry.put("confidence", confidence);
-        if (tokenWeights != null) entry.put("tokenWeights", tokenWeights);
+        if (tokenWeights != null) {
+            entry.put("tokenWeights", tokenWeights);
+            // Aggregate token importance for distribution chart
+            for (Map.Entry<String, Float> w : tokenWeights.entrySet()) {
+                tokenImportanceSum.put(w.getKey(), tokenImportanceSum.getOrDefault(w.getKey(), 0f) + w.getValue());
+                tokenImportanceCount.put(w.getKey(), tokenImportanceCount.getOrDefault(w.getKey(), 0) + 1);
+            }
+        }
         entry.put("timestamp", System.currentTimeMillis());
         nlpTextStream.add(entry);
         // Keep last 30
@@ -187,6 +195,21 @@ public class DashboardMetricsCollector {
 
     public List<Map<String, Object>> getNLPTextStream() {
         return new ArrayList<>(nlpTextStream);
+    }
+
+    public Map<String, Float> getTokenDistribution() {
+        // Calculate average importance and sort by value descending, return top 15
+        List<Map.Entry<String, Float>> list = new ArrayList<>();
+        for (String token : tokenImportanceSum.keySet()) {
+            list.add(new AbstractMap.SimpleEntry<>(token, tokenImportanceSum.get(token) / tokenImportanceCount.get(token)));
+        }
+        list.sort((a, b) -> Float.compare(b.getValue(), a.getValue()));
+        
+        Map<String, Float> top = new LinkedHashMap<>();
+        for (int i = 0; i < Math.min(15, list.size()); i++) {
+            top.put(list.get(i).getKey(), list.get(i).getValue());
+        }
+        return top;
     }
 
     // ==================== DETECTION ====================

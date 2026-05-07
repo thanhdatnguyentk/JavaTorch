@@ -343,6 +343,7 @@ public class DashboardIntegrationHelper {
         if (tokenWeights != null) payload.put("tokenWeights", tokenWeights);
         
         payload.put("textStream", collector.getNLPTextStream());
+        payload.put("tokenDistribution", collector.getTokenDistribution());
         
         server.broadcastTaskMetrics(epoch, payload);
     }

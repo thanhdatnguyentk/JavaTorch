@@ -120,7 +120,10 @@ public class Tensor implements AutoCloseable {
         for (int s : ns) n *= s;
         if (n != totalNumel)
             throw new IllegalArgumentException("reshape: incompatible shape, expected " + totalNumel + " got " + n);
+        boolean wasGPU = this.isGPU();
+        this.toCPU();
         Tensor result = new Tensor(this.data, ns);
+        if (wasGPU) result.toGPU();
         if (Torch.is_grad_enabled() && this.requires_grad) {
             result.requires_grad = true;
             result.grad_fn = new GradFn(this) {
@@ -186,16 +189,9 @@ public class Tensor implements AutoCloseable {
     // accumulate gradient (elementwise add)
     public void accumulateGrad(Tensor g) {
         if (this.grad == null) {
-            this.grad = g.clone();
-            this.grad.toCPU();
+            this.grad = g;
         } else {
-            this.grad.toCPU();
-            g.toCPU();
-            if (this.grad.data.length != g.data.length)
-                throw new IllegalArgumentException("grad size mismatch");
-            for (int i = 0; i < this.grad.data.length; i++)
-                this.grad.data[i] += g.data[i];
-            this.grad.markDirtyOnCPU();
+            this.grad = Torch.add(this.grad, g);
         }
     }
 
@@ -300,18 +296,28 @@ public class Tensor implements AutoCloseable {
 
     // Elementwise operations returning new Tensor
     public Tensor add(float scalar) {
-        this.toCPU();
         Tensor out = new Tensor(shape);
-        for (int i = 0; i < data.length; i++)
-            out.data[i] = data[i] + scalar;
+        if (this.isGPU() && CUDAOps.isAvailable()) {
+            out.toGPU();
+            CUDAOps.add(this, scalar, out);
+        } else {
+            this.toCPU();
+            for (int i = 0; i < data.length; i++)
+                out.data[i] = data[i] + scalar;
+        }
         return out;
     }
 
     public Tensor mul(float scalar) {
-        this.toCPU();
         Tensor out = new Tensor(shape);
-        for (int i = 0; i < data.length; i++)
-            out.data[i] = data[i] * scalar;
+        if (this.isGPU() && CUDAOps.isAvailable()) {
+            out.toGPU();
+            CUDAOps.mul(this, scalar, out);
+        } else {
+            this.toCPU();
+            for (int i = 0; i < data.length; i++)
+                out.data[i] = data[i] * scalar;
+        }
         return out;
     }
 
@@ -500,6 +506,7 @@ public class Tensor implements AutoCloseable {
             device = Device.CPU;
             return this;
         }
+        CUDAOps.syncComputeStream();
         cudaMemcpy(Pointer.to(data), deviceData, (long) numel() * Sizeof.FLOAT, cudaMemcpyDeviceToHost);
         onHost = true;
         onDevice = false; // Mark device as potentially stale

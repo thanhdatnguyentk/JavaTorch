@@ -1,59 +1,94 @@
 package com.user.nn;
+
 import com.user.nn.core.*;
-import com.user.nn.optim.*;
+import org.junit.jupiter.api.Test;
+import java.io.File;
+import java.io.IOException;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class TestTorchCoverage {
-    public static void main(String[] args) throws Exception {
-        int failures = 0;
-        try {
-            // creation
-            Tensor z = Torch.zeros(2,3);
-            Tensor o = Torch.ones(2,3);
-            Tensor r = Torch.arange(0,6).reshape(2,3);
-            Tensor l = Torch.linspace(0f,1f,5);
-            Tensor id = Torch.eye(3);
-            if (z.numel()!=6 || o.numel()!=6) { System.err.println("zeros/ones size mismatch"); failures++; }
 
-            // math
-            Tensor s = Torch.add(r, 1.0f);
-            Tensor p = Torch.mul(s, 2.0f);
-            if (p.data[0] != (r.data[0]+1f)*2f) { System.err.println("add/mul error"); failures++; }
+    @Test
+    void testCreationOps() {
+        Tensor z = Torch.zeros(2, 3);
+        Tensor o = Torch.ones(2, 3);
+        Tensor r = Torch.arange(0, 6).reshape(2, 3);
+        Tensor l = Torch.linspace(0f, 1f, 5);
+        Tensor id = Torch.eye(3);
+        
+        assertEquals(6, z.numel());
+        assertEquals(6, o.numel());
+        assertEquals(6, r.numel());
+        assertEquals(5, l.numel());
+        assertEquals(9, id.numel());
+        assertEquals(1.0f, id.get(0, 0));
+        assertEquals(0.0f, id.get(0, 1));
+    }
 
-            // broadcast
-            Tensor a = new Tensor(new float[]{1,2,3},3);
-            Tensor b = Torch.full(new int[]{3,3}, 2f);
-            Tensor c = Torch.add(a.reshape(3,1), b); // broadcast
+    @Test
+    void testBasicMath() {
+        Tensor r = Torch.arange(0, 6).reshape(2, 3);
+        Tensor s = Torch.add(r, 1.0f);
+        Tensor p = Torch.mul(s, 2.0f);
+        assertEquals((r.data[0] + 1f) * 2f, p.data[0], 1e-6f);
+    }
 
-            // reductions
-            float sum = Torch.sum(c);
-            if (sum==0f) { System.err.println("sum seems zero"); failures++; }
+    @Test
+    void testBroadcast() {
+        Tensor a = new Tensor(new float[]{1, 2, 3}, 3);
+        Tensor b = Torch.full(new int[]{3, 3}, 2f);
+        // shape [3,1] + [3,3] -> [3,3]
+        Tensor c = Torch.add(a.reshape(3, 1), b); 
+        assertEquals(3, c.shape[0]);
+        assertEquals(3, c.shape[1]);
+        assertEquals(3.0f, c.get(0, 0), 1e-6f); // 1 + 2
+        assertEquals(5.0f, c.get(2, 0), 1e-6f); // 3 + 2
+    }
 
-            // matmul
-            Tensor A = Torch.tensor(new float[]{1,2,3,4},2,2);
-            Tensor B = Torch.tensor(new float[]{5,6,7,8},2,2);
-            Tensor M = Torch.matmul(A,B);
-            if (M.shape[0]!=2 || M.shape[1]!=2) { System.err.println("matmul shape"); failures++; }
+    @Test
+    void testReductions() {
+        Tensor a = Torch.ones(2, 2);
+        float sum = Torch.sum(a);
+        assertEquals(4.0f, sum, 1e-6f);
+        float mean = Torch.mean(a);
+        assertEquals(1.0f, mean, 1e-6f);
+    }
 
-            // rand/int
-            Tensor rnd = Torch.randint(0,10,3,3);
+    @Test
+    void testMatmul() {
+        Tensor A = Torch.tensor(new float[]{1, 2, 3, 4}, 2, 2);
+        Tensor B = Torch.tensor(new float[]{5, 6, 7, 8}, 2, 2);
+        Tensor M = Torch.matmul(A, B);
+        assertArrayEquals(new int[]{2, 2}, M.shape);
+        // [1*5 + 2*7] = 19
+        assertEquals(19.0f, M.data[0], 1e-6f);
+    }
 
-            // save/load
-            String path = "tests/tmp/tensor_save.txt";
-            Torch.save(rnd, path);
-            Tensor rnd2 = Torch.load(path);
-            if (rnd2.numel() != rnd.numel()) { System.err.println("save/load mismatch"); failures++; }
+    @Test
+    void testSaveLoad() throws IOException {
+        Tensor rnd = Torch.randint(0, 10, 3, 3);
+        File tempFile = File.createTempFile("tensor_save", ".txt");
+        String path = tempFile.getAbsolutePath();
+        
+        Torch.save(rnd, path);
+        Tensor loaded = Torch.load(path);
+        
+        assertEquals(rnd.numel(), loaded.numel());
+        assertArrayEquals(rnd.shape, loaded.shape);
+        assertArrayEquals(rnd.data, loaded.data, 1e-6f);
+        
+        tempFile.delete();
+    }
 
-            // grad control
-            Torch.enable_grad();
-            if (!Torch.is_grad_enabled()) { System.err.println("enable_grad failed"); failures++; }
-            try (java.io.Closeable cno = Torch.no_grad()) {
-                if (Torch.is_grad_enabled()) { System.err.println("no_grad did not disable"); failures++; }
-            }
-            if (!Torch.is_grad_enabled()) { System.err.println("no_grad did not restore"); failures++; }
-
-        } catch (Exception e) {
-            e.printStackTrace(); failures++;
+    @Test
+    void testGradControl() throws Exception {
+        Torch.enable_grad();
+        assertTrue(Torch.is_grad_enabled());
+        
+        try (AutoCloseable c = Torch.no_grad()) {
+            assertFalse(Torch.is_grad_enabled(), "no_grad should disable grad");
         }
-        if (failures==0) { System.out.println("TEST PASSED: Torch coverage"); System.exit(0); } else { System.err.println("TEST FAILED: Torch coverage failures="+failures); System.exit(2); }
+        
+        assertTrue(Torch.is_grad_enabled(), "grad should be re-enabled after no_grad block");
     }
 }

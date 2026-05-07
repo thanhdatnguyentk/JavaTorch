@@ -2,42 +2,63 @@ package com.user.nn;
 
 import com.user.nn.core.*;
 import com.user.nn.models.cv.ViT;
-import java.util.Arrays;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.*;
 
 public class TestViT {
-    public static void main(String[] args) {
-        
+
+    @Test
+    @Tag("gpu")
+    @Tag("slow")
+    void testViTForwardBackwardGPU() {
+        assumeTrue(Torch.hasGPU(), "GPU not available");
+
         int imgSize = 32;
         int patchSize = 4;
-        int embedDim = 64; // Smaller for test
-        int depth = 4;
+        int embedDim = 64;
+        int depth = 2; // Reduced for test speed
         int numHeads = 4;
         int mlpDim = 128;
         
-        System.out.println("Initializing ViT...");
         ViT model = new ViT(imgSize, patchSize, 3, 10, embedDim, depth, numHeads, mlpDim, 0.1f);
         model.to(Tensor.Device.GPU);
         model.train();
 
-        System.out.println("Generating dummy input...");
         Tensor x = Torch.randn(new int[]{2, 3, 32, 32}).to(Tensor.Device.GPU);
+        x.requires_grad = true;
         
-        System.out.println("Forwarding ViT...");
-        long start = System.currentTimeMillis();
         Tensor out = model.forward(x);
-        long end = System.currentTimeMillis();
-        
-        System.out.println("Output shape: " + Arrays.toString(out.shape));
-        System.out.println("Forward time: " + (end - start) + "ms");
-        
-        System.out.println("Output values: " + out);
-        
-        System.out.println("Backwarding ViT...");
-        start = System.currentTimeMillis();
+        assertArrayEquals(new int[]{2, 10}, out.shape);
+        assertTrue(out.isGPU());
+
         out.backward();
-        end = System.currentTimeMillis();
-        System.out.println("Backward time: " + (end - start) + "ms");
+        assertNotNull(x.grad, "ViT backward should populate input grad");
+        System.out.println("[DEBUG] TestViT assertion: x.grad.isGPU=" + x.grad.isGPU());
+        assertTrue(x.grad.isGPU());
         
-        System.out.println("Test PASSED! Vision Transformer is functional on GPU.");
+        // Memory cleanup
+        model.toCPU(); // Free GPU mem for parameters
+        x.close(); out.close();
+    }
+
+    @Test
+    void testViTForwardCPU() {
+        int imgSize = 16;
+        int patchSize = 4;
+        int embedDim = 32;
+        int depth = 1;
+        int numHeads = 2;
+        int mlpDim = 64;
+        
+        ViT model = new ViT(imgSize, patchSize, 3, 10, embedDim, depth, numHeads, mlpDim, 0.0f);
+        model.eval();
+
+        Tensor x = Torch.randn(new int[]{1, 3, 16, 16});
+        Tensor out = model.forward(x);
+        
+        assertArrayEquals(new int[]{1, 10}, out.shape);
+        assertFalse(out.isGPU());
     }
 }

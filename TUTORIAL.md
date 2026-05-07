@@ -42,10 +42,10 @@ On macOS/Linux:
 ./gradlew :core:clean :core:test :core:build
 ```
 
-### Legacy path (compatible with older scripts)
+### Run the Test Suite
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
+.\gradlew.bat cleanTest test -PincludeGPU=true
 ```
 
 ## 4. First example: Iris

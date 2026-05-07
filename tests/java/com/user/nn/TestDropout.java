@@ -1,46 +1,27 @@
 package com.user.nn;
+
 import com.user.nn.core.*;
 import com.user.nn.layers.*;
-import java.util.Arrays;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class TestDropout {
-    public static void main(String[] args) {
-        testDropoutEval();
-        testDropoutTrain();
-        testDropoutGrad();
-        testDropoutFunctional();
-        System.out.println("TestDropout PASSED!");
-    }
 
-    private static void check(String name, boolean cond) {
-        if (cond) {
-            System.out.println("  PASS: " + name);
-        } else {
-            System.err.println("  FAIL: " + name);
-            System.exit(1);
-        }
-    }
-
-    private static void testDropoutEval() {
-        System.out.println("Testing Dropout Eval mode...");
+    @Test
+    void testDropoutEval() {
         Dropout dropout = new Dropout(0.5f);
         dropout.eval();
         
         Tensor x = Torch.ones(10, 10);
         Tensor out = dropout.forward(x);
         
-        boolean identical = true;
         for(int i=0; i<x.data.length; i++) {
-            if (out.data[i] != x.data[i]) {
-                identical = false;
-                break;
-            }
+            assertEquals(x.data[i], out.data[i], "Dropout in eval mode must be identity");
         }
-        check("Dropout in eval mode is identity", identical);
     }
 
-    private static void testDropoutTrain() {
-        System.out.println("Testing Dropout Train mode (scaling)...");
+    @Test
+    void testDropoutTrain() {
         Dropout dropout = new Dropout(0.5f);
         dropout.train(); // default is true
         
@@ -52,27 +33,23 @@ public class TestDropout {
         int zeroCount = 0;
         float sum = 0;
         for(float v : out.data) {
-            if (v == 0) zeroCount++;
-            else {
-                if (Math.abs(v - 2.0f) > 1e-6f) {
-                    System.err.println("Expected scaled value 2.0, got " + v);
-                    System.exit(1);
-                }
+            if (v == 0) {
+                zeroCount++;
+            } else {
+                assertEquals(2.0f, v, 1e-6f, "Expected inverted scaling factor 1/(1-p) = 2.0");
             }
             sum += v;
         }
         
         float zeroRate = (float)zeroCount / n;
-        System.out.println("  Zero rate: " + zeroRate);
-        check("Zero rate roughly 0.5", zeroRate > 0.4 && zeroRate < 0.6);
+        assertTrue(zeroRate > 0.4 && zeroRate < 0.6, "Zero rate " + zeroRate + " should be roughly 0.5");
         
         float avg = sum / n;
-        System.out.println("  Average after dropout: " + avg);
-        check("Average roughly 1.0 (inverted scaling check)", avg > 0.9 && avg < 1.1);
+        assertTrue(avg > 0.9 && avg < 1.1, "Average " + avg + " should be roughly 1.0 due to inverted scaling");
     }
 
-    private static void testDropoutGrad() {
-        System.out.println("Testing Dropout Gradient...");
+    @Test
+    void testDropoutGrad() {
         Dropout dropout = new Dropout(0.5f);
         dropout.train();
         
@@ -83,32 +60,33 @@ public class TestDropout {
         Tensor loss = Torch.sumTensor(out);
         loss.backward();
         
-        boolean validGrad = true;
+        assertNotNull(x.grad, "Gradient should be populated");
         for(int i=0; i<x.data.length; i++) {
             if (out.data[i] == 0) {
-                if (x.grad.data[i] != 0) validGrad = false;
+                assertEquals(0f, x.grad.data[i], "Gradient should be 0 where output was dropped");
             } else {
                 // scale = 1 / (1 - 0.5) = 2.0
-                if (Math.abs(x.grad.data[i] - 2.0f) > 1e-6f) validGrad = false;
+                assertEquals(2.0f, x.grad.data[i], 1e-6f, "Gradient should be scaled by 1/(1-p)");
             }
         }
-        check("Dropout gradient follows mask and scaling", validGrad);
     }
 
-    private static void testDropoutFunctional() {
-        System.out.println("Testing NN.F.dropout...");
+    @Test
+    void testDropoutFunctional() {
         Tensor x = Torch.ones(10, 10);
         
         // Test training mode
         Tensor outTrain = Functional.dropout(x, 0.5f, true);
         float sumTrain = 0;
         for(float v : outTrain.data) sumTrain += v;
-        check("F.dropout training active (sum not 100 or scale 2)", sumTrain != 100.0f || outTrain.data[0] == 2.0f || outTrain.data[0] == 0.0f);
+        // With p=0.5, inverted scaling is 2.0. Expected sum is roughly 100.
+        // If we sum all elements, some are 2.0, some are 0.0.
+        assertTrue(sumTrain > 50.0f && sumTrain < 150.0f, "Functional dropout training sum should be around 100");
         
         // Test eval mode
         Tensor outEval = Functional.dropout(x, 0.5f, false);
         float sumEval = 0;
         for(float v : outEval.data) sumEval += v;
-        check("F.dropout eval mode identity (sum=100)", sumEval == 100.0f);
+        assertEquals(100.0f, sumEval, 1e-6f, "Functional dropout eval mode should be identity");
     }
 }

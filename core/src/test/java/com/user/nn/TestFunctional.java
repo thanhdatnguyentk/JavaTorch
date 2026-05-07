@@ -1,10 +1,15 @@
 package com.user.nn;
+
 import com.user.nn.core.*;
 import com.user.nn.activations.*;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class TestFunctional {
-    public static void main(String[] args) {
-        NN.Mat m = NN.mat_alloc(2,2);
+
+    @Test
+    void testReluConsistency() {
+        NN.Mat m = NN.mat_alloc(2, 2);
         NN.mat_fill(m, -0.5f);
         m.es[0] = 1.0f; // one positive
 
@@ -13,11 +18,7 @@ public class TestFunctional {
         NN.Mat r2 = relu.forward(m);
 
         for (int i = 0; i < r1.es.length; i++) {
-            if (Math.abs(r1.es[i] - r2.es[i]) > 1e-6f) {
-                System.err.println("F.relu mismatch vs ReLU");
-                System.exit(1);
-            }
+            assertEquals(r1.es[i], r2.es[i], 1e-6f, "F.relu mismatch vs ReLU at index " + i);
         }
-        System.out.println("TEST PASSED: Functional");
     }
 }

@@ -74,9 +74,16 @@ sourceSets {
 
 tasks.test {
     useJUnitPlatform {
-        excludeTags("gpu-smoke", "gpu-nightly", "gpu-manual")
+        // Exclude GPU tests by default for standard CI environments
+        if (!project.hasProperty("includeGPU")) {
+            excludeTags("gpu", "gpu-smoke", "gpu-nightly", "gpu-manual")
+        }
     }
+    workingDir = rootProject.projectDir
     jvmArgs("--add-modules=jdk.incubator.vector")
+    testLogging {
+        events("passed", "skipped", "failed")
+    }
 }
 
 tasks.register<Test>("gpuSmoke") {

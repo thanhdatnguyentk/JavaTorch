@@ -151,6 +151,11 @@ public class DashboardServer {
             ctx.json(metricsCollector.getNLPTextStream());
         });
 
+        // NLP token distribution
+        app.get("/api/nlp/tokens", ctx -> {
+            ctx.json(metricsCollector.getTokenDistribution());
+        });
+
         // Detection leaderboard
         app.get("/api/detection/leaderboard", ctx -> {
             ctx.json(metricsCollector.getPerClassMAP());

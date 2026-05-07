@@ -5,6 +5,7 @@ import com.user.nn.core.Module;
 import com.user.nn.dataloaders.Data;
 
 import java.util.*;
+import java.util.function.Function;
 
 /**
  * Predictor chuyên biệt cho bài toán phân tích văn bản / NLP.
@@ -17,6 +18,7 @@ public class TextPredictor extends Predictor {
 
     private Data.Vocabulary vocab;
     private Data.BasicTokenizer tokenizer;
+    private Function<String, List<String>> customTokenizer;
     private int maxLen;
 
     /**
@@ -41,6 +43,18 @@ public class TextPredictor extends Predictor {
         this.vocab = vocab;
         this.tokenizer = new Data.BasicTokenizer();
         this.maxLen = maxLen;
+    }
+
+    /**
+     * Đặt custom tokenizer để thay thế BasicTokenizer mặc định.
+     * Sử dụng khi cần tokenizer chuyên biệt (VD: VietnameseTokenizer).
+     *
+     * @param tokenizer Function nhận text trả về List<String> tokens
+     * @return this (builder pattern)
+     */
+    public TextPredictor setTokenizer(Function<String, List<String>> tokenizer) {
+        this.customTokenizer = tokenizer;
+        return this;
     }
 
     // ======================== PREDICT FROM TEXT ========================
@@ -102,7 +116,9 @@ public class TextPredictor extends Predictor {
      * Tokenize text, map qua vocab, pad hoặc truncate đến maxLen.
      */
     private float[] tokenizeAndPad(String text) {
-        List<String> tokens = tokenizer.tokenize(text);
+        List<String> tokens = (customTokenizer != null)
+                ? customTokenizer.apply(text)
+                : tokenizer.tokenize(text);
 
         float[] ids = new float[maxLen];
         // Pad token = 0 (default)
@@ -116,11 +132,20 @@ public class TextPredictor extends Predictor {
     // ======================== FACTORY ========================
 
     /**
-     * Tạo TextPredictor cho Sentiment Analysis (2 classes).
+     * Tạo TextPredictor cho Sentiment Analysis (2 classes mặc định).
      */
     public static TextPredictor forSentiment(Module model, Data.Vocabulary vocab, int maxLen) {
         return new TextPredictor(model, vocab, maxLen, 
             new String[] { "Negative", "Positive" });
+    }
+
+    /**
+     * Tạo TextPredictor cho Sentiment Analysis với labels tuỳ chỉnh.
+     *
+     * @param labels Danh sách tên label (VD: ["negative", "neutral", "positive"])
+     */
+    public static TextPredictor forSentiment(Module model, Data.Vocabulary vocab, int maxLen, String[] labels) {
+        return new TextPredictor(model, vocab, maxLen, labels);
     }
 
     // ======================== GETTERS ========================

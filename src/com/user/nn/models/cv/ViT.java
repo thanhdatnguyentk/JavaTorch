@@ -32,7 +32,7 @@ public class ViT extends Module {
         this.numPatches = (imgSize / patchSize) * (imgSize / patchSize);
 
         // 1. Patch Embedding: uses a Conv2d trick
-        this.patchEmbed = new Conv2d(inChannels, embedDim, patchSize, patchSize, imgSize, imgSize, patchSize, 0, true);
+        this.patchEmbed = new Conv2d(inChannels, embedDim, patchSize, patchSize, patchSize, patchSize, 0, 0, true);
         addModule("patchEmbed", patchEmbed);
 
         // 2. Learnable Class Token and Positional Embedding

@@ -50,10 +50,10 @@ Lý do nên dùng cách này trước:
 - compile và chạy test theo module
 - giúp bạn biết ngay môi trường có thiếu dependency hay không
 
-### Đường legacy (tương thích script cũ)
+### Chạy Test Suite
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
+.\gradlew.bat cleanTest test -PincludeGPU=true
 ```
 
 ## 4. Chạy ví dụ đầu tiên: Iris
@@ -337,7 +337,7 @@ Nhưng cần nhớ:
 ### Toàn bộ suite
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
+.\gradlew.bat cleanTest test -PincludeGPU=true
 ```
 
 ### Một test riêng lẻ
@@ -421,6 +421,6 @@ Repo này phù hợp cho 3 kiểu mục tiêu:
 Khi cần bắt đầu nhanh, hãy quay lại đúng 2 lệnh này:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
+.\gradlew.bat cleanTest test -PincludeGPU=true
 .\gradlew.bat "-PmainClass=com.user.nn.examples.TrainIris" :examples:run --no-daemon
 ```

@@ -83,4 +83,32 @@ public class MultiTaskTransformerModel extends Module {
     public Tensor forward(Tensor x) {
         return forwardBoth(x)[0];
     }
+
+    public java.util.Map<String, Float> getEmbeddingNorms(Tensor x, com.user.nn.dataloaders.UitVsfcLoader.VietnameseTokenizer tokenizer, com.user.nn.dataloaders.Data.Vocabulary vocab) {
+        try (com.user.nn.core.MemoryScope scope = new com.user.nn.core.MemoryScope()) {
+            Tensor h = embedding.forward(x);
+            // In Transformer, we might want to see the combined embedding (token + pos)
+            int seqLen = x.shape[1];
+            Tensor pos = Torch.narrow(posEmbed.getTensor(), 1, 0, seqLen);
+            pos = Torch.expand(pos, x.shape[0], seqLen, h.shape[2]);
+            h = Torch.add(h, pos);
+
+            Tensor squared = Torch.mul(h, h);
+            Tensor sum = Torch.sum(squared, 2);
+            Tensor norms = Torch.sqrt(sum);
+
+            if (norms.isGPU()) norms.toCPU();
+
+            java.util.Map<String, Float> weights = new java.util.HashMap<>();
+            for (int j = 0; j < seqLen; j++) {
+                float tokenId = x.data[j];
+                if (tokenId == 0) continue;
+                String word = vocab.getWord((int) tokenId);
+                if (word != null) {
+                    weights.put(word, norms.data[j]);
+                }
+            }
+            return weights;
+        }
+    }
 }

@@ -63,7 +63,9 @@ flowchart LR
   - **Giám sát hệ thống (System Monitor)**: Các đồng hồ đo (gauges) theo phong cách hiện đại cho GPU VRAM (System, Pool, Runtime), CPU utilization và độ trễ các giai đoạn pipeline.
 - **Điều khiển huấn luyện**: Tích hợp nút tạm dừng (Pause), tiếp tục (Resume) và sân chơi thử nghiệm inference trực tiếp từ giao diện web.
 - Các ví dụ End-to-end cho Iris, Fashion-MNIST, CIFAR-10, Sentiment Analysis, ViT, GAN, VAE và YOLO — tất cả đều tích hợp telemetry dashboard phong phú.
-- Bo test PowerShell hien dang ky 45 test class va dang pass toan bo.
+- **100% JUnit 5 Migration**: Hơn 50 legacy test runners đã được di chuyển hoàn toàn sang cấu trúc JUnit 5. Hệ thống hiện thực thi thành công 174+ bài test thông qua Gradle.
+- Hơn 45 test class hiện đang pass toàn bộ trên Gradle test runner.
+
 
 ## Prediction / Inference
 
@@ -100,7 +102,7 @@ Cac so duoi day la ket qua do tren chinh repo hien tai bang benchmark san co. Da
 |---|---|---|---|
 | Matmul CPU lon | OpenBLAS | `256 x 256` | `0.58 ms / matmul` |
 | Matmul CPU vectorized | Java Vector API | benchmark suite | `19.10 ms / matmul` |
-| Regression suite | PowerShell runner | 45 test class | pass toan bo |
+| Regression suite | Gradle Runner | 50+ test class | pass toan bo (174+ tests) |
 
 ## Cong nghe chinh
 
@@ -175,10 +177,12 @@ macOS/Linux:
 ./gradlew clean build
 ```
 
-### 4. Legacy test runner (tuong thich voi script cu)
+### 4. Chạy toàn bộ Test Suite (Thay thế legacy runner)
+
+Toàn bộ test đã được di chuyển sang JUnit 5 và chạy qua Gradle:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
+.\gradlew.bat cleanTest test -PincludeGPU=true
 ```
 
 ### 5. Script kiem tra CI/CD tu dong
@@ -189,7 +193,7 @@ powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
 powershell -ExecutionPolicy Bypass -File scripts\ci-test.ps1 -Mode quick
 ```
 
-- Chay day du (smoke test toan bo example tim thay):
+- Chay day du (smoke test toan bo example tim tim thay):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\ci-test.ps1 -Mode full -ExampleTimeoutSec 60
@@ -231,7 +235,7 @@ src/com/user/nn/
 
 tests/
   java/com/user/nn/   Toan bo test Java
-  run-tests.ps1       Script compile + chay regression suite
+  build.gradle.kts    Cấu hình test suite
 ```
 
 ## Kien truc van hanh
@@ -282,6 +286,14 @@ Repo hien co 3 tang quan ly bo nho quan trong:
 .\gradlew.bat "-PmainClass=com.user.nn.examples.TrainFashionMNIST" :examples:run --no-daemon
 ```
 
+- **Xác minh đầy đủ mới nhất (2026-05-07)**:
+
+```powershell
+.\gradlew.bat cleanTest test -PincludeGPU=true --continue
+```
+
+Kết quả: `BUILD SUCCESSFUL` (174+ tests passed)
+
 ## Ghi chu thuc te
 
 - Mot so vi du tu tai du lieu neu thieu, mot so khac dung du lieu da co san trong `data/`.
@@ -289,6 +301,3 @@ Repo hien co 3 tang quan ly bo nho quan trong:
 - Neu chay `java -cp` thu cong tren Windows, classpath dung dau `;`.
 - Neu sua `src/com/user/nn/core/kernels.cu`, ban can build lai PTX tuong ung.
 
----
-
-Tai lieu duoc cap nhat theo trang thai code hien tai vao 2026-03-31.

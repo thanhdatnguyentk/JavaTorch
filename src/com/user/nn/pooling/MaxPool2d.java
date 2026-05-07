@@ -26,6 +26,18 @@ public class MaxPool2d extends Module {
         if (x.isGPU()) {
             out.toGPU();
             CUDAOps.maxPool2dForward(x, out, inC, inH, inW, kernelH, kernelW, outH, outW, padH, padW, strideH, strideW);
+            if (Torch.is_grad_enabled() && x.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn(x, out) {
+                    public void apply(Tensor outGrad) {
+                        Tensor gx = new Tensor(x.shape).toGPU();
+                        CUDAOps.poolingBackward(jcuda.jcudnn.cudnnPoolingMode.CUDNN_POOLING_MAX, 
+                            x, out, outGrad, gx, 
+                            inC, inH, inW, kernelH, kernelW, outH, outW, padH, padW, strideH, strideW);
+                        x.backwardStep(gx);
+                    }
+                };
+            }
         } else {
             int[] maxIndices = new int[batch * outSize];
             for (int b = 0; b < batch; b++) {

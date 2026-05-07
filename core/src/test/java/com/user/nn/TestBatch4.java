@@ -1,41 +1,16 @@
 package com.user.nn;
+
 import com.user.nn.core.*;
 import com.user.nn.layers.*;
 import com.user.nn.norm.*;
 import com.user.nn.rnn.*;
-
-import java.util.List;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class TestBatch4 {
 
-    public static void main(String[] args) {
-        testConv1d();
-        testBilinear();
-        testGroupNorm();
-        testOneHot();
-        testGRU();
-        System.out.println("TEST BATCH 4 PASSED");
-    }
-
-    private static void assertEquals(float expected, float actual, float delta) {
-        if (Math.abs(expected - actual) > delta) {
-            throw new RuntimeException("Expected " + expected + " but got " + actual);
-        }
-    }
-
-    private static void assertEquals(int expected, int actual) {
-        if (expected != actual) {
-            throw new RuntimeException("Expected " + expected + " but got " + actual);
-        }
-    }
-
-    private static void assertNotNull(Object o) {
-        if (o == null) {
-            throw new RuntimeException("Expected non-null object");
-        }
-    }
-
-    public static void testConv1d() {
+    @Test
+    void testConv1d() {
         Conv1d conv = new Conv1d(2, 2, 3, 1, 0, true);
         
         Tensor x = new Tensor(new float[] { 1,2,3,4,5, 6,7,8,9,10 }, 1, 2, 5);
@@ -52,7 +27,8 @@ public class TestBatch4 {
         assertNotNull(conv.bias.getGrad());
     }
 
-    public static void testBilinear() {
+    @Test
+    void testBilinear() {
         Bilinear bl = new Bilinear(2, 3, 4, true);
         
         Tensor x1 = new Tensor(new float[] { 1, 2 }, 1, 2);
@@ -70,7 +46,8 @@ public class TestBatch4 {
         assertNotNull(bl.weight.getGrad());
     }
 
-    public static void testGroupNorm() {
+    @Test
+    void testGroupNorm() {
         GroupNorm gn = new GroupNorm(2, 4);
         
         Tensor x = new Tensor(new float[] { 1,2, 3,4, 5,6, 7,8 }, 1, 4, 2);
@@ -85,7 +62,8 @@ public class TestBatch4 {
         assertNotNull(gn.bias.getGrad());
     }
 
-    public static void testOneHot() {
+    @Test
+    void testOneHot() {
         Tensor indices = new Tensor(new float[] { 0, 2, 1 }, 3);
         Tensor oh = Torch.one_hot(indices, 3);
         assertEquals(3, oh.shape[0]);
@@ -96,7 +74,8 @@ public class TestBatch4 {
         assertEquals(0.0f, oh.data[0 * 3 + 1], 1e-5f);
     }
 
-    public static void testGRU() {
+    @Test
+    void testGRU() {
         GRU gru = new GRU(5, 10, true, true);
         
         Tensor x = new Tensor(1, 3, 5);

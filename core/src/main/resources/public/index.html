@@ -214,9 +214,9 @@
                         <div class="glass p-5 max-h-[350px] overflow-y-auto">
                             <h3 class="text-[10px] font-bold uppercase tracking-widest text-outline mb-3">Text Stream</h3>
                             <div class="space-y-2">
-                                <div v-for="(item,i) in nlpTextStream" :key="i" class="p-3 rounded bg-s1/50 border-l-2" :class="item.label==='POSITIVE'?'border-l-tertiary':'border-l-secondary'">
+                                <div v-for="(item,i) in nlpTextStream" :key="i" class="p-3 rounded bg-s1/50 border-l-2" :class="item.label==='Positive'||item.label==='POSITIVE'?'border-l-tertiary':(item.label==='Negative'||item.label==='NEGATIVE'?'border-l-secondary':'border-l-accent')">
                                     <p class="text-[12px] leading-relaxed"><template v-if="item.tokenWeights"><span v-for="(w,tok) in item.tokenWeights" :style="{background:'rgba(77,142,255,'+Math.min(0.8,w)+')'}" class="text-highlight">{{tok}} </span></template><template v-else>{{item.text}}</template></p>
-                                    <div class="flex justify-between mt-1"><span class="text-[9px] font-mono" :class="item.label==='POSITIVE'?'text-tertiary':'text-secondary'">{{item.label}}</span><span class="text-[9px] font-mono text-outline">{{(item.confidence*100).toFixed(1)}}%</span></div>
+                                    <div class="flex justify-between mt-1"><span class="text-[9px] font-mono" :class="item.label==='Positive'||item.label==='POSITIVE'?'text-tertiary':(item.label==='Negative'||item.label==='NEGATIVE'?'text-secondary':'text-accent')">{{item.label}}</span><span class="text-[9px] font-mono text-outline">{{(item.confidence*100).toFixed(1)}}%</span></div>
                                 </div>
                                 <div v-if="!nlpTextStream.length" class="text-outline italic text-xs text-center py-8">Awaiting text samples...</div>
                             </div>
@@ -226,7 +226,7 @@
                             <div class="flex gap-2"><input v-model="nlpInputText" @keyup.enter="predictNLP" placeholder="Type a sentence..." class="flex-grow bg-[#0e0e0e] border border-outV/15 rounded px-3 py-2 text-xs text-onSurf focus:border-accent/50 outline-none transition-all"><button @click="predictNLP" class="px-4 py-2 rounded bg-gradient-to-r from-accentC to-accent text-bg text-[11px] font-medium glow-primary">Analyze</button></div>
                             <div v-if="nlpPredResult" class="mt-3 flex items-center gap-4 p-3 rounded bg-s1/50">
                                 <div class="relative w-16 h-16 flex items-center justify-center shrink-0"><svg class="w-full h-full -rotate-90"><circle cx="50%" cy="50%" r="42%" class="fill-none stroke-s4" stroke-width="6"/><circle cx="50%" cy="50%" r="42%" class="fill-none stroke-accent" stroke-width="6" :style="{strokeDasharray:'264',strokeDashoffset:264-(264*nlpPredResult.confidence)}"/></svg><div class="absolute text-[11px] font-mono">{{(nlpPredResult.confidence*100).toFixed(0)}}%</div></div>
-                                <div><div class="text-xs font-medium" :class="nlpPredResult.label==='POSITIVE'?'text-tertiary':'text-secondary'">{{nlpPredResult.label}}</div><div class="text-[9px] text-outline mt-0.5">Confidence score</div></div>
+                                <div><div class="text-xs font-medium" :class="nlpPredResult.label==='Positive'||nlpPredResult.label==='POSITIVE'?'text-tertiary':(nlpPredResult.label==='Negative'||nlpPredResult.label==='NEGATIVE'?'text-secondary':'text-accent')">{{nlpPredResult.label}}</div><div class="text-[9px] text-outline mt-0.5">Confidence score</div></div>
                             </div>
                         </div>
                     </div>
@@ -359,6 +359,7 @@ createApp({
             if(el('accChart')&&!charts.acc){charts.acc=new Chart(el('accChart'),{type:'line',data:{labels:epochs.value,datasets:[{label:'Train',data:trainAccs.value,borderColor:'#4edea3',tension:.4,borderWidth:1.5,pointRadius:0},{label:'Test',data:testAccs.value,borderColor:'#adc6ff',tension:.4,borderWidth:1.5,pointRadius:0}]},options:chartOpts})}
             if(el('ganLossChart')&&!charts.gan){charts.gan=new Chart(el('ganLossChart'),{type:'line',data:{labels:ganEpochs.value,datasets:[{label:'G-Loss',data:gLosses.value,borderColor:'#ffb4ab',backgroundColor:'rgba(255,180,171,0.05)',fill:true,tension:.4,borderWidth:1.5,pointRadius:0},{label:'D-Loss',data:dLosses.value,borderColor:'#adc6ff',backgroundColor:'rgba(173,198,255,0.05)',fill:true,tension:.4,borderWidth:1.5,pointRadius:0}]},options:chartOpts})}
             if(el('nlpMetricsChart')&&!charts.nlpM){charts.nlpM=new Chart(el('nlpMetricsChart'),{type:'bar',data:{labels:['Positive','Negative','Neutral'],datasets:[]},options:{...chartOpts,scales:{...chartOpts.scales,x:{display:true,ticks:{color:'#8c909f',font:{size:9}}}}}})}
+            if(el('tokenDistChart')&&!charts.tokenD){charts.tokenD=new Chart(el('tokenDistChart'),{type:'bar',data:{labels:[],datasets:[{label:'Importance',data:[],backgroundColor:'rgba(77,142,255,0.6)',borderRadius:2}]},options:{...chartOpts,indexAxis:'y',scales:{y:{grid:{display:false},ticks:{color:'#e5e2e1',font:{size:9,family:'JetBrains Mono'}}},x:{display:false}}}})}
         };
         const updateCharts=()=>{Object.values(charts).forEach(c=>{try{c.update('none')}catch(e){}})};
         const destroyCharts=()=>{Object.entries(charts).forEach(([k,c])=>{try{c.destroy()}catch(e){}});charts={}};
@@ -414,6 +415,12 @@ createApp({
                             {label:'Recall',data:labels.map(l=>(m.recall||{})[l]||0),backgroundColor:'rgba(255,182,144,0.6)'}
                         ];charts.nlpM.update('none');
                     }
+                    if(m.tokenDistribution&&charts.tokenD){
+                        const tokens=Object.keys(m.tokenDistribution);
+                        charts.tokenD.data.labels=tokens;
+                        charts.tokenD.data.datasets[0].data=tokens.map(t=>m.tokenDistribution[t]);
+                        charts.tokenD.update('none');
+                    }
                 }else if(d.taskType==='system_alert'){
                     if(d.alerts)alerts.value=d.alerts;
                 }
@@ -429,9 +436,10 @@ createApp({
         const togglePause=async()=>{try{await fetch(`/api/training/${paused.value?'resume':'pause'}`,{method:'POST'});paused.value=!paused.value}catch(e){}};
         const predictNLP=async()=>{if(!nlpInputText.value.trim())return;try{const fd=new FormData();fd.append('text',nlpInputText.value);const r=await fetch('/api/predict/sentiment',{method:'POST',body:fd});const d=await r.json();if(d.result)nlpPredResult.value=d.result}catch(e){}};
         const generateLatent=async()=>{try{const fd=new FormData();fd.append('text',JSON.stringify(latentZ));const r=await fetch('/api/predict/gan_latent',{method:'POST',body:fd});const d=await r.json();if(d.result&&d.result.image)latentResult.value=d.result.image}catch(e){}};
+        const fetchNLPTokens=async()=>{if(currentView.value!=='nlp')return;try{const r=await fetch('/api/nlp/tokens');const d=await r.json();if(charts.tokenD){const tokens=Object.keys(d);charts.tokenD.data.labels=tokens;charts.tokenD.data.datasets[0].data=tokens.map(t=>d[t]);charts.tokenD.update('none');}}catch(e){}};
 
         onMounted(()=>{connectWS();fetchHistory();fetchAlerts();fetchGanHistory()});
-        watch(currentView,()=>{destroyCharts();nextTick(initCharts)});
+        watch(currentView,()=>{destroyCharts();nextTick(()=>{initCharts();fetchNLPTokens();})});
 
         return{currentView,views,activeView,wsStatus,sysStats,logStream,modelName,currentEpoch,totalEpochs,paused,
             epochs,trainLosses,valLosses,trainAccs,testAccs,confusionMatrix,confusionLabels,cmMax,livePredictions,

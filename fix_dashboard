@@ -1,0 +1,224 @@
+# Kế Hoạch Kiểm Tra Toàn Diện Dashboard JavaTorch
+
+## Mô tả
+Kiểm tra toàn bộ các tính năng của Dashboard (http://localhost:7070) trong quá trình training UIT-VSFC, đảm bảo tất cả chức năng hoạt động đúng và realtime trên web. Đặc biệt tập trung vào tính năng **Interactive Inference**.
+
+## Kiến trúc Dashboard đã phân tích
+
+```mermaid
+graph TB
+    subgraph Backend ["Java Backend (Javalin @ port 7070)"]
+        DS[DashboardServer]
+        MC[DashboardMetricsCollector]
+        PH[PredictHandler Interface]
+        DIH[DashboardIntegrationHelper]
+        TH[TrainingHistory]
+    end
+    subgraph Frontend ["Vue.js + Chart.js Frontend"]
+        WS[WebSocket /ws/metrics]
+        V1[Classification View]
+        V2[Detection View]
+        V3[GAN View]
+        V4[NLP View]
+        V5[System Monitor]
+        V6[Telemetry Logs]
+    end
+    subgraph APIs ["REST Endpoints"]
+        A1["GET /api/metrics"]
+        A2["GET /api/system"]
+        A3["GET /api/alerts"]
+        A4["GET /api/confusion"]
+        A5["GET /api/predictions"]
+        A6["GET /api/nlp/stream"]
+        A7["POST /api/predict/{task}"]
+        A8["POST /api/training/pause"]
+        A9["POST /api/training/resume"]
+        A10["GET /api/training/status"]
+    end
+    DS --> WS
+    DS --> APIs
+    MC --> A2
+    PH --> A7
+    DIH --> DS
+```
+
+---
+
+## Phân loại Test Cases
+
+### Phase 1: Kiểm tra kết nối cơ bản
+
+| # | Test Case | Endpoint/Feature | Phương pháp | Kết quả mong đợi |
+|---|-----------|-----------------|-------------|-------------------|
+| 1.1 | Dashboard accessible | `http://localhost:7070` | Browser navigate | Trang load thành công, hiển thị sidebar + topbar |
+| 1.2 | WebSocket connection | `/ws/metrics` | Kiểm tra status indicator ở sidebar | Hiển thị "LIVE" với đèn xanh pulse |
+| 1.3 | WebSocket auto-reconnect | Kill & restart training | Đợi 2s | Status chuyển "OFFLINE" → "LIVE" |
+
+---
+
+### Phase 2: Kiểm tra NLP View (Primary - UIT-VSFC Task)
+
+> [!IMPORTANT]
+> Đây là view chính được kích hoạt bởi `dashboard.setTaskType("nlp")` trong `TrainUitVsfc.java`.
+
+| # | Test Case | Feature | Phương pháp | Kết quả mong đợi |
+|---|-----------|---------|-------------|-------------------|
+| 2.1 | Auto-switch to NLP tab | View auto-detection | Mở dashboard khi training đang chạy | Frontend tự chuyển sang NLP view |
+| 2.2 | Sentiment Performance Chart | `nlpMetricsChart` (Bar chart) | Quan sát sau vài epoch | Bar chart hiển thị F1/Precision/Recall cho mỗi class |
+| 2.3 | Text Stream updates | NLP Text Stream panel | Quan sát trong training | Hiển thị text samples với label (POSITIVE/NEGATIVE) và confidence %, border-left tương ứng màu |
+| 2.4 | Real-time metrics broadcast | WebSocket `broadcastNLPDetailed` | Kiểm tra mỗi 50 batches | Metrics được cập nhật: loss, sent_acc, textStream |
+| 2.5 | Token Distribution Chart | `tokenDistChart` (Canvas) | Quan sát | Chart rendering không lỗi |
+
+---
+
+### Phase 3: Kiểm tra Interactive Inference (🔴 CRITICAL)
+
+> [!CAUTION]
+> Đây là tính năng quan trọng nhất cần kiểm tra kĩ. Hiện tại có **BUG TIỀM ẨN**: `TextPredictor.forSentiment()` chỉ tạo 2 classes ["Negative", "Positive"] nhưng UIT-VSFC sentiment có 3 classes. Và `TextPredictor` sử dụng `model.forward()` → chỉ trả về sentiment head (`forwardBoth(x)[0]`), điều này đúng cho inference sentiment nhưng cần xác nhận labels.
+
+| # | Test Case | Phương pháp | Kết quả mong đợi |
+|---|-----------|-------------|-------------------|
+| 3.1 | Input text → Analyze button | Nhập "thầy dạy rất hay" → click "Analyze" | POST `/api/predict/sentiment` → response JSON `{success: true, result: {class_index, label, confidence, topK}}` |
+| 3.2 | Confidence ring display | Sau khi predict thành công | Hiển thị gauge ring (SVG circle) với % confidence |
+| 3.3 | Label display | Sau predict | Hiển thị "Negative" hoặc "Positive" với màu tương ứng (tertiary/secondary) |
+| 3.4 | Enter key submit | Nhập text → nhấn Enter | Tương đương click Analyze |
+| 3.5 | Empty input handling | Click Analyze với input rỗng | Không gọi API (frontend guard: `if(!nlpInputText.value.trim()) return`) |
+| 3.6 | Error handling | Handler trả về lỗi | Kiểm tra response status 500 |
+| 3.7 | Multiple rapid requests | Click Analyze liên tục | Không crash, response cuối cùng hiển thị đúng |
+
+#### Luồng dữ liệu Inference chi tiết:
+
+```mermaid
+sequenceDiagram
+    participant User as Browser User
+    participant FE as Vue Frontend
+    participant API as Javalin /api/predict/sentiment
+    participant PH as PredictHandler Lambda
+    participant TP as TextPredictor
+    participant Model as MultiTaskLSTMModel
+
+    User->>FE: Nhập text + Click "Analyze"
+    FE->>API: POST /api/predict/sentiment (FormData: text)
+    API->>PH: handler.predict(null, null, text)
+    PH->>TP: predictor.predictText(text)
+    TP->>TP: preprocessText(text) → tokenize + pad → Tensor[1, maxLen]
+    TP->>Model: model.forward(input) → forwardBoth(x)[0] (sentiment head only)
+    Model-->>TP: Tensor logits [1, numClasses]
+    TP->>TP: softmax → argmax → topK → PredictionResult
+    TP-->>PH: PredictionResult
+    PH-->>API: Map{class_index, label, confidence, topK}
+    API-->>FE: JSON {success: true, result: {...}}
+    FE->>User: Render confidence ring + label
+```
+
+---
+
+### Phase 4: Kiểm tra Top Bar & Training Status
+
+| # | Test Case | Phương pháp | Kết quả mong đợi |
+|---|-----------|-------------|-------------------|
+| 4.1 | Model name display | Quan sát topbar | "UIT-VSFC LSTM" badge hiển thị |
+| 4.2 | Epoch counter | Quan sát trong training | "Epoch X/100" cập nhật realtime |
+| 4.3 | Progress bar | Quan sát | Thanh progress fill đúng tỷ lệ |
+| 4.4 | VRAM display | Quan sát (GPU mode) | "XXX MB" + utilization bar |
+| 4.5 | Pause button | Click pause icon | POST `/api/training/pause` → training dừng, icon chuyển play_arrow |
+| 4.6 | Resume button | Click play icon | POST `/api/training/resume` → training tiếp tục |
+
+---
+
+### Phase 5: Kiểm tra System Monitor
+
+| # | Test Case | Endpoint | Kết quả mong đợi |
+|---|-----------|----------|-------------------|
+| 5.1 | GPU Thermal gauge | `/api/system` → `gpu_temp` | Gauge ring hiển thị nhiệt độ °C, màu xanh/vàng/đỏ theo ngưỡng |
+| 5.2 | GPU Utilization gauge | `gpu_util` | % utilization chính xác |
+| 5.3 | CPU Compute gauge | `cpu_util` | % CPU load |
+| 5.4 | VRAM Status bar | VRAM panel | Bar hiển thị used/total MB, cảnh báo HIGH nếu > 90% |
+| 5.5 | Pipeline Flow diagram | Pipeline stages | 4 stages: Disk IO → DataLoader → PCIe → GPU với thời gian ms |
+| 5.6 | Alerts panel | `/api/alerts` | Hiển thị alerts với severity colors (warning/info/error) |
+| 5.7 | nvidia-smi polling | Background thread 2s | Metrics cập nhật tự động mỗi 2 giây |
+
+---
+
+### Phase 6: Kiểm tra Telemetry Logs
+
+| # | Test Case | Phương pháp | Kết quả mong đợi |
+|---|-----------|-------------|-------------------|
+| 6.1 | Log stream population | Quan sát Telemetry tab | Mỗi WS message → 1 log entry "[HH:MM:SS] Epoch X: nlp metrics" |
+| 6.2 | Log rotation | Để chạy lâu | Giữ tối đa 100 entries, entries cũ bị pop |
+| 6.3 | Timestamp format | Quan sát | `toLocaleTimeString()` format đúng |
+
+---
+
+### Phase 7: Kiểm tra REST API Responses
+
+| # | Endpoint | Method | Kết quả mong đợi |
+|---|----------|--------|-------------------|
+| 7.1 | `/api/metrics` | GET | `{taskType:"nlp", epochs:[], modelName:"UIT-VSFC LSTM", series:{loss:[], train_sent_acc:[], dev_sent_acc:[]}}` |
+| 7.2 | `/api/system` | GET | `{system:{gpu_temp, gpu_util, cpu_util, gpu_name}, alerts:[], pipeline:{...}, vram:{...}}` |
+| 7.3 | `/api/alerts` | GET | `[]` hoặc list alerts |
+| 7.4 | `/api/confusion` | GET | `{matrix:[], labels:[]}` (empty vì NLP task không broadcast confusion matrix) |
+| 7.5 | `/api/predictions` | GET | `[]` (livePredictions cho NLP) |
+| 7.6 | `/api/nlp/stream` | GET | List text samples với label/confidence/timestamp |
+| 7.7 | `/api/training/status` | GET | `{paused:false, epoch:X, totalEpochs:100, modelName:"UIT-VSFC LSTM"}` |
+| 7.8 | `/api/predict/sentiment` | POST | Inference result (xem Phase 3) |
+| 7.9 | `/api/predict/nonexistent` | POST | `{error: "No handler registered for task: nonexistent"}` status 404 |
+
+---
+
+### Phase 8: Kiểm tra History Load (Page Refresh)
+
+| # | Test Case | Phương pháp | Kết quả mong đợi |
+|---|-----------|-------------|-------------------|
+| 8.1 | Page refresh mid-training | F5 trong khi training | `fetchHistory()` load lại metrics từ `/api/metrics`, charts rebuild |
+| 8.2 | Correct view restoration | Refresh | `currentView` set lại đúng "nlp" từ `data.taskType` |
+| 8.3 | WS reconnection after refresh | Sau F5 | WebSocket reconnect, status → "LIVE" |
+
+---
+
+## Vấn đề đã phát hiện qua code review
+
+> [!WARNING]
+> ### Bug #1: Label mismatch trong TextPredictor
+> `TextPredictor.forSentiment()` (line 121-123 trong TextPredictor.java) hardcode 2 classes `["Negative", "Positive"]`, nhưng UIT-VSFC dataset thường có 3 classes sentiment (NEG/NEU/POS). Cần xác nhận số classes thực tế từ `sentimentLabels`.
+
+> [!WARNING]
+> ### Bug #2: Tokenizer mismatch
+> `TextPredictor` sử dụng `Data.BasicTokenizer` (split by whitespace), trong khi `TrainUitVsfc` sử dụng `UitVsfcLoader.VietnameseTokenizer`. Nếu 2 tokenizer có behavior khác nhau, inference sẽ cho kết quả sai vì token IDs không match.
+
+> [!NOTE]
+> ### Observation: Epoch-level broadcast dùng `broadcastMetrics()` (Float)
+> Ở line 215, training loop gọi `dashboard.broadcastMetrics(epoch, metrics)` với keys `{loss, train_sent_acc, dev_sent_acc}`. Frontend NLP handler expects keys like `sampleText`, `predictedLabel` → epoch-level broadcast sẽ không populate Text Stream. Chỉ batch-level `broadcastNLPDetailed()` (mỗi 50 batches) mới gửi textStream data.
+
+---
+
+## Kế hoạch thực hiện
+
+### Bước 1: Chạy Training & Mở Dashboard
+1. Đảm bảo training `TrainUitVsfc` đang chạy trên GPU
+2. Mở `http://localhost:7070` trên browser
+
+### Bước 2: Kiểm tra tự động bằng Browser Agent
+1. Verify giao diện load thành công
+2. Kiểm tra WebSocket status "LIVE"
+3. Chờ vài epoch → verify metrics cập nhật
+4. Kiểm tra từng view (NLP, System, Telemetry)
+5. **Test Inference**: Nhập text tiếng Việt → click Analyze → verify kết quả
+
+### Bước 3: Kiểm tra API thủ công
+1. Gọi từng REST endpoint → verify response schema
+2. Gọi `/api/predict/sentiment` với các input khác nhau
+
+### Bước 4: Báo cáo kết quả
+- Tổng hợp pass/fail cho mỗi test case
+- Screenshot minh chứng
+- Đề xuất fix cho các bugs phát hiện
+
+---
+
+## Open Questions
+
+> [!IMPORTANT]
+> 1. **Labels count**: Dataset UIT-VSFC có bao nhiêu sentiment classes? (2 hay 3?) — Điều này ảnh hưởng trực tiếp đến inference accuracy.
+> 2. **Scope kiểm tra**: Bạn muốn tôi chỉ kiểm tra bằng browser agent hay cũng fix luôn các bugs phát hiện được?
+> 3. **Training hiện tại**: Training đang chạy trên port 7070? Tôi có thể bắt đầu kiểm tra ngay?

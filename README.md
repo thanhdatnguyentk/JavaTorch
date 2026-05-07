@@ -63,7 +63,8 @@ flowchart LR
   - **System Monitor**: Glassmorphism gauges for GPU VRAM (System, Pool, Runtime), CPU utilization, and pipeline stage latency tracking.
 - **Training Control**: Integrated pause, resume, and real-time inference playground directly from the web interface.
 - End-to-end examples for Iris, Fashion-MNIST, CIFAR-10, Sentiment Analysis, ViT, GAN, VAE, and YOLO — all with integrated rich dashboard telemetry.
-- 45 registered test classes currently passing in the PowerShell test runner.
+- **100% JUnit 5 Migration**: Over 50 legacy test runners have been migrated to structured JUnit 5 tests. The suite now executes 174+ tests successfully via Gradle.
+- 45+ registered test classes currently passing in the Gradle test runner.
 
 ## Prediction / Inference
 
@@ -100,7 +101,7 @@ The numbers below were collected from the current repository state using the bui
 |---|---|---|---|
 | Large CPU matmul | OpenBLAS | `256 x 256` | `0.58 ms / matmul` |
 | Vectorized CPU matmul | Java Vector API | benchmark suite | `19.10 ms / matmul` |
-| Regression suite | PowerShell runner | 45 test classes | full pass |
+| Regression suite | Gradle Runner | 50+ test classes | full pass (174+ tests) |
 
 ## End-to-End Benchmark (Accuracy + Performance)
 
@@ -281,19 +282,15 @@ Recommended run command:
 .\gradlew.bat "-PmainClass=com.user.nn.examples.TrainFashionMNIST" :examples:run --no-daemon
 ```
 
-- Latest full verification (2026-03-10):
+- **Latest full verification (2026-05-07)**:
 
 ```powershell
-.\gradlew.bat :core:test :tests:test :core:gpuSmoke :core:gpuNightly --continue
+.\gradlew.bat cleanTest test -PincludeGPU=true --continue
 ```
 
-Result: `BUILD SUCCESSFUL`
+Result: `BUILD SUCCESSFUL` (174+ tests passed)
 
-- Legacy PowerShell runner remains available for compatibility:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1
-```
+- Legacy PowerShell runner (`run-tests.ps1`) has been fully deprecated in favor of the Gradle `:tests` module.
 
 - Automated CI/CD validation script (Gradle build + tests + examples smoke):
 
@@ -309,4 +306,5 @@ powershell -ExecutionPolicy Bypass -File scripts\ci-test.ps1 -Mode full -Example
 
 ---
 
-Documentation updated for the current codebase state on 2026-03-31.
+Documentation updated for the current codebase state on 2026-05-07.
+

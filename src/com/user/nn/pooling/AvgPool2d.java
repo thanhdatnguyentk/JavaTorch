@@ -16,13 +16,34 @@ public class AvgPool2d extends Module {
 
     @Override
     public Tensor forward(Tensor x) {
-        x.toCPU();
         int batch = x.shape[0];
         int inSize = inC * inH * inW;
         int outH = (inH + 2 * padH - kernelH) / strideH + 1;
         int outW = (inW + 2 * padW - kernelW) / strideW + 1;
         int outSize = inC * outH * outW;
         Tensor out = new Tensor(batch, inC, outH, outW);
+
+        if (x.isGPU()) {
+            out.toGPU();
+            CUDAOps.poolingForward(jcuda.jcudnn.cudnnPoolingMode.CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING, 
+                x, out, inC, inH, inW, kernelH, kernelW, outH, outW, padH, padW, strideH, strideW);
+            
+            if (Torch.is_grad_enabled() && x.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn(x, out) {
+                    public void apply(Tensor outGrad) {
+                        Tensor gx = new Tensor(x.shape).toGPU();
+                        CUDAOps.poolingBackward(jcuda.jcudnn.cudnnPoolingMode.CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING, 
+                            x, out, outGrad, gx, 
+                            inC, inH, inW, kernelH, kernelW, outH, outW, padH, padW, strideH, strideW);
+                        x.backwardStep(gx);
+                    }
+                };
+            }
+            return out;
+        }
+
+        x.toCPU();
         int[] counts = new int[batch * outSize];
         for (int b = 0; b < batch; b++) {
             for (int c = 0; c < inC; c++) {

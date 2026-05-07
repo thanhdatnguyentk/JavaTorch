@@ -15,6 +15,9 @@ tasks.withType<JavaExec>().configureEach {
     // core uses the Vector API; run tasks must enable incubator module at runtime.
     jvmArgs("--add-modules=jdk.incubator.vector")
     maxHeapSize = "6g"
+    javaLauncher.set(javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(21))
+    })
 }
 
 tasks.register<Copy>("ensureKernelsPtx") {
@@ -101,4 +104,14 @@ tasks.register<JavaExec>("benchmarkMemoryPool") {
     mainClass.set("com.user.nn.examples.BenchmarkMemoryPool")
     jvmArgs("--add-modules=jdk.incubator.vector")
     maxHeapSize = "6g"
+}
+
+// Task to run UIT-VSFC example
+tasks.register<JavaExec>("exampleUitVsfc") {
+    group = "application"
+    description = "Run UIT-VSFC Vietnamese sentiment & topic classification example"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("com.user.nn.examples.TrainUitVsfc")
+    jvmArgs("--add-modules=jdk.incubator.vector")
+    maxHeapSize = "4g"
 }

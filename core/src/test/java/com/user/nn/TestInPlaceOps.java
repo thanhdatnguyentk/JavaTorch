@@ -2,91 +2,82 @@ package com.user.nn;
 
 import com.user.nn.core.Tensor;
 import com.user.nn.core.Torch;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class TestInPlaceOps {
-    static int passed = 0, failed = 0;
 
-    static void check(String name, boolean ok) {
-        if (ok) { passed++; }
-        else { failed++; System.out.println("FAIL: " + name); }
-    }
-
-    public static void main(String[] args) {
-        testAddScalar();
-        testMulScalar();
-        testSubScalar();
-        testAddTensor();
-        testSubTensor();
-        testMulTensor();
-        testVersionIncrement();
-        testVersionCheckDetectsInPlace();
-        testVersionCheckPassesWithoutInPlace();
-
-        System.out.println("TestInPlaceOps: " + passed + " passed, " + failed + " failed.");
-    }
-
-    static void testAddScalar() {
+    @Test
+    void testAddScalar() {
         Tensor t = new Tensor(new float[]{1, 2, 3}, 3);
         t.add_(10f);
-        check("add_ scalar values", t.data[0] == 11f && t.data[1] == 12f && t.data[2] == 13f);
+        assertArrayEquals(new float[]{11f, 12f, 13f}, t.data, 1e-6f);
     }
 
-    static void testMulScalar() {
+    @Test
+    void testMulScalar() {
         Tensor t = new Tensor(new float[]{2, 3, 4}, 3);
         t.mul_(3f);
-        check("mul_ scalar values", t.data[0] == 6f && t.data[1] == 9f && t.data[2] == 12f);
+        assertArrayEquals(new float[]{6f, 9f, 12f}, t.data, 1e-6f);
     }
 
-    static void testSubScalar() {
+    @Test
+    void testSubScalar() {
         Tensor t = new Tensor(new float[]{10, 20, 30}, 3);
         t.sub_(5f);
-        check("sub_ scalar values", t.data[0] == 5f && t.data[1] == 15f && t.data[2] == 25f);
+        assertArrayEquals(new float[]{5f, 15f, 25f}, t.data, 1e-6f);
     }
 
-    static void testAddTensor() {
+    @Test
+    void testAddTensor() {
         Tensor a = new Tensor(new float[]{1, 2, 3}, 3);
         Tensor b = new Tensor(new float[]{10, 20, 30}, 3);
         a.add_(b);
-        check("add_ tensor values", a.data[0] == 11f && a.data[1] == 22f && a.data[2] == 33f);
-        // b unchanged
-        check("add_ tensor other unchanged", b.data[0] == 10f && b.data[1] == 20f && b.data[2] == 30f);
+        assertArrayEquals(new float[]{11f, 22f, 33f}, a.data, 1e-6f);
+        assertArrayEquals(new float[]{10f, 20f, 30f}, b.data, 1e-6f, "b should be unchanged");
     }
 
-    static void testSubTensor() {
+    @Test
+    void testSubTensor() {
         Tensor a = new Tensor(new float[]{10, 20, 30}, 3);
         Tensor b = new Tensor(new float[]{1, 2, 3}, 3);
         a.sub_(b);
-        check("sub_ tensor values", a.data[0] == 9f && a.data[1] == 18f && a.data[2] == 27f);
+        assertArrayEquals(new float[]{9f, 18f, 27f}, a.data, 1e-6f);
     }
 
-    static void testMulTensor() {
+    @Test
+    void testMulTensor() {
         Tensor a = new Tensor(new float[]{2, 3, 4}, 3);
         Tensor b = new Tensor(new float[]{5, 6, 7}, 3);
         a.mul_(b);
-        check("mul_ tensor values", a.data[0] == 10f && a.data[1] == 18f && a.data[2] == 28f);
+        assertArrayEquals(new float[]{10f, 18f, 28f}, a.data, 1e-6f);
     }
 
-    static void testVersionIncrement() {
+    @Test
+    void testVersionIncrement() {
         Tensor t = new Tensor(new float[]{1, 2}, 2);
-        check("initial version is 0", t.version() == 0);
+        assertEquals(0, t.version(), "initial version is 0");
         t.add_(1f);
-        check("version after add_ scalar", t.version() == 1);
+        assertEquals(1, t.version());
         t.mul_(2f);
-        check("version after mul_ scalar", t.version() == 2);
+        assertEquals(2, t.version());
         t.sub_(1f);
-        check("version after sub_ scalar", t.version() == 3);
+        assertEquals(3, t.version());
+        
         Tensor other = new Tensor(new float[]{1, 1}, 2);
         t.add_(other);
-        check("version after add_ tensor", t.version() == 4);
+        assertEquals(4, t.version());
         t.sub_(other);
-        check("version after sub_ tensor", t.version() == 5);
+        assertEquals(5, t.version());
         t.mul_(other);
-        check("version after mul_ tensor", t.version() == 6);
+        assertEquals(6, t.version());
+        
         t.set(99f, 0);
-        check("version after set", t.version() == 7);
+        assertEquals(7, t.version());
     }
 
-    static void testVersionCheckDetectsInPlace() {
+    @Test
+    void testVersionCheckDetectsInPlace() {
         // Build a computation graph: y = x * 2
         Tensor x = new Tensor(new float[]{3f}, 1);
         x.requires_grad = true;
@@ -96,24 +87,18 @@ public class TestInPlaceOps {
         x.add_(100f);
 
         // backward should detect the version mismatch
-        boolean caught = false;
-        try {
-            y.backward();
-        } catch (RuntimeException e) {
-            if (e.getMessage().contains("modified by an in-place operation")) {
-                caught = true;
-            }
-        }
-        check("version check detects in-place modification", caught);
+        RuntimeException ex = assertThrows(RuntimeException.class, y::backward);
+        assertTrue(ex.getMessage().contains("modified by an in-place operation"));
     }
 
-    static void testVersionCheckPassesWithoutInPlace() {
+    @Test
+    void testVersionCheckPassesWithoutInPlace() {
         // Normal forward + backward should work fine
         Tensor x = new Tensor(new float[]{3f}, 1);
         x.requires_grad = true;
         Tensor y = Torch.mul(x, 2f);
         y.backward();
         x.toCPU();
-        check("normal backward works (grad=2)", Math.abs(x.grad.data[0] - 2f) < 1e-5f);
+        assertEquals(2.0f, x.grad.data[0], 1e-5f, "normal backward works (grad=2)");
     }
 }

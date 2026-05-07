@@ -283,30 +283,60 @@ public class TrainUitVsfcMultitask {
                     if ((b + 1) % 10 == 0) {
                         try {
                             float sentAcc = sentimentTrainAcc.compute();
+                            float topicAcc = topicTrainAcc.compute();
                             Map<String, Float> dashMetrics = new HashMap<>();
                             dashMetrics.put("loss", loss.data[0]);
                             dashMetrics.put("sent_acc", sentAcc);
+                            dashMetrics.put("topic_acc", topicAcc);
                             
                             // Visualize the first sample of the batch
                             String text = shuffledTrain.get(b * batchSize).text;
-                            int predClass = argmax(logits[0].data, 0, sentimentLabels.size());
+                            
+                            // 1. Calculate Softmax Confidence for Sentiment
+                            int sentClasses = sentimentLabels.size();
+                            float[] sentLogits = new float[sentClasses];
+                            System.arraycopy(logits[0].data, 0, sentLogits, 0, sentClasses);
+                            
+                            float maxLogit = Float.NEGATIVE_INFINITY;
+                            for (float v : sentLogits) if (v > maxLogit) maxLogit = v;
+                            float sumExp = 0;
+                            for (int i = 0; i < sentClasses; i++) {
+                                sentLogits[i] = (float) Math.exp(sentLogits[i] - maxLogit);
+                                sumExp += sentLogits[i];
+                            }
+                            int predClass = 0;
+                            float bestProb = 0;
+                            for (int i = 0; i < sentClasses; i++) {
+                                float prob = sentLogits[i] / sumExp;
+                                if (prob > bestProb) {
+                                    bestProb = prob;
+                                    predClass = i;
+                                }
+                            }
                             String predLabel = sentimentLabels.get(predClass);
-                            float maxProb = logits[0].data[predClass]; 
                             
-                            Map<String, Float> f1 = Map.of("Macro Avg", sentAcc + 0.05f);
-                            Map<String, Float> prec = Map.of("Macro Avg", sentAcc + 0.02f);
-                            Map<String, Float> rec = Map.of("Macro Avg", sentAcc - 0.01f);
-                            
+                            // 2. Real Token Importance from Model
                             Map<String, Float> tokenW = new HashMap<>();
-                            List<String> tokens = tokenizer.tokenize(text);
-                            for (String tok : tokens) tokenW.put(tok, (float) Math.random());
+                            Tensor xSample = Torch.narrow(xBatch, 0, 0, 1); // Get first sample [1, maxLen]
+                            if (model instanceof MultiTaskLSTMModel) {
+                                tokenW = ((MultiTaskLSTMModel) model).getEmbeddingNorms(xSample, tokenizer, vocab);
+                            } else if (model instanceof MultiTaskTransformerModel) {
+                                tokenW = ((MultiTaskTransformerModel) model).getEmbeddingNorms(xSample, tokenizer, vocab);
+                            }
+                            
+                            // 3. Metrics placeholders (using acc as base for now, but more realistic)
+                            Map<String, Float> f1 = Map.of("Sentiment", sentAcc, "Topic", topicAcc);
+                            Map<String, Float> prec = Map.of("Sentiment", sentAcc, "Topic", topicAcc);
+                            Map<String, Float> rec = Map.of("Sentiment", sentAcc, "Topic", topicAcc);
                             
                             DashboardIntegrationHelper.broadcastNLPDetailed(
                                 dashboard, epoch + 1, dashMetrics, text,
-                                predLabel, (float)Math.exp(maxProb),
+                                predLabel, bestProb,
                                 f1, prec, rec, tokenW
                             );
-                        } catch(Exception dashEx) {}
+                        } catch(Exception dashEx) {
+                            dashEx.printStackTrace();
+                        }
                     }
                     while (dashboard.isTrainingPaused()) {
                         try { Thread.sleep(200); } catch (InterruptedException ie) { break; }
@@ -405,6 +435,7 @@ public class TrainUitVsfcMultitask {
                 Map<String, Float> metrics = new HashMap<>();
                 metrics.put("loss", trainLoss);
                 metrics.put("sent_acc", trainSentAcc);
+                metrics.put("topic_acc", trainTopicAcc);
                 history.record(epoch + 1, metrics);
                 dashboard.broadcastMetrics(epoch + 1, metrics);
             } catch (Exception dashEx) {}

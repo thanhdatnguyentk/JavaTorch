@@ -1,5 +1,5 @@
 plugins {
-    `java`
+    `java-base`
     `maven-publish`
 }
 
@@ -15,20 +15,23 @@ subprojects {
     group = "com.user.nn"
     version = property("projectVersion") as String
 
-    java {
+    configure<JavaPluginExtension> {
         toolchain {
             languageVersion.set(JavaLanguageVersion.of((property("javaVersion") as String).toInt()))
         }
     }
 
-    tasks.withType(JavaCompile::class.java) {
+    tasks.withType<JavaCompile>().configureEach {
         options.encoding = "UTF-8"
         options.compilerArgs.addAll(listOf("--add-modules", "jdk.incubator.vector"))
     }
 
     tasks.register("sourcesJar", Jar::class) {
         archiveClassifier.set("sources")
-        from(sourceSets.main.get().allSource)
+        // Use lazy evaluation
+        doFirst {
+            from(project.extensions.getByType<SourceSetContainer>().getByName("main").allSource)
+        }
     }
 
     tasks.register("javadocJar", Jar::class) {

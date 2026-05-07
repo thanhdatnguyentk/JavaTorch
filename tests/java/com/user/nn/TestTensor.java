@@ -1,40 +1,83 @@
 package com.user.nn;
+
 import com.user.nn.core.*;
-import com.user.nn.optim.*;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class TestTensor {
-    public static void main(String[] args) throws Exception {
-        int failures = 0;
-        try {
-            // constructors and numel/dim
-            Tensor t = new Tensor(2,3);
-            if (t.numel() != 6 || t.dim() != 2) { System.err.println("constructor/dim/numel wrong"); failures++; }
 
-            // get/set and offset ordering
-            t.set(5.0f, 1,2);
-            if (t.get(1,2) != 5.0f) { System.err.println("get/set failed"); failures++; }
+    @Test
+    void testConstructorAndShape() {
+        Tensor t = new Tensor(2, 3);
+        assertEquals(6, t.numel(), "Numel should be product of shape dims");
+        assertEquals(2, t.dim(), "Dim should match shape length");
+        assertArrayEquals(new int[]{2, 3}, t.shape, "Shape should match constructor args");
+    }
 
-            // reshape / view
-            Tensor r = new Tensor(new float[]{0,1,2,3,4,5},6).reshape(2,3);
-            if (r.shape[0]!=2 || r.shape[1]!=3 || r.get(1,2)!=5f) { System.err.println("reshape/view failed"); failures++; }
+    @Test
+    void testGetSet() {
+        Tensor t = new Tensor(2, 3);
+        t.set(5.0f, 1, 2);
+        assertEquals(5.0f, t.get(1, 2), "Get should return value set by set()");
+    }
 
-            // clone
-            Tensor c = r.clone(); c.set(9f, 0,0);
-            if (r.get(0,0) == 9f) { System.err.println("clone is shallow"); failures++; }
+    @Test
+    void testReshape() {
+        Tensor r = new Tensor(new float[]{0, 1, 2, 3, 4, 5}, 6).reshape(2, 3);
+        assertEquals(2, r.shape[0]);
+        assertEquals(3, r.shape[1]);
+        assertEquals(5f, r.get(1, 2), "Value at [1,2] should be 5 after reshape");
+        
+        // Test -1 reshape
+        Tensor r2 = r.reshape(-1);
+        assertEquals(1, r2.dim());
+        assertEquals(6, r2.shape[0]);
+    }
 
-            // flatten
-            Tensor f = r.flatten(); if (f.dim()!=1 || f.numel()!=6) { System.err.println("flatten failed"); failures++; }
+    @Test
+    void testClone() {
+        Tensor r = new Tensor(new float[]{0, 1, 2, 3, 4, 5}, 2, 3);
+        Tensor c = r.clone();
+        c.set(9f, 0, 0);
+        assertNotEquals(r.get(0, 0), c.get(0, 0), "Clone should be deep copy of data");
+        assertEquals(0f, r.get(0, 0), "Original data should not be modified by clone modification");
+    }
 
-            // squeeze / unsqueeze
-            Tensor a = new Tensor(new float[]{7f},1,1,1).squeeze(); if (a.dim()!=1 && a.numel()!=1) { /* ok if shape reduced */ }
-            Tensor b = a.unsqueeze(0); if (b.shape[0]!=1) { System.err.println("unsqueeze failed"); failures++; }
+    @Test
+    void testFlatten() {
+        Tensor r = new Tensor(2, 3);
+        Tensor f = r.flatten();
+        assertEquals(1, f.dim(), "Flattened tensor should have rank 1");
+        assertEquals(6, f.numel(), "Flattened tensor should preserve numel");
+    }
 
-            // add_/mul_ inplace
-            Tensor ip = Torch.tensor(new float[]{1f,2f,3f},3);
-            ip.add_(2f); if (ip.data[0] != 3f) { System.err.println("add_ failed"); failures++; }
-            ip.mul_(2f); if (ip.data[1] != 8f) { System.err.println("mul_ failed"); failures++; }
+    @Test
+    void testSqueezeUnsqueeze() {
+        Tensor a = new Tensor(new float[]{7f}, 1, 1, 1).squeeze();
+        // Squeeze removes all dims of size 1 if they are not the only dim
+        // In current implementation, if all are 1, it might return rank 1 with 1 element
+        assertTrue(a.dim() <= 1, "Squeeze should reduce rank");
+        
+        Tensor b = a.unsqueeze(0);
+        assertEquals(1, b.shape[0], "Unsqueeze(0) should add dim 1 at start");
+    }
 
-        } catch (Exception e) { e.printStackTrace(); failures++; }
-        if (failures==0) { System.out.println("TEST PASSED: Tensor basic"); System.exit(0); } else { System.err.println("TEST FAILED: Tensor basic failures="+failures); System.exit(2); }
+    @Test
+    void testInplaceOps() {
+        Tensor ip = Torch.tensor(new float[]{1f, 2f, 3f}, 3);
+        ip.add_(2f);
+        assertEquals(3f, ip.data[0], 1e-6, "add_(2f) failed");
+        ip.mul_(2f);
+        assertEquals(8f, ip.data[1], 1e-6, "mul_(2f) failed");
+    }
+    
+    @Test
+    void testDetach() {
+        Tensor t = Torch.rand(new int[]{2, 2});
+        t.requires_grad = true;
+        Tensor d = t.detach();
+        assertFalse(d.requires_grad, "Detached tensor should not require grad");
+        assertNull(d.grad_fn, "Detached tensor should not have grad_fn");
+        assertArrayEquals(t.shape, d.shape, "Detached tensor should have same shape");
     }
 }

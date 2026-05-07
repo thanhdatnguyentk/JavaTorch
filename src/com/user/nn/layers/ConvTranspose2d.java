@@ -43,8 +43,21 @@ public class ConvTranspose2d extends Module {
 
     @Override
     public Tensor forward(Tensor x) {
-        if (!x.isGPU()) x.toGPU();
-        
+        // Handle 2D input from legacy tests [Batch, Flat] -> [Batch, C, H, W]
+        if (x.shape.length == 2) {
+            int batch = x.shape[0];
+            int totalSpatial = x.shape[1] / inChannels;
+            int h = (int)Math.sqrt(totalSpatial);
+            int w = h;
+            if (h * w * inChannels == x.shape[1]) {
+                x = x.reshape(batch, inChannels, h, w);
+            }
+        }
+
+        if (x.shape.length != 4) {
+            throw new IllegalArgumentException("ConvTranspose2d expects 4D input [N, C, H, W], got " + x.shape.length + "D");
+        }
+
         int batch = x.shape[0];
         int inC = x.shape[1];
         int inH = x.shape[2];
@@ -57,64 +70,163 @@ public class ConvTranspose2d extends Module {
         int outH = (inH - 1) * strideH - 2 * padH + kernelH + outputPadH;
         int outW = (inW - 1) * strideW - 2 * padW + kernelW + outputPadW;
 
-        Tensor out = new Tensor(batch, outChannels, outH, outW);
-        out.toGPU();
-
         Tensor wt = this.weight.getTensor();
         Tensor bt = (this.bias != null) ? this.bias.getTensor() : null;
 
-        // ConvTranspose forward is cuDNN conv backward_data
-        CUDAOps.conv2dBackwardData(x, wt, out, 
-            outChannels, outH, outW,  // in cuDNN context, out is the 'input' we are reconstructing
-            kernelH, kernelW,
-            inChannels, inH, inW,     // in cuDNN context, x is the 'dy' gradient
-            padH, padW, strideH, strideW);
+        final Tensor finalX = x;
+        if (finalX.isGPU()) {
+            Tensor out = new Tensor(batch, outChannels, outH, outW);
+            out.toGPU();
 
-        if (bt != null) {
-            // Apply bias on GPU
-            // cuDNN's cudnnAddTensor expects bias of size [1, outC, 1, 1]
-            CUDAOps.add(out, bt.reshape(1, outChannels, 1, 1), out);
-        }
+            // ConvTranspose forward is cuDNN conv backward_data
+            CUDAOps.conv2dBackwardData(finalX, wt, out, 
+                outChannels, outH, outW, 
+                kernelH, kernelW,
+                inChannels, inH, inW, 
+                padH, padW, strideH, strideW);
 
-        if (Torch.is_grad_enabled() && (x.requires_grad || wt.requires_grad || (bt != null && bt.requires_grad))) {
-            out.requires_grad = true;
-            out.grad_fn = new Tensor.GradFn(x, wt, bt) {
-                @Override
-                public void apply(Tensor gradOutput) {
-                    if (!gradOutput.isGPU()) gradOutput.toGPU();
+            if (bt != null) {
+                CUDAOps.add(out, bt.reshape(1, outChannels, 1, 1), out);
+            }
 
-                    if (x.requires_grad) {
-                        Tensor dx = new Tensor(x.shape);
-                        dx.toGPU();
-                        // Transpose backward for input is forward convolution
-                        CUDAOps.conv2dForward(gradOutput, wt, null, dx,
-                            outChannels, outH, outW, kernelH, kernelW,
-                            inChannels, inH, inW, padH, padW, strideH, strideW);
-                        x.backwardStep(dx);
+            if (Torch.is_grad_enabled() && (finalX.requires_grad || wt.requires_grad || (bt != null && bt.requires_grad))) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn(finalX, wt, bt) {
+                    @Override
+                    public void apply(Tensor gradOutput) {
+                        if (!gradOutput.isGPU()) gradOutput.toGPU();
+                        if (finalX.requires_grad) {
+                            Tensor dx = new Tensor(finalX.shape).toGPU();
+                            CUDAOps.conv2dForward(gradOutput, wt, null, dx,
+                                outChannels, outH, outW, kernelH, kernelW,
+                                inChannels, inH, inW, padH, padW, strideH, strideW);
+                            finalX.backwardStep(dx);
+                        }
+                        if (wt.requires_grad) {
+                            Tensor dw = new Tensor(wt.shape).toGPU();
+                            CUDAOps.conv2dBackwardFilter(gradOutput, finalX, dw,
+                                outChannels, outH, outW, kernelH, kernelW,
+                                inChannels, inH, inW, padH, padW, strideH, strideW);
+                            wt.backwardStep(dw);
+                        }
+                        if (bt != null && bt.requires_grad) {
+                            Tensor db = new Tensor(bt.shape).toGPU();
+                            CUDAOps.conv2dBackwardBias(gradOutput, db, outChannels, outH, outW);
+                            bt.backwardStep(db);
+                        }
                     }
+                };
+            }
+            return out;
+        } else {
+            // CPU Path
+            Tensor out = new Tensor(batch, outChannels, outH, outW);
+            float[] xData = finalX.data;
+            float[] wData = wt.data;
+            float[] bData = (bt != null) ? bt.data : null;
+            float[] outData = out.data;
 
-                    if (wt.requires_grad) {
-                        Tensor dw = new Tensor(wt.shape);
-                        dw.toGPU();
-                        // Transpose backward for weights is backward_filter(dy=input, x=grad_output)
-                        // Wait, in regular conv: dw = backward_filter(x=in, dy=grad_out)
-                        // In transpose: dw = backward_filter(x=grad_out, dy=in)
-                        CUDAOps.conv2dBackwardFilter(gradOutput, x, dw,
-                            outChannels, outH, outW, kernelH, kernelW,
-                            inChannels, inH, inW, padH, padW, strideH, strideW);
-                        wt.backwardStep(dw);
-                    }
-
-                    if (bt != null && bt.requires_grad) {
-                        Tensor db = new Tensor(bt.shape);
-                        db.toGPU();
-                        CUDAOps.conv2dBackwardBias(gradOutput, db, outChannels, outH, outW);
-                        bt.backwardStep(db);
+            for (int b = 0; b < batch; b++) {
+                for (int oc = 0; oc < outChannels; oc++) {
+                    for (int oh = 0; oh < outH; oh++) {
+                        for (int ow = 0; ow < outW; ow++) {
+                            if (bData != null) outData[((b * outChannels + oc) * outH + oh) * outW + ow] = bData[oc];
+                        }
                     }
                 }
-            };
-        }
+                for (int ic = 0; ic < inChannels; ic++) {
+                    for (int ih = 0; ih < inH; ih++) {
+                        for (int iw = 0; iw < inW; iw++) {
+                            float val = xData[((b * inChannels + ic) * inH + ih) * inW + iw];
+                            for (int oc = 0; oc < outChannels; oc++) {
+                                for (int kh = 0; kh < kernelH; kh++) {
+                                    for (int kw = 0; kw < kernelW; kw++) {
+                                        int oh = ih * strideH - padH + kh;
+                                        int ow = iw * strideW - padW + kw;
+                                        if (oh >= 0 && oh < outH && ow >= 0 && ow < outW) {
+                                            float weightVal = wData[((ic * outChannels + oc) * kernelH + kh) * kernelW + kw];
+                                            outData[((b * outChannels + oc) * outH + oh) * outW + ow] += val * weightVal;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
-        return out;
+            if (Torch.is_grad_enabled() && (finalX.requires_grad || wt.requires_grad || (bt != null && bt.requires_grad))) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn(finalX, wt, bt) {
+                    @Override
+                    public void apply(Tensor gradOutput) {
+                        if (finalX.requires_grad) {
+                            Tensor dx = new Tensor(finalX.shape);
+                            for (int b = 0; b < batch; b++) {
+                                for (int ic = 0; ic < inChannels; ic++) {
+                                    for (int ih = 0; ih < inH; ih++) {
+                                        for (int iw = 0; iw < inW; iw++) {
+                                            for (int oc = 0; oc < outChannels; oc++) {
+                                                for (int kh = 0; kh < kernelH; kh++) {
+                                                    for (int kw = 0; kw < kernelW; kw++) {
+                                                        int oh = ih * strideH - padH + kh;
+                                                        int ow = iw * strideW - padW + kw;
+                                                        if (oh >= 0 && oh < outH && ow >= 0 && ow < outW) {
+                                                            float go = gradOutput.data[((b * outChannels + oc) * outH + oh) * outW + ow];
+                                                            float weightVal = wt.data[((ic * outChannels + oc) * kernelH + kh) * kernelW + kw];
+                                                            dx.data[((b * inChannels + ic) * inH + ih) * inW + iw] += weightVal * go;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            finalX.backwardStep(dx);
+                        }
+                        if (wt.requires_grad) {
+                            Tensor dw = new Tensor(wt.shape);
+                            for (int b = 0; b < batch; b++) {
+                                for (int ic = 0; ic < inChannels; ic++) {
+                                    for (int ih = 0; ih < inH; ih++) {
+                                        for (int iw = 0; iw < inW; iw++) {
+                                            float val = finalX.data[((b * inChannels + ic) * inH + ih) * inW + iw];
+                                            for (int oc = 0; oc < outChannels; oc++) {
+                                                for (int kh = 0; kh < kernelH; kh++) {
+                                                    for (int kw = 0; kw < kernelW; kw++) {
+                                                        int oh = ih * strideH - padH + kh;
+                                                        int ow = iw * strideW - padW + kw;
+                                                        if (oh >= 0 && oh < outH && ow >= 0 && ow < outW) {
+                                                            float go = gradOutput.data[((b * outChannels + oc) * outH + oh) * outW + ow];
+                                                            dw.data[((ic * outChannels + oc) * kernelH + kh) * kernelW + kw] += val * go;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            wt.backwardStep(dw);
+                        }
+                        if (bt != null && bt.requires_grad) {
+                            Tensor db = new Tensor(bt.shape);
+                            for (int b = 0; b < batch; b++) {
+                                for (int oc = 0; oc < outChannels; oc++) {
+                                    for (int oh = 0; oh < outH; oh++) {
+                                        for (int ow = 0; ow < outW; ow++) {
+                                            db.data[oc] += gradOutput.data[((b * outChannels + oc) * outH + oh) * outW + ow];
+                                        }
+                                    }
+                                }
+                            }
+                            bt.backwardStep(db);
+                        }
+                    }
+                };
+            }
+            return out;
+        }
     }
 }

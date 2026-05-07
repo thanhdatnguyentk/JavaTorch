@@ -2,156 +2,121 @@ package com.user.nn;
 
 import com.user.nn.core.Tensor;
 import com.user.nn.core.Torch;
-import com.user.nn.core.NN;
-import com.user.nn.layers.*;
-import com.user.nn.pooling.*;
+import com.user.nn.layers.Conv2d;
+import com.user.nn.pooling.MaxPool2d;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.*;
 
 public class TestGPUBenchmark {
 
-    private static void benchmarkMatmul(int size, int runs) {
+    @Test
+    @Tag("gpu")
+    @Tag("slow")
+    void runBenchmarks() {
+        assumeTrue(Torch.hasGPU(), "GPU not available, skipping benchmarks");
+        
+        System.out.println("====== GPU vs CPU Optimization Benchmark ======");
+        boolean previousGradConfig = Torch.is_grad_enabled();
+        Torch.set_grad_enabled(false); // Evaluate forward pass times only
+        
+        try {
+            benchmarkMatmul(512, 10); // Reduced size/runs for CI safety
+            benchmarkConv2d(16, 32, 32, 10);
+            benchmarkMaxPool2d(16, 32, 32, 10);
+            benchmarkReLU(1024 * 1024, 10);
+        } finally {
+            Torch.set_grad_enabled(previousGradConfig);
+        }
+        
+        System.out.println("\nBenchmark completed.");
+    }
+
+    private void benchmarkMatmul(int size, int runs) {
         System.out.println("\n--- Benchmarking Matmul (" + size + "x" + size + ") ---");
         Tensor a = Torch.randn(new int[]{size, size});
         Tensor b = Torch.randn(new int[]{size, size});
         
-        // Warmup CPU
         for (int i = 0; i < 3; i++) Torch.matmul(a, b);
-        
         long startCPU = System.currentTimeMillis();
         for (int i = 0; i < runs; i++) Torch.matmul(a, b);
         long endCPU = System.currentTimeMillis();
         
-        // Move to GPU
         a.toGPU();
         b.toGPU();
-        
-        // Warmup GPU
         for (int i = 0; i < 3; i++) Torch.matmul(a, b);
-        
         long startGPU = System.currentTimeMillis();
         for (int i = 0; i < runs; i++) Torch.matmul(a, b);
         long endGPU = System.currentTimeMillis();
         
-        System.out.printf("CPU (SIMD) Avg Time: %.2f ms\n", (endCPU - startCPU) / (float)runs);
-        System.out.printf("GPU Avg Time: %.2f ms\n", (endGPU - startGPU) / (float)runs);
-        System.out.printf("Speedup: %.2fx\n", (float)(endCPU - startCPU) / Math.max(1, endGPU - startGPU));
+        printResults("Matmul", endCPU - startCPU, endGPU - startGPU, runs);
         a.close(); b.close();
     }
 
-    private static void benchmarkConv2d(int batch, int channels, int size, int runs) {
-        System.out.println("\n--- Benchmarking Conv2d (Batch: " + batch + ", Channels: " + channels + ", Size: " + size + "x" + size + ") ---");
+    private void benchmarkConv2d(int batch, int channels, int size, int runs) {
+        System.out.println("\n--- Benchmarking Conv2d (B: " + batch + ", C: " + channels + ", S: " + size + ") ---");
         Tensor x = Torch.randn(new int[]{batch, channels, size, size});
-        // inChannels, outChannels, kernelH, kernelW, inH, inW, stride, pad, bias
         Conv2d conv = new Conv2d(channels, 32, 3, 3, size, size, 1, 1, true);
         
-        // Warmup CPU
-        for (int i = 0; i < 3; i++) conv.forward(x);
-        
+        for (int i = 0; i < 2; i++) conv.forward(x);
         long startCPU = System.currentTimeMillis();
         for (int i = 0; i < runs; i++) conv.forward(x);
         long endCPU = System.currentTimeMillis();
         
-        // Move to GPU
         x.toGPU();
         conv.weight.getTensor().toGPU();
         if (conv.bias != null) conv.bias.getTensor().toGPU();
-        
-        // Warmup GPU
-        for (int i = 0; i < 3; i++) conv.forward(x);
-        
+        for (int i = 0; i < 2; i++) conv.forward(x);
         long startGPU = System.currentTimeMillis();
         for (int i = 0; i < runs; i++) conv.forward(x);
         long endGPU = System.currentTimeMillis();
         
-        System.out.printf("CPU Avg Time: %.2f ms\n", (endCPU - startCPU) / (float)runs);
-        System.out.printf("GPU Avg Time: %.2f ms\n", (endGPU - startGPU) / (float)runs);
-        System.out.printf("Speedup: %.2fx\n", (float)(endCPU - startCPU) / Math.max(1, endGPU - startGPU));
-        x.close();
-    }
-    
-    private static void benchmarkMaxPool2d(int batch, int channels, int size, int runs) {
-        System.out.println("\n--- Benchmarking MaxPool2d (Batch: " + batch + ", Channels: " + channels + ", Size: " + size + "x" + size + ") ---");
-        Tensor x = Torch.randn(new int[]{batch, channels, size, size});
-        // kernelH, kernelW, strideH, strideW, padH, padW, inC, inH, inW
-        MaxPool2d pool = new MaxPool2d(2, 2, 2, 2, 0, 0, channels, size, size);
-        
-        // Warmup CPU
-        for (int i = 0; i < 3; i++) pool.forward(x);
-        
-        long startCPU = System.currentTimeMillis();
-        for (int i = 0; i < runs; i++) pool.forward(x);
-        long endCPU = System.currentTimeMillis();
-        
-        // Move to GPU
-        x.toGPU();
-        
-        // Warmup GPU
-        for (int i = 0; i < 3; i++) pool.forward(x);
-        
-        long startGPU = System.currentTimeMillis();
-        for (int i = 0; i < runs; i++) pool.forward(x);
-        long endGPU = System.currentTimeMillis();
-        
-        System.out.printf("CPU Avg Time: %.2f ms\n", (endCPU - startCPU) / (float)runs);
-        System.out.printf("GPU Avg Time: %.2f ms\n", (endGPU - startGPU) / (float)runs);
-        System.out.printf("Speedup: %.2fx\n", (float)(endCPU - startCPU) / Math.max(1, endGPU - startGPU));
-        x.close();
-    }
-    
-    private static void benchmarkReLU(int size, int runs) {
-        System.out.println("\n--- Benchmarking ReLU (Size: " + size + ") ---");
-        Tensor x = Torch.randn(new int[]{size});
-        
-        // Warmup CPU
-        for (int i = 0; i < 3; i++) Torch.relu(x);
-        
-        long startCPU = System.currentTimeMillis();
-        for (int i = 0; i < runs; i++) Torch.relu(x);
-        long endCPU = System.currentTimeMillis();
-        
-        // Move to GPU
-        x.toGPU();
-        
-        // Warmup GPU
-        for (int i = 0; i < 3; i++) Torch.relu(x);
-        
-        long startGPU = System.currentTimeMillis();
-        for (int i = 0; i < runs; i++) Torch.relu(x);
-        long endGPU = System.currentTimeMillis();
-        
-        System.out.printf("CPU Avg Time: %.2f ms\n", (endCPU - startCPU) / (float)runs);
-        System.out.printf("GPU Avg Time: %.2f ms\n", (endGPU - startGPU) / (float)runs);
-        System.out.printf("Speedup: %.2fx\n", (float)(endCPU - startCPU) / Math.max(1, endGPU - startGPU));
+        printResults("Conv2d", endCPU - startCPU, endGPU - startGPU, runs);
         x.close();
     }
 
-    public static void main(String[] args) {
-        System.out.println("====== GPU vs CPU Optimization Benchmark ======");
-        try {
-            boolean previousGradConfig = Torch.is_grad_enabled();
-            Torch.set_grad_enabled(false); // Evaluate forward pass times only
-            
-            // Benchmark Matrix Multiplication (CPU uses SIMD Vector API)
-            benchmarkMatmul(1024, 20); // 1K x 1K matrix
-            System.gc();
-            
-            // Benchmark Convolution
-            benchmarkConv2d(32, 64, 64, 20); // 32 batch, 64 channels, 64x64 img
-            System.gc();
-            
-            // Benchmark Max Pooling
-            benchmarkMaxPool2d(32, 64, 64, 20); 
-            System.gc();
-            
-            // Benchmark ReLU (element-wise)
-            benchmarkReLU(1024 * 1024 * 10, 20); // 10 million elements
-            System.gc();
-            
-            Torch.set_grad_enabled(previousGradConfig);
-            
-            System.out.println("\nBenchmark completed successfully.");
-        } catch (Throwable t) {
-            t.printStackTrace();
-            System.exit(1);
-        }
+    private void benchmarkMaxPool2d(int batch, int channels, int size, int runs) {
+        System.out.println("\n--- Benchmarking MaxPool2d (B: " + batch + ", C: " + channels + ", S: " + size + ") ---");
+        Tensor x = Torch.randn(new int[]{batch, channels, size, size});
+        MaxPool2d pool = new MaxPool2d(2, 2, 2, 2, 0, 0, channels, size, size);
+        
+        for (int i = 0; i < 2; i++) pool.forward(x);
+        long startCPU = System.currentTimeMillis();
+        for (int i = 0; i < runs; i++) pool.forward(x);
+        long endCPU = System.currentTimeMillis();
+        
+        x.toGPU();
+        for (int i = 0; i < 2; i++) pool.forward(x);
+        long startGPU = System.currentTimeMillis();
+        for (int i = 0; i < runs; i++) pool.forward(x);
+        long endGPU = System.currentTimeMillis();
+        
+        printResults("MaxPool2d", endCPU - startCPU, endGPU - startGPU, runs);
+        x.close();
+    }
+
+    private void benchmarkReLU(int size, int runs) {
+        System.out.println("\n--- Benchmarking ReLU (Size: " + size + ") ---");
+        Tensor x = Torch.randn(new int[]{size});
+        
+        for (int i = 0; i < 2; i++) Torch.relu(x);
+        long startCPU = System.currentTimeMillis();
+        for (int i = 0; i < runs; i++) Torch.relu(x);
+        long endCPU = System.currentTimeMillis();
+        
+        x.toGPU();
+        for (int i = 0; i < 2; i++) Torch.relu(x);
+        long startGPU = System.currentTimeMillis();
+        for (int i = 0; i < runs; i++) Torch.relu(x);
+        long endGPU = System.currentTimeMillis();
+        
+        printResults("ReLU", endCPU - startCPU, endGPU - startGPU, runs);
+        x.close();
+    }
+
+    private void printResults(String name, long cpuTime, long gpuTime, int runs) {
+        System.out.printf("%s -> CPU Avg: %.2f ms | GPU Avg: %.2f ms | Speedup: %.2fx\n", 
+                name, cpuTime / (float)runs, gpuTime / (float)runs, (float)cpuTime / Math.max(1, gpuTime));
     }
 }

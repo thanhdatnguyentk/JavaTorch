@@ -1,12 +1,16 @@
 package com.user.nn;
+
 import com.user.nn.core.*;
 import com.user.nn.layers.*;
 import com.user.nn.containers.*;
 import com.user.nn.activations.*;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class TestContainers {
-    public static void main(String[] args) {
-        // Test Sequential
+
+    @Test
+    void testSequential() {
         Sequential seq = new Sequential();
         Linear l1 = new Linear(4, 3, true);
         ReLU r = new ReLU();
@@ -14,29 +18,28 @@ public class TestContainers {
         seq.add(r);
 
         // Input
-        NN.Mat in = NN.mat_alloc(2, 4);
-        NN.mat_fill(in, 1.0f);
+        Tensor in = Torch.ones(2, 4);
+        Tensor out = seq.forward(in);
+        
+        assertEquals(2, out.shape[0], "Sequential produced wrong batch size");
+        assertEquals(3, out.shape[1], "Sequential produced wrong output channels");
+    }
 
-        NN.Mat out = seq.forward(in);
-        if (out.rows != 2 || out.cols != 3) {
-            System.err.println("Sequential produced wrong shape");
-            System.exit(1);
-        }
-
-        // Test ModuleList and ModuleDict basic API
+    @Test
+    void testModuleList() {
         ModuleList ml = new ModuleList();
+        Linear l1 = new Linear(4, 3, true);
         ml.add(l1);
-        try {
-            ml.get(0);
-        } catch (Exception e) {
-            System.err.println("ModuleList get failed");
-            System.exit(2);
-        }
+        assertNotNull(ml.get(0), "ModuleList get should return added module");
+        assertEquals(2, ml.parameters().size(), "ModuleList should aggregate parameters (weight + bias)");
+    }
 
+    @Test
+    void testModuleDict() {
         ModuleDict md = new ModuleDict();
+        Linear l1 = new Linear(4, 3, true);
         md.put("layer", l1);
-        if (md.getModule("layer") == null) { System.err.println("ModuleDict put/get failed"); System.exit(3); }
-
-        System.out.println("TEST PASSED: Containers");
+        assertNotNull(md.getModule("layer"), "ModuleDict get should return added module");
+        assertEquals(l1, md.getModule("layer"));
     }
 }

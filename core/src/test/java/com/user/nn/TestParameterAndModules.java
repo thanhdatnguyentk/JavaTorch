@@ -1,20 +1,23 @@
 package com.user.nn;
-import com.user.nn.core.*;
-import com.user.nn.layers.*;
+
+import com.user.nn.layers.Linear;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class TestParameterAndModules {
-    public static void main(String[] args) {
+
+    @Test
+    void testLinearParametersAndModules() {
         Linear l = new Linear(6, 2, true);
+        
         // parameters should include weight and bias
-        if (l.getParameter("weight") == null) { System.err.println("weight missing"); System.exit(1); }
-        if (l.getParameter("bias") == null) { System.err.println("bias missing"); System.exit(2); }
+        assertNotNull(l.getParameter("weight"), "weight missing");
+        assertNotNull(l.getParameter("bias"), "bias missing");
 
         // parameters() should return non-empty
-        if (l.parameters().size() < 1) { System.err.println("parameters() empty"); System.exit(3); }
+        assertTrue(l.parameters().size() >= 2, "parameters() should have at least weight and bias");
 
-        // modules() empty for linear
-        if (l.modules().size() != 0) { System.err.println("modules() expected empty"); System.exit(4); }
-
-        System.out.println("TEST PASSED: ParametersAndModules");
+        // modules() is empty for basic Linear layer (it doesn't have sub-modules)
+        assertEquals(0, l.modules().size(), "modules() expected empty for Linear");
     }
 }

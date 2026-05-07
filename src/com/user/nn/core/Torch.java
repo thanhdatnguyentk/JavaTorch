@@ -19,6 +19,10 @@ public class Torch {
         public int threshold = 1000;
     }
 
+    public static boolean hasGPU() {
+        return CUDAOps.isAvailable();
+    }
+
     // dtype helpers
     public static boolean is_tensor(Object o) {
         return o instanceof Tensor;
@@ -264,7 +268,7 @@ public class Torch {
     }
 
     public static Tensor div(Tensor a, Tensor b) {
-        return binaryOp(a, b, (x, y) -> x / y, BinaryOpType.DIV);
+        return binaryOp(a, b, (x, y) -> x / (y + 1e-12f), BinaryOpType.DIV);
     }
 
     // scalar variants
@@ -411,15 +415,16 @@ public class Torch {
     // scalar add/mul autograd not implemented (user can use elementwise ops with
     // tensors)
 
-    public enum BinaryOpType { ADD, SUB, MUL, DIV, OTHER }
+    public enum BinaryOpType { ADD, SUB, MUL, DIV, POW, OTHER }
 
     private static Tensor binaryOp(Tensor a, Tensor b, FloatBinaryOp op) {
         return binaryOp(a, b, op, BinaryOpType.OTHER);
     }
 
     private static Tensor binaryOp(Tensor a, Tensor b, FloatBinaryOp op, BinaryOpType type) {
+        boolean wasGPU = a.isGPU() || b.isGPU();
         // Fast path for exact shape match on GPU without broadcasting
-        if (type != BinaryOpType.OTHER && type != BinaryOpType.DIV 
+        if (type != BinaryOpType.OTHER 
                 && a.isGPU() && b.isGPU() && java.util.Arrays.equals(a.shape, b.shape)) {
             Tensor out = new Tensor(a.shape).toGPU();
             if (type == BinaryOpType.ADD) {
@@ -428,6 +433,10 @@ public class Torch {
                 CUDAOps.sub(a, b, out);
             } else if (type == BinaryOpType.MUL) {
                 CUDAOps.mul(a, b, out);
+            } else if (type == BinaryOpType.DIV) {
+                CUDAOps.div(a, b, out);
+            } else if (type == BinaryOpType.POW) {
+                CUDAOps.pow(a, b, out);
             }
             return out;
         }
@@ -474,7 +483,7 @@ public class Torch {
             }
             out.data[idx] = op.apply(a.data[offA], b.data[offB]);
         }
-        if (a.isGPU() || b.isGPU()) out.toGPU();
+        if (wasGPU) out.toGPU();
         return out;
     }
 
@@ -483,6 +492,7 @@ public class Torch {
     private static Tensor reduceSumToShape(Tensor grad, int[] targetShape) {
         if (java.util.Arrays.equals(grad.shape, targetShape))
             return grad;
+        boolean wasGPU = grad.isGPU();
         grad.toCPU();
         Tensor out = new Tensor(targetShape);
         int gn = grad.shape.length, tn = targetShape.length;
@@ -504,7 +514,7 @@ public class Torch {
             }
             out.data[outLinear] += grad.data[i];
         }
-        if (grad.isGPU()) out.toGPU();
+        if (wasGPU) out.toGPU();
         return out;
     }
 
@@ -575,7 +585,6 @@ public class Torch {
     // --- Batch 3: Pooling and Padding ---
 
     public static Tensor max_pool1d(Tensor x, int kernel, int stride, int pad) {
-        x.toCPU();
         int nd = x.shape.length;
         if (nd < 2)
             throw new IllegalArgumentException("Expected x to have at least 2 dims [C, L] or [N, C, L]");
@@ -585,7 +594,28 @@ public class Torch {
         final int outL = (inL + 2 * pad - kernel) / stride + 1;
         int outShape[] = (nd == 3) ? new int[] { batch, inC, outL } : new int[] { inC, outL };
         Tensor out = new Tensor(outShape);
-        if (x.isGPU()) out.toGPU();
+
+        if (x.isGPU()) {
+            out.toGPU();
+            CUDAOps.poolingForward(jcuda.jcudnn.cudnnPoolingMode.CUDNN_POOLING_MAX, 
+                x, out, inC, 1, inL, 1, kernel, 1, outL, 0, pad, 1, stride);
+            
+            if (is_grad_enabled() && x.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn(x, out) {
+                    public void apply(Tensor outGrad) {
+                        Tensor gx = new Tensor(x.shape).toGPU();
+                        CUDAOps.poolingBackward(jcuda.jcudnn.cudnnPoolingMode.CUDNN_POOLING_MAX, 
+                            x, out, outGrad, gx, 
+                            inC, 1, inL, 1, kernel, 1, outL, 0, pad, 1, stride);
+                        x.backwardStep(gx);
+                    }
+                };
+            }
+            return out;
+        }
+
+        x.toCPU();
         final int[] maxIndices = new int[out.numel()];
 
         for (int b = 0; b < batch; b++) {
@@ -627,7 +657,6 @@ public class Torch {
     }
 
     public static Tensor avg_pool1d(Tensor x, int kernel, int stride, int pad) {
-        x.toCPU();
         int nd = x.shape.length;
         if (nd < 2)
             throw new IllegalArgumentException("Expected x to have at least 2 dims");
@@ -637,7 +666,28 @@ public class Torch {
         final int outL = (inL + 2 * pad - kernel) / stride + 1;
         int outShape[] = (nd == 3) ? new int[] { batch, inC, outL } : new int[] { inC, outL };
         Tensor out = new Tensor(outShape);
-        if (x.isGPU()) out.toGPU();
+
+        if (x.isGPU()) {
+            out.toGPU();
+            CUDAOps.poolingForward(jcuda.jcudnn.cudnnPoolingMode.CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING, 
+                x, out, inC, 1, inL, 1, kernel, 1, outL, 0, pad, 1, stride);
+            
+            if (is_grad_enabled() && x.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn(x, out) {
+                    public void apply(Tensor outGrad) {
+                        Tensor gx = new Tensor(x.shape).toGPU();
+                        CUDAOps.poolingBackward(jcuda.jcudnn.cudnnPoolingMode.CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING, 
+                            x, out, outGrad, gx, 
+                            inC, 1, inL, 1, kernel, 1, outL, 0, pad, 1, stride);
+                        x.backwardStep(gx);
+                    }
+                };
+            }
+            return out;
+        }
+
+        x.toCPU();
         final float[] counts = new float[out.numel()];
 
         for (int b = 0; b < batch; b++) {
@@ -689,7 +739,6 @@ public class Torch {
     }
 
     public static Tensor adaptive_avg_pool2d(Tensor x, int[] outputSize) {
-        x.toCPU();
         final int nd = x.shape.length;
         if (nd < 3)
             throw new IllegalArgumentException("Expected x to have at least 3 dims [C, H, W] or [N, C, H, W]");
@@ -701,8 +750,38 @@ public class Torch {
         final int outW = outputSize[1];
         int outShape[] = (nd == 4) ? new int[] { batch, inC, outH, outW } : new int[] { inC, outH, outW };
         Tensor out = new Tensor(outShape);
-        if (x.isGPU()) out.toGPU();
 
+        if (x.isGPU()) {
+            out.toGPU();
+            int kH = inH / outH;
+            int kW = inW / outW;
+            int sH = inH / outH;
+            int sW = inW / outW;
+            // For adaptive pooling, if inH % outH == 0, then kH = sH works.
+            // Otherwise, it's more complex. We'll use this as an approximation for now
+            // or fallback to CPU if not perfectly divisible.
+            if (inH % outH == 0 && inW % outW == 0) {
+                CUDAOps.poolingForward(jcuda.jcudnn.cudnnPoolingMode.CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING,
+                    x, out, inC, inH, inW, kH, kW, outH, outW, 0, 0, sH, sW);
+                
+                if (is_grad_enabled() && x.requires_grad) {
+                    out.requires_grad = true;
+                    out.grad_fn = new Tensor.GradFn(x, out) {
+                        public void apply(Tensor outGrad) {
+                            Tensor gx = new Tensor(x.shape).toGPU();
+                            CUDAOps.poolingBackward(jcuda.jcudnn.cudnnPoolingMode.CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING,
+                                x, out, outGrad, gx,
+                                inC, inH, inW, kH, kW, outH, outW, 0, 0, sH, sW);
+                            x.backwardStep(gx);
+                        }
+                    };
+                }
+                return out;
+            }
+        }
+
+        x.toCPU();
+        final int[] counts = new int[out.numel()];
         for (int b = 0; b < batch; b++) {
             for (int c = 0; c < inC; c++) {
                 for (int oh = 0; oh < outH; oh++) {
@@ -723,6 +802,7 @@ public class Torch {
                         int outIdx = (nd == 4) ? (b * inC * outH * outW + c * outH * outW + oh * outW + ow)
                                 : (c * outH * outW + oh * outW + ow);
                         out.data[outIdx] = cnt > 0 ? sum / cnt : 0f;
+                        counts[outIdx] = cnt;
                     }
                 }
             }
@@ -831,17 +911,80 @@ public class Torch {
 
     // autograd-aware mean returning a 1-element Tensor
     public static Tensor meanTensor(Tensor a) {
+        boolean wasGPU = a.isGPU();
         float m = mean(a);
         Tensor out = new Tensor(new float[] { m }, 1);
+        if (wasGPU) out.toGPU();
         if (is_grad_enabled() && a.requires_grad) {
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(a) {
                 public void apply(Tensor outGrad) {
                     float scale = outGrad.data[0] / a.numel();
                     Tensor ga = new Tensor(a.shape);
+                    if (a.isGPU()) ga.toGPU();
+                    ga.toCPU();
                     for (int i = 0; i < ga.data.length; i++)
                         ga.data[i] = scale;
+                    if (a.isGPU()) ga.toGPU();
                     a.backwardStep(ga);
+                }
+            };
+        }
+        return out;
+    }
+
+    public static Tensor meanTensor(Tensor input, int dim) {
+        if (dim < 0) dim += input.shape.length;
+        final int fDim = dim;
+        boolean wasGPU = input.isGPU();
+        input.toCPU();
+        int[] outShape = new int[input.shape.length - 1];
+        int k = 0;
+        for (int i = 0; i < input.shape.length; i++)
+            if (i != fDim) outShape[k++] = input.shape[i];
+
+        Tensor out = new Tensor(outShape);
+        int outerSize = 1;
+        for (int i = 0; i < fDim; i++) outerSize *= input.shape[i];
+        int dimSize = input.shape[fDim];
+        int innerSize = 1;
+        for (int i = fDim + 1; i < input.shape.length; i++) innerSize *= input.shape[i];
+
+        for (int i = 0; i < outerSize; i++) {
+            for (int j = 0; j < innerSize; j++) {
+                float sum = 0f;
+                for (int k2 = 0; k2 < dimSize; k2++) {
+                    sum += input.data[(i * dimSize + k2) * innerSize + j];
+                }
+                out.data[i * innerSize + j] = sum / dimSize;
+            }
+        }
+        if (wasGPU) out.toGPU();
+        
+        if (is_grad_enabled() && input.requires_grad) {
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(input) {
+                public void apply(Tensor outGrad) {
+                    Tensor grad = new Tensor(input.shape);
+                    if (wasGPU) grad.toGPU();
+                    grad.toCPU(); outGrad.toCPU();
+                    
+                    int outerSize = 1;
+                    for (int i = 0; i < fDim; i++) outerSize *= input.shape[i];
+                    int dimSize = input.shape[fDim];
+                    int innerSize = 1;
+                    for (int i = fDim + 1; i < input.shape.length; i++) innerSize *= input.shape[i];
+
+                    for (int i = 0; i < outerSize; i++) {
+                        for (int j = 0; j < innerSize; j++) {
+                            float val = outGrad.data[i * innerSize + j] / dimSize;
+                            for (int k2 = 0; k2 < dimSize; k2++) {
+                                grad.data[(i * dimSize + k2) * innerSize + j] = val;
+                            }
+                        }
+                    }
+                    if (wasGPU) grad.toGPU();
+                    input.backwardStep(grad);
                 }
             };
         }
@@ -850,17 +993,27 @@ public class Torch {
 
     // autograd-aware sum returning a 1-element Tensor
     public static Tensor sumTensor(Tensor a) {
-        float s = sum(a);
-        Tensor out = new Tensor(new float[] { s }, 1);
+        Tensor out;
+        if (a.isGPU() && CUDAOps.isAvailable()) {
+            out = new Tensor(1).toGPU();
+            CUDAOps.reduceSum(a, out);
+        } else {
+            float s = sum(a);
+            out = new Tensor(new float[] { s }, 1);
+        }
         if (a.requires_grad) {
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(a) {
                 public void apply(Tensor outGrad) {
-                    // outGrad is scalar (shape [1])
-                    float scale = outGrad.data[0];
+                    float scale = outGrad.item();
                     Tensor ga = new Tensor(a.shape);
-                    for (int i = 0; i < ga.data.length; i++)
-                        ga.data[i] = scale;
+                    if (a.isGPU() && CUDAOps.isAvailable()) {
+                        ga.toGPU();
+                        CUDAOps.fill(ga, scale);
+                    } else {
+                        for (int i = 0; i < ga.data.length; i++)
+                            ga.data[i] = scale;
+                    }
                     a.backwardStep(ga);
                 }
             };
@@ -945,7 +1098,8 @@ public class Torch {
         outShape[dim1] = a.shape[dim0];
 
         Tensor out;
-        if (a.isGPU() && nd == 2 && dim0 == 0 && dim1 == 1) {
+        boolean wasGPU = a.isGPU();
+        if (wasGPU && CUDAOps.isAvailable() && nd == 2 && dim0 == 0 && dim1 == 1) {
             out = new Tensor(outShape).toGPU();
             CUDAOps.transpose(a, out);
         } else {
@@ -961,7 +1115,7 @@ public class Torch {
                 coords[dim1] = tmp;
                 out.data[getIndex(coords, outStrides)] = a.data[i];
             }
-            if (a.isGPU()) out.toGPU();
+            if (wasGPU) out.toGPU();
         }
 
         if (is_grad_enabled() && a.requires_grad) {
@@ -1194,13 +1348,108 @@ public class Torch {
 
     // stack: insert a new dimension at `dim` and concatenate
     public static Tensor stack(List<Tensor> tensors, int dim) {
-        if (tensors.size() == 0)
+        if (tensors == null || tensors.isEmpty())
             throw new IllegalArgumentException("no tensors to stack");
         // unsqueeze each tensor at dim and cat
         ArrayList<Tensor> ups = new ArrayList<>();
         for (Tensor t : tensors)
             ups.add(t.unsqueeze(dim));
         return cat(ups, dim);
+    }
+
+    public static Tensor cat(List<Tensor> tensors, int dim) {
+        if (tensors == null || tensors.isEmpty()) return null;
+        boolean anyGPU = false;
+        for (Tensor t : tensors) if (t.isGPU()) { anyGPU = true; break; }
+
+        Tensor res;
+        if (anyGPU && CUDAOps.isAvailable()) {
+            // Ensure all are on GPU
+            for (Tensor t : tensors) if (!t.isGPU()) t.toGPU();
+            
+            int[] firstShape = tensors.get(0).shape;
+            int[] outShape = firstShape.clone();
+            int dimSize = 0;
+            for (Tensor t : tensors) dimSize += t.shape[dim];
+            outShape[dim] = dimSize;
+            
+            res = new Tensor(outShape).toGPU();
+            CUDAOps.concat(tensors, res, dim);
+        } else {
+            // CPU fallback
+            for (Tensor t : tensors) t.toCPU();
+            int workDim = dim;
+            if (workDim < 0)
+                workDim += tensors.get(0).shape.length;
+
+            // Validate shapes
+            int[] baseShape = tensors.get(0).shape;
+            for (int i = 0; i < baseShape.length; i++) {
+                if (i == workDim)
+                    continue;
+                for (int j = 1; j < tensors.size(); j++) {
+                    if (tensors.get(j).shape[i] != baseShape[i])
+                        throw new IllegalArgumentException("cat: Tensors must have same shape except in the cat dimension");
+                }
+            }
+
+            int totalDimSize = 0;
+            for (Tensor t : tensors) {
+                totalDimSize += t.shape[workDim];
+            }
+
+            int[] newShape = baseShape.clone();
+            newShape[workDim] = totalDimSize;
+            res = new Tensor(newShape);
+
+            int outerSize = 1;
+            for (int i = 0; i < workDim; i++)
+                outerSize *= baseShape[i];
+            int innerSize = 1;
+            for (int i = workDim + 1; i < baseShape.length; i++)
+                innerSize *= baseShape[i];
+
+            int currentOffset = 0;
+            for (Tensor t : tensors) {
+                int tDimSize = t.shape[workDim];
+                for (int i = 0; i < outerSize; i++) {
+                    System.arraycopy(
+                            t.data, i * tDimSize * innerSize,
+                            res.data, (i * totalDimSize + currentOffset) * innerSize,
+                            tDimSize * innerSize);
+                }
+                currentOffset += tDimSize;
+            }
+        }
+
+        if (is_grad_enabled()) {
+            boolean anyGrad = false;
+            for (Tensor t : tensors)
+                if (t.requires_grad) {
+                    anyGrad = true;
+                    break;
+                }
+            if (anyGrad) {
+                final int finalDim = dim;
+                res.requires_grad = true;
+                res.grad_fn = new Tensor.GradFn(tensors.toArray(new Tensor[0])) {
+                    public void apply(Tensor outGrad) {
+                        int p = 0;
+                        int workDim = finalDim;
+                        if (workDim < 0) workDim += outGrad.shape.length;
+                        for (Tensor t : tensors) {
+                            int tDimSize = t.shape[workDim];
+                            if (t.requires_grad) {
+                                Tensor grad = narrow(outGrad, workDim, p, tDimSize);
+                                t.backwardStep(grad);
+                            }
+                            p += tDimSize;
+                        }
+                    }
+                };
+            }
+        }
+        return res;
     }
 
     // split by sizes along dim
@@ -1232,27 +1481,28 @@ public class Torch {
 
     // expand: repeat tensor along singleton dimensions
     public static Tensor expand(Tensor a, int... newShape) {
-        // Use broadcasting hack: add to zeros of target shape
+        boolean wasGPU = a.isGPU();
         Tensor z = zeros(newShape).to(a.device);
-        return add(a, z);
+        Tensor out = add(a, z);
+        if (wasGPU && !out.isGPU()) out.toGPU();
+        return out;
     }
 
     // where: choose elements from x or y based on condition (cond != 0)
     public static Tensor where(Tensor cond, Tensor x, Tensor y) {
         if (cond.numel() != x.numel() || x.numel() != y.numel())
             throw new IllegalArgumentException("where: shapes must match elementwise");
+        boolean anyGPU = cond.isGPU() || x.isGPU() || y.isGPU();
         cond.toCPU();
         x.toCPU();
         y.toCPU();
         Tensor out = new Tensor(x.shape);
         for (int i = 0; i < x.data.length; i++)
             out.data[i] = (cond.data[i] != 0f) ? x.data[i] : y.data[i];
-        if (cond.isGPU() || x.isGPU() || y.isGPU()) out.toGPU();
+        if (anyGPU) out.toGPU();
         return out;
     }
 
-
-    // gather: for each position, take input value at index specified along `dim`
     public static Tensor gather(Tensor input, int dim, Tensor index) {
         if (dim < 0)
             dim += input.shape.length;
@@ -1261,13 +1511,13 @@ public class Torch {
         for (int i = 0; i < input.shape.length; i++)
             if (i != dim && input.shape[i] != index.shape[i])
                 throw new IllegalArgumentException("gather: shapes must match except at dim");
+        boolean anyGPU = input.isGPU() || index.isGPU();
         input.toCPU();
         index.toCPU();
         int nd = input.shape.length;
         int[] inStr = computeStrides(input.shape);
         int[] idxStr = computeStrides(index.shape);
         Tensor out = new Tensor(index.shape);
-        if (input.isGPU() || index.isGPU()) out.toGPU();
         int ne = out.numel();
         for (int linear = 0; linear < ne; linear++) {
             int rem = linear;
@@ -1277,9 +1527,7 @@ public class Torch {
                 rem = rem % idxStr[i];
             }
             int idxAt = (int) index.data[linear];
-            // allow negative indices
-            if (idxAt < 0)
-                idxAt += input.shape[dim];
+            if (idxAt < 0) idxAt += input.shape[dim];
             if (idxAt < 0 || idxAt >= input.shape[dim])
                 throw new IndexOutOfBoundsException("gather: index out of range");
             int inOff = 0;
@@ -1289,16 +1537,15 @@ public class Torch {
             }
             out.data[linear] = input.data[inOff];
         }
+        if (anyGPU) out.toGPU();
         return out;
     }
 
-    // scatter: write values from src into input at positions specified by index
-    // along dim (returns a new tensor)
     public static Tensor scatter(Tensor input, int dim, Tensor index, Tensor src) {
-        if (dim < 0)
-            dim += input.shape.length;
+        if (dim < 0) dim += input.shape.length;
         if (input.shape.length != index.shape.length || !java.util.Arrays.equals(index.shape, src.shape))
             throw new IllegalArgumentException("scatter: shapes mismatch");
+        boolean anyGPU = input.isGPU() || index.isGPU() || src.isGPU();
         input.toCPU();
         index.toCPU();
         src.toCPU();
@@ -1306,7 +1553,6 @@ public class Torch {
         int[] inStr = computeStrides(input.shape);
         int[] idxStr = computeStrides(index.shape);
         Tensor out = input.clone();
-        if (input.isGPU() || index.isGPU() || src.isGPU()) out.toGPU();
         int ne = index.numel();
         for (int linear = 0; linear < ne; linear++) {
             int rem = linear;
@@ -1316,9 +1562,7 @@ public class Torch {
                 rem = rem % idxStr[i];
             }
             int idxAt = (int) index.data[linear];
-            // allow negative indices
-            if (idxAt < 0)
-                idxAt += input.shape[dim];
+            if (idxAt < 0) idxAt += input.shape[dim];
             if (idxAt < 0 || idxAt >= input.shape[dim])
                 throw new IndexOutOfBoundsException("scatter: index out of range");
             int inOff = 0;
@@ -1328,13 +1572,12 @@ public class Torch {
             }
             out.data[inOff] = src.data[linear];
         }
+        if (anyGPU) out.toGPU();
         return out;
     }
 
-    // in-place scatter: mutates `input` and returns it
     public static Tensor scatter_(Tensor input, int dim, Tensor index, Tensor src) {
-        if (dim < 0)
-            dim += input.shape.length;
+        if (dim < 0) dim += input.shape.length;
         if (input.shape.length != index.shape.length || !java.util.Arrays.equals(index.shape, src.shape))
             throw new IllegalArgumentException("scatter_: shapes mismatch");
         int nd = input.shape.length;
@@ -1724,15 +1967,79 @@ public class Torch {
 
     // power
     public static Tensor pow(Tensor a, Tensor b) {
-        return binaryOp(a, b, (x, y) -> (float) Math.pow(x, y));
+        return binaryOp(a, b, (x, y) -> (float) Math.pow(x, y), BinaryOpType.POW);
     }
 
     public static Tensor pow(Tensor a, float exp) {
+        if (a.isGPU()) {
+            Tensor out = new Tensor(a.shape).toGPU();
+            CUDAOps.pow(a, exp, out);
+            if (is_grad_enabled() && a.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn(a) {
+                    public void apply(Tensor outGrad) {
+                        // dy/dx = exp * x^(exp-1)
+                        Tensor ga = mul(outGrad, mul(pow(a, exp - 1), exp));
+                        a.backwardStep(ga);
+                    }
+                };
+            }
+            return out;
+        }
         a.toCPU();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) Math.pow(a.data[i], exp);
         if (a.isGPU()) out.toGPU();
+        if (is_grad_enabled() && a.requires_grad) {
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(a) {
+                public void apply(Tensor outGrad) {
+                    Tensor ga = new Tensor(a.shape);
+                    for (int j = 0; j < ga.data.length; j++)
+                        ga.data[j] = (float) (outGrad.data[j] * exp * Math.pow(a.data[j], exp - 1));
+                    a.backwardStep(ga);
+                }
+            };
+        }
+        return out;
+    }
+
+    public static Tensor sqrt(Tensor a) {
+        if (a.isGPU()) {
+            Tensor out = new Tensor(a.shape).toGPU();
+            CUDAOps.sqrt(a, out);
+            if (is_grad_enabled() && a.requires_grad) {
+                out.requires_grad = true;
+                out.grad_fn = new Tensor.GradFn(a) {
+                    public void apply(Tensor outGrad) {
+                        // dy/dx = 0.5 / sqrt(x)
+                        Tensor ga = div(mul(outGrad, 0.5f), sqrt(a));
+                        a.backwardStep(ga);
+                    }
+                };
+            }
+            return out;
+        }
+        a.toCPU();
+        Tensor out = new Tensor(a.shape);
+        for (int i = 0; i < a.data.length; i++)
+            out.data[i] = (float) Math.sqrt(Math.max(0.0, a.data[i]));
+        if (a.isGPU()) out.toGPU();
+        if (is_grad_enabled() && a.requires_grad) {
+            out.requires_grad = true;
+            out.grad_fn = new Tensor.GradFn(a) {
+                public void apply(Tensor outGrad) {
+                    a.toCPU();
+                    outGrad.toCPU();
+                    Tensor ga = new Tensor(a.shape);
+                    for (int j = 0; j < ga.data.length; j++)
+                        ga.data[j] = (float) (outGrad.data[j] * 0.5f / (Math.sqrt(Math.max(0.0, a.data[j])) + 1e-8f));
+                    if (a.isGPU()) ga.toGPU();
+                    a.backwardStep(ga);
+                }
+            };
+        }
         return out;
     }
 
@@ -1756,6 +2063,7 @@ public class Torch {
     // --- Batch 1 Activations & Softmax ---
 
     public static Tensor softmax(Tensor a, int dim) {
+        boolean wasGPU = a.isGPU();
         a.toCPU();
         if (dim < 0)
             dim += a.shape.length;
@@ -1769,7 +2077,6 @@ public class Torch {
             innerSize *= a.shape[i];
 
         Tensor out = new Tensor(a.shape);
-        if (a.isGPU()) out.toGPU();
         for (int i = 0; i < outerSize; i++) {
             for (int k = 0; k < innerSize; k++) {
                 float maxVal = Float.NEGATIVE_INFINITY;
@@ -1790,15 +2097,18 @@ public class Torch {
                 }
             }
         }
+        if (wasGPU) out.toGPU();
 
         if (is_grad_enabled() && a.requires_grad) {
             final int fOuterSize = outerSize;
             final int fInnerSize = innerSize;
             final int fDimSize = dimSize;
+            final boolean fWasGPU = wasGPU;
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(a) {
                 public void apply(Tensor outGrad) {
                     Tensor ga = new Tensor(a.shape);
+                    outGrad.toCPU(); out.toCPU();
                     for (int i = 0; i < fOuterSize; i++) {
                         for (int k = 0; k < fInnerSize; k++) {
                             float dot = 0;
@@ -1812,6 +2122,7 @@ public class Torch {
                             }
                         }
                     }
+                    if (fWasGPU) ga.toGPU();
                     a.backwardStep(ga);
                 }
             };
@@ -1820,6 +2131,7 @@ public class Torch {
     }
 
     public static Tensor log_softmax(Tensor a, int dim) {
+        boolean wasGPU = a.isGPU();
         a.toCPU();
         if (dim < 0)
             dim += a.shape.length;
@@ -1833,7 +2145,6 @@ public class Torch {
             innerSize *= a.shape[i];
 
         Tensor out = new Tensor(a.shape);
-        if (a.isGPU()) out.toGPU();
         for (int i = 0; i < outerSize; i++) {
             for (int k = 0; k < innerSize; k++) {
                 float maxVal = Float.NEGATIVE_INFINITY;
@@ -1842,48 +2153,51 @@ public class Torch {
                     if (v > maxVal)
                         maxVal = v;
                 }
-                double sum = 0;
+                double sumExp = 0;
                 for (int j = 0; j < dimSize; j++) {
                     float v = a.data[i * dimSize * innerSize + j * innerSize + k];
-                    sum += Math.exp(v - maxVal);
+                    sumExp += Math.exp(v - maxVal);
                 }
-                float logSum = (float) (Math.log(sum) + maxVal);
+                float logSumExp = (float) (maxVal + Math.log(sumExp));
                 for (int j = 0; j < dimSize; j++) {
                     float v = a.data[i * dimSize * innerSize + j * innerSize + k];
-                    out.data[i * dimSize * innerSize + j * innerSize + k] = v - logSum;
+                    out.data[i * dimSize * innerSize + j * innerSize + k] = v - logSumExp;
                 }
             }
         }
+        if (wasGPU) out.toGPU();
 
         if (is_grad_enabled() && a.requires_grad) {
-            final int fDim = dim;
             final int fOuterSize = outerSize;
             final int fInnerSize = innerSize;
             final int fDimSize = dimSize;
+            final boolean fWasGPU = wasGPU;
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(a) {
                 public void apply(Tensor outGrad) {
                     Tensor ga = new Tensor(a.shape);
-                    Tensor soft = softmax(a, fDim);
+                    outGrad.toCPU(); out.toCPU();
                     for (int i = 0; i < fOuterSize; i++) {
                         for (int k = 0; k < fInnerSize; k++) {
-                            float sumGrad = 0;
+                            float sumOutGrad = 0;
                             for (int j = 0; j < fDimSize; j++) {
                                 int idx = i * (fDimSize * fInnerSize) + j * fInnerSize + k;
-                                sumGrad += outGrad.data[idx];
+                                sumOutGrad += outGrad.data[idx];
                             }
                             for (int j = 0; j < fDimSize; j++) {
                                 int idx = i * (fDimSize * fInnerSize) + j * fInnerSize + k;
-                                ga.data[idx] = outGrad.data[idx] - soft.data[idx] * sumGrad;
+                                ga.data[idx] = outGrad.data[idx] - (float) Math.exp(out.data[idx]) * sumOutGrad;
                             }
                         }
                     }
+                    if (fWasGPU) ga.toGPU();
                     a.backwardStep(ga);
                 }
             };
         }
         return out;
     }
+
 
     public static Tensor cosine_similarity(Tensor x1, Tensor x2, int dim, float eps) {
         if (dim < 0)
@@ -2245,6 +2559,7 @@ public class Torch {
     public static float std(Tensor a) {
         return (float) Math.sqrt(var(a));
     }
+
 
 
     public static Tensor one_hot(Tensor indices, int numClasses) {
@@ -2749,152 +3064,68 @@ public class Torch {
         return gradEnabled;
     }
 
-    // cat(tensors, dim): Concatenates the given sequence of tensors in the given
-    // dimension.
-    public static Tensor cat(java.util.List<Tensor> tensors, int dim) {
-        if (tensors.isEmpty())
-            throw new IllegalArgumentException("cat requires at least one tensor");
-        if (dim < 0)
-            dim += tensors.get(0).shape.length;
-
-        // Validate shapes
-        int[] baseShape = tensors.get(0).shape;
-        for (int i = 0; i < baseShape.length; i++) {
-            if (i == dim)
-                continue;
-            for (int j = 1; j < tensors.size(); j++) {
-                if (tensors.get(j).shape[i] != baseShape[i])
-                    throw new IllegalArgumentException("cat: Tensors must have same shape except in the cat dimension");
-            }
-        }
-
-        int totalDimSize = 0;
-        boolean anyGPU = false;
-        for (Tensor t : tensors) {
-            totalDimSize += t.shape[dim];
-            if (t.isGPU()) anyGPU = true;
-        }
-
-        int[] newShape = baseShape.clone();
-        newShape[dim] = totalDimSize;
-        Tensor res = new Tensor(newShape);
-        if (anyGPU) res.toGPU();
-
-        if (anyGPU) {
-            // Ensure all are on GPU for the fast operation
-            for (Tensor t : tensors) t.toGPU();
-            CUDAOps.concat(tensors, res, dim);
-        } else {
-            int outerSize = 1;
-            for (int i = 0; i < dim; i++)
-                outerSize *= baseShape[i];
-            int innerSize = 1;
-            for (int i = dim + 1; i < baseShape.length; i++)
-                innerSize *= baseShape[i];
-
-            int currentOffset = 0;
-            for (Tensor t : tensors) {
-                int tDimSize = t.shape[dim];
-                for (int i = 0; i < outerSize; i++) {
-                    System.arraycopy(
-                            t.data, i * tDimSize * innerSize,
-                            res.data, (i * totalDimSize + currentOffset) * innerSize,
-                            tDimSize * innerSize);
-                }
-                currentOffset += tDimSize;
-            }
-        }
-
-        if (is_grad_enabled()) {
-            boolean anyGrad = false;
-            for (Tensor t : tensors)
-                if (t.requires_grad) {
-                    anyGrad = true;
-                    break;
-                }
-            if (anyGrad) {
-                final int finalDim = dim;
-                res.requires_grad = true;
-                res.grad_fn = new Tensor.GradFn(tensors.toArray(new Tensor[0])) {
-                    public void apply(Tensor outGrad) {
-                        int p = 0;
-                        for (Tensor t : tensors) {
-                            int tDimSize = t.shape[finalDim];
-                            if (t.requires_grad) {
-                                Tensor grad = narrow(outGrad, finalDim, p, tDimSize);
-                                t.backwardStep(grad);
-                            }
-                            p += tDimSize;
-                        }
-                    }
-                };
-            }
-        }
-        return res;
-    }
-
     // narrow(input, dim, start, length): Returns a new tensor that is a narrowed
     // version of input tensor.
-    public static Tensor narrow(Tensor input, int dim, int start, int length) {
-        if (dim < 0)
-            dim += input.shape.length;
-        int[] newShape = input.shape.clone();
-        newShape[dim] = length;
-        Tensor out = new Tensor(newShape);
-        if (input.isGPU()) out.toGPU();
-
-        int outerSize = 1;
-        for (int i = 0; i < dim; i++)
-            outerSize *= input.shape[i];
-        int innerSize = 1;
-        for (int i = dim + 1; i < input.shape.length; i++)
-            innerSize *= input.shape[i];
-
-        final int finalDim = dim;
-        final int finalStart = start;
-        final int finalLength = length;
-        final int finalInnerSize = innerSize;
-        final int finalOuterSize = outerSize;
-        final int finalOldDimSize = input.shape[dim];
-
-        if (input.isGPU()) {
-            CUDAOps.narrow(input, out, dim, start, length);
+    public static Tensor narrow(Tensor a, int dim, int start, int length) {
+        if (dim < 0) dim += a.shape.length;
+        int[] outShape = a.shape.clone();
+        outShape[dim] = length;
+        
+        Tensor out;
+        boolean wasGPU = a.isGPU();
+        if (wasGPU && CUDAOps.isAvailable()) {
+            out = new Tensor(outShape).toGPU();
+            CUDAOps.narrow(a, out, dim, start, length);
         } else {
+            a.toCPU();
+            out = new Tensor(outShape);
+
+            int outerSize = 1;
+            for (int i = 0; i < dim; i++)
+                outerSize *= a.shape[i];
+            int innerSize = 1;
+            for (int i = dim + 1; i < a.shape.length; i++)
+                innerSize *= a.shape[i];
+
+            int oldDimSize = a.shape[dim];
             for (int i = 0; i < outerSize; i++) {
-                // Copy a block for each outer index
                 System.arraycopy(
-                        input.data, (i * finalOldDimSize + finalStart) * finalInnerSize,
-                        out.data, (i * finalLength) * finalInnerSize,
-                        finalLength * finalInnerSize);
+                        a.data, (i * oldDimSize + start) * innerSize,
+                        out.data, (i * length) * innerSize,
+                        length * innerSize);
             }
+            if (wasGPU) out.toGPU();
         }
 
-        if (is_grad_enabled() && input.requires_grad) {
+        if (is_grad_enabled() && a.requires_grad) {
+            final int fDim = dim, fStart = start, fLength = length;
+            final boolean fWasGPU = wasGPU;
             out.requires_grad = true;
-            out.grad_fn = new Tensor.GradFn(input) {
+            out.grad_fn = new Tensor.GradFn(a) {
                 public void apply(Tensor outGrad) {
-                    Tensor grad = new Tensor(input.shape);
-                    if (outGrad.isGPU()) {
-                        grad.toGPU();
-                        // Zero grad on GPU
-                        CUDAOps.mul(grad, 0.0f, grad); // Simple way to zero
-                        // Put back gradients into the right place
-                        // We need a way to add narrowed grad back. 
-                        // For now, let's keep sub-optimal copy or optimize later.
-                        // Actually, narrow backward is basically putting a smaller tensor into a larger one.
-                        // We can use a custom "scatter" or "assign_narrow" kernel.
-                        // For now, use CPU fallback to be safe.
-                        outGrad.toCPU();
-                    }
+                    Tensor grad = new Tensor(a.shape);
+                    if (fWasGPU) grad.toGPU();
+                    // Backward of narrow is basically scatter/fill.
+                    // For now, use CPU to be safe as it's complex.
+                    grad.toCPU();
+                    outGrad.toCPU();
                     
-                    for (int i = 0; i < finalOuterSize; i++) {
+                    int outerSize = 1;
+                    for (int i = 0; i < fDim; i++)
+                        outerSize *= a.shape[i];
+                    int innerSize = 1;
+                    for (int i = fDim + 1; i < a.shape.length; i++)
+                        innerSize *= a.shape[i];
+                    int oldDimSize = a.shape[fDim];
+
+                    for (int i = 0; i < outerSize; i++) {
                         System.arraycopy(
-                                outGrad.data, (i * finalLength) * finalInnerSize,
-                                grad.data, (i * finalOldDimSize + finalStart) * finalInnerSize,
-                                finalLength * finalInnerSize);
+                                outGrad.data, (i * fLength) * innerSize,
+                                grad.data, (i * oldDimSize + fStart) * innerSize,
+                                fLength * innerSize);
                     }
-                    if (input.isGPU()) grad.toGPU();
-                    input.backwardStep(grad);
+                    if (fWasGPU) grad.toGPU();
+                    a.backwardStep(grad);
                 }
             };
         }
