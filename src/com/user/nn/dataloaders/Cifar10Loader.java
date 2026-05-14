@@ -15,6 +15,11 @@ public class Cifar10Loader {
     public static final String DATA_DIR = "data/cifar-10/";
     public static final String TAR_FILE = DATA_DIR + "cifar-10-binary.tar.gz";
 
+    // Standard CIFAR-10 per-channel normalization constants
+    // Computed from the training set: mean and std for R, G, B channels
+    private static final float[] CHANNEL_MEAN = {0.4914f, 0.4822f, 0.4465f};
+    private static final float[] CHANNEL_STD  = {0.2470f, 0.2435f, 0.2616f};
+
     public static void prepareData() throws Exception {
         File dir = new File(DATA_DIR);
         if (!dir.exists()) dir.mkdirs();
@@ -43,6 +48,21 @@ public class Cifar10Loader {
         }
     }
 
+    /**
+     * Applies per-channel normalization to a CIFAR-10 image.
+     * Input layout: [R*1024, G*1024, B*1024] (channel-first, 32x32 spatial).
+     * Transforms from [0,1] to zero-mean, unit-variance per channel.
+     */
+    private static void normalizeImage(float[] image) {
+        int spatialSize = 32 * 32; // 1024 pixels per channel
+        for (int c = 0; c < 3; c++) {
+            int offset = c * spatialSize;
+            for (int s = 0; s < spatialSize; s++) {
+                image[offset + s] = (image[offset + s] - CHANNEL_MEAN[c]) / CHANNEL_STD[c];
+            }
+        }
+    }
+
     // Each bin file contains 10,000 images, each image is 3073 bytes (1 byte label + 3072 bytes pixel data)
     public static Object[] loadBatch(String filename) throws IOException {
         int numImages = 10000;
@@ -61,6 +81,8 @@ public class Cifar10Loader {
                     if (pixelByte == -1) throw new EOFException("Truncated image data at image " + i + ", pixel " + j);
                     images[i][j] = pixelByte / 255.0f;
                 }
+                // Apply per-channel normalization (essential for BatchNorm-based models)
+                normalizeImage(images[i]);
             }
         }
         return new Object[]{images, labels};

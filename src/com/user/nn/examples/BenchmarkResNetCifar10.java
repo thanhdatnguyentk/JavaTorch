@@ -224,16 +224,8 @@ public class BenchmarkResNetCifar10 {
     }
 
     private static void deterministicInit(ResNet model, long seed) {
-        Random rng = new Random(seed);
         for (Parameter p : model.parameters()) {
-            Tensor t = p.getTensor();
-            if (t.dim() >= 2) {
-                float scale = (float) Math.sqrt(2.0 / Math.max(1, t.numel()));
-                for (int i = 0; i < t.data.length; i++) {
-                    t.data[i] = (float) (rng.nextGaussian() * scale);
-                }
-            }
-            t.requires_grad = true;
+            p.getTensor().requires_grad = true;
         }
     }
 

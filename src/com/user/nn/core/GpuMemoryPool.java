@@ -148,11 +148,15 @@ public class GpuMemoryPool {
         if (newOffset > poolSizeBytes) {
             // Pool exhausted, caller should fall back to standard cudaMalloc
             // We update currentOffset anyway so we know total memory required for auto-expand
+            if (currentOffset <= poolSizeBytes) {
+                System.err.println("[DEBUG] GpuMemoryPool.allocate: Pool exhausted! Required " + newOffset + ", capacity " + poolSizeBytes + ". Will auto-expand on next reset.");
+            }
             currentOffset = newOffset;
             return null;
         }
 
         Pointer slice = poolBase.withByteOffset(currentOffset);
+        // System.out.println("[DEBUG] GpuMemoryPool.allocate: numFloats=" + numFloats + " bytesNeeded=" + bytesNeeded + " currentOffset=" + currentOffset + " newOffset=" + newOffset + " poolSizeBytes=" + poolSizeBytes);
         currentOffset = newOffset;
         return slice;
     }

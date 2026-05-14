@@ -46,27 +46,28 @@ public class Sequential extends Module {
                     Tensor wt = conv.weight.getTensor();
                     Tensor bt = conv.bias.getTensor();
                     Tensor fusedOut = new Tensor(batch, outSize);
-                    fusedOut.toGPU();
+                    // System.out.println("DEBUG: fusedOut.toGPU() batch=" + batch + " outSize=" + outSize + " numel=" + fusedOut.numel());
+                    try {
+                        fusedOut.toGPU();
+                    } catch (Exception e) {
+                        System.err.println("DEBUG: Crash at fusedOut.toGPU()!");
+                        throw e;
+                    }
 
-                    Tensor wtT = new Tensor(new int[]{conv.outChannels, ksz});
-                    wtT.toGPU();
-                    CUDAOps.transpose(wt, wtT);
-                    
-                    CUDAOps.conv2dBiasReluForward(out, wtT, bt, fusedOut,
+                    CUDAOps.conv2dBiasReluForward(out, wt, bt, fusedOut,
                         conv.inChannels, inH, inW,
                         conv.kernelH, conv.kernelW,
                         conv.outChannels, outH, outW,
                         conv.padH, conv.padW, conv.strideH, conv.strideW);
                     
-                    wtT.close();
-                    
+
                     if (Torch.is_grad_enabled() && (out.requires_grad || wt.requires_grad || bt.requires_grad)) {
                         fusedOut.requires_grad = true;
                         final Tensor convInput = out;
                         fusedOut.grad_fn = new Tensor.GradFn(convInput, wt, bt) {
                             public void apply(Tensor outGrad) {
-                                fusedOut.toCPU();
-                                outGrad.toCPU();
+                                fusedOut.syncToHost();
+                                outGrad.syncToHost();
                                 for (int j = 0; j < fusedOut.data.length; j++) {
                                     if (fusedOut.data[j] <= 0) outGrad.data[j] = 0;
                                 }

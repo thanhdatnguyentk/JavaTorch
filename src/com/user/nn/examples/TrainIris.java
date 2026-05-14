@@ -111,20 +111,24 @@ public class TrainIris {
 
         // Build Model
         Sequential model = new Sequential();
-        model.add(new Linear(4, 16, true));
+        model.add(new Linear(4, 64, true));
         model.add(new ReLU());
         model.add(new Dropout(0.1f));
-        model.add(new Linear(16, 3, true));
+        model.add(new Linear(64, 32, true));
+        model.add(new ReLU());
+        model.add(new Dropout(0.1f));
+        model.add(new Linear(32, 3, true));
 
         // Let's use Adam
-        float lr = 0.05f;
+        float lr = 0.001f;
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), lr);
-        
-        // Initialize GPU Memory Pool based on model size
-        GpuMemoryPool.autoInit(model);
 
-        // Move model to GPU
-        model.toGPU();
+        // Ensure weights are properly initialized with requires_grad
+        for (Parameter p : model.parameters()) {
+            p.getTensor().requires_grad = true;
+        }
+
+        // Iris is a tiny dataset (150 samples) — CPU is optimal, no GPU overhead needed
 
         // Optional: Manual Train/Test split mechanism (80/20)
         int numSamples = N; // Use N from loaded data
@@ -158,15 +162,6 @@ public class TrainIris {
         // Create DataLoader for Training (batch size 16, shuffle=true, 2 workers)
         Data.DataLoader trainLoader = new Data.DataLoader(trainDataset, 16, true, 2);
 
-        // seed parameters
-        long pSeed = 123L;
-        for (Parameter p : model.parameters()) {
-            Tensor t = p.getTensor();
-            NN.mat_rand_seed(p.data, pSeed++, -0.5f, 0.5f);
-            System.arraycopy(p.data.es, 0, t.data, 0, t.data.length);
-            t.requires_grad = true;
-        }
-
         Accuracy accMetric = new Accuracy();
         int epochs = SmokeTest.getEpochs(2000);
 
@@ -179,8 +174,6 @@ public class TrainIris {
         try {
             com.user.nn.predict.Predictor predictor = new com.user.nn.predict.Predictor(model, irisLabels)
                 .topK(3).verbose(false);
-            // It's not strictly an ImagePredictor, but we can mock it for the dashboard if needed, 
-            // but the dashboard relies mostly on broadcast methods.
         } catch(Exception e) {}
         
         Data.Dataset testDataset = new Data.Dataset() {
@@ -207,12 +200,8 @@ public class TrainIris {
             model.train();
 
             for (Tensor[] batch : trainLoader) {
-                try (MemoryScope scope = new MemoryScope()) {
                     Tensor xBatch = batch[0]; // [batch_size, 4]
                     Tensor yBatch = batch[1]; // [batch_size, 1]
-                    
-                    xBatch.toGPU();
-                    // yBatch stays on CPU for label indexing
 
                     int bs = xBatch.shape[0];
 
@@ -255,7 +244,6 @@ public class TrainIris {
                     while (dashboard.isTrainingPaused()) {
                         try { Thread.sleep(200); } catch (InterruptedException ie) { break; }
                     }
-                }
             }
 
             if (e % 100 == 0) {
@@ -270,9 +258,9 @@ public class TrainIris {
                 int[][] cm = new int[numClasses][numClasses];
                 java.util.List<Map<String, Object>> livePreds = new java.util.ArrayList<>();
                 for (int ti = 0; ti < Math.min(20, testN); ti++) {
-                    try (MemoryScope evalScope = new MemoryScope()) {
-                        Tensor tx = Torch.tensor(data[numTrain + ti], 1, 4); tx.toGPU();
-                        Tensor out = model.forward(tx); out.toCPU();
+                    try {
+                        Tensor tx = Torch.tensor(data[numTrain + ti], 1, 4);
+                        Tensor out = model.forward(tx);
                         int actual = labelsData[numTrain + ti];
                         int pred = 0; float maxV = out.data[0];
                         for (int c = 1; c < numClasses; c++) { if (out.data[c] > maxV) { maxV = out.data[c]; pred = c; } }
@@ -291,7 +279,7 @@ public class TrainIris {
                                 "", // no image
                                 irisLabels[pred], irisLabels[actual], pred == actual, topK));
                         }
-                    }
+                    } catch (Exception ignored) {}
                 }
                 model.train();
 
@@ -343,6 +331,7 @@ public class TrainIris {
             correctCount, testN, (float) correctCount / testN * 100);
 
         System.out.println("\nTraining Complete!");
+        System.exit(0);
     }
 
     static void downloadIfMissing(String urlStr, File dest) throws IOException {

@@ -7,7 +7,7 @@ This document is not a full JavaDoc replacement. Its purpose is to give you a pa
 ## `com.user.nn.core`
 
 - `Tensor`: tensor storage, device state, gradients, backward, memory lifecycle.
-- `Torch`: tensor ops, reductions, broadcasting, matmul, and initialization helpers.
+- `Torch`: tensor ops, reductions, broadcasting, matmul, and initialization helpers (~3300 lines).
 - `Functional`: functional-style losses and utility ops.
 - `CUDAOps`: JCuda, cuBLAS, cuDNN, and PTX kernel wrappers.
 - `GpuMemoryPool`: VRAM pool with auto-expanding when batch demand exceeds initial allocation.
@@ -28,6 +28,8 @@ This document is not a full JavaDoc replacement. Its purpose is to give you a pa
 - `Conv2d`
 - `ConvTranspose2d`
 - `Dropout`
+- `Flatten`
+- `ROIPooling`
 
 ## `com.user.nn.activations`
 
@@ -52,7 +54,7 @@ This document is not a full JavaDoc replacement. Its purpose is to give you a pa
 ## `com.user.nn.norm`
 
 - `BatchNorm1d`
-- `BatchNorm2d`
+- `BatchNorm2d` (CPU + GPU, with full autograd backward)
 - `LayerNorm`
 - `InstanceNorm`
 - `GroupNorm`
@@ -82,6 +84,7 @@ This document is not a full JavaDoc replacement. Its purpose is to give you a pa
 - `BCELoss`
 - `BCEWithLogitsLoss`
 - `CrossEntropyLoss`
+- `FocalLoss` (configurable α/γ, binary and multi-class)
 - `KLDivLoss`
 - `L1Loss`
 - `CosineSimilarity`
@@ -89,8 +92,8 @@ This document is not a full JavaDoc replacement. Its purpose is to give you a pa
 
 ## `com.user.nn.optim`
 
-- `Optim`: `SGD`, `Adam`
-- `Scheduler`: schedulers such as `StepLR`
+- `Optim`: `SGD` (with momentum), `Adam`
+- `Scheduler`: learning-rate schedulers such as `StepLR`
 
 ## `com.user.nn.dataloaders`
 
@@ -98,6 +101,8 @@ This document is not a full JavaDoc replacement. Its purpose is to give you a pa
 - `MnistLoader`
 - `Cifar10Loader`
 - `MovieCommentLoader`
+- `AnimeFaceLoader`
+- `UitVsfcLoader` (Vietnamese sentiment & topic classification)
 
 ## `com.user.nn.metrics`
 
@@ -108,23 +113,52 @@ This document is not a full JavaDoc replacement. Its purpose is to give you a pa
 - `MetricTracker`
 - `Evaluator`
 
+## `com.user.nn.predict`
+
+- `Predictor`
+- `ImagePredictor`
+- `TextPredictor`
+- `BatchPredictor`
+- `PredictionResult`
+- `PredictionPipeline`
+
 ## `com.user.nn.models`
 
 - `SentimentModel`
-- `models.cv`: `LeNet`, `VGG`, `ResNet`, `ViT`
+- `MultiTaskLSTMModel` (multi-head sentiment + topic)
+- `MultiTaskTransformerModel` (Transformer-based multi-task)
+- `models.cv`: `LeNet`, `VGG`, `ResNet`, `ViT`, `YOLO`, `SSD`, `RetinaNet`, `FasterRCNN`, `RPN`
 - `models.generative`: `GAN`, `VAE`
 
 ## `com.user.nn.examples`
 
-- `TrainIris`
-- `TrainFashionMNIST`
-- `TrainCifar10`
-- `TrainResNetCifar10`
-- `TrainSentiment`
-- `TrainViTCifar10`
-- `TrainGANMnist`
-- `TrainVAEMnist`
-- `TrainLeNet`
+### Training Examples
+- `TrainIris` — Iris classification (beginner)
+- `TrainLeNet` — Classic LeNet CNN
+- `TrainFashionMNIST` — Fashion-MNIST with CNN + GPU
+- `TrainCifar10` — CIFAR-10 classification
+- `TrainResNetCifar10` — ResNet-18 on CIFAR-10
+- `TrainViTCifar10` — Vision Transformer on CIFAR-10
+- `TrainSentiment` — Movie review sentiment analysis (LSTM)
+- `TrainUitVsfc` — UIT-VSFC Vietnamese sentiment classification
+- `TrainUitVsfcMultitask` — UIT-VSFC multi-task (sentiment + topic, LSTM vs Transformer)
+- `TrainGANMnist` — GAN on MNIST
+- `TrainGANAnime` — GAN on anime faces
+- `TrainVAEMnist` — VAE on MNIST
+- `TrainYOLOCoco` — YOLO on COCO
+- `TrainAllDetectorsCoco` — All 4 detection models on COCO
+
+### Benchmark Examples
+- `BenchmarkResNetCifar10` — ResNet benchmark (JavaTorch)
+- `BenchmarkSentiment` — Sentiment benchmark (JavaTorch)
+- `BenchmarkDl4jResNetCifar10` — ResNet benchmark (DL4J baseline)
+- `BenchmarkDl4jSentiment` — Sentiment benchmark (DL4J baseline)
+- `BenchmarkMemoryPool` — GPU memory pool benchmark
+
+### Demo & Utility
+- `PredictDemo` — Full predict API demo
+- `ObjectDetectionDemo` — Object detection models demo
+- `ProgressAndVisualizationDemo` — Progress bar and visualization demo
 
 ## Quick lookup guide
 
@@ -132,3 +166,4 @@ This document is not a full JavaDoc replacement. Its purpose is to give you a pa
 - Want to build a new model: read `layers`, `containers`, `norm`, `pooling`
 - Want to train on real datasets: read `dataloaders`, `optim`, `metrics`, `examples`
 - Want to optimize performance: read `CUDAOps`, `BlasOps`, `GpuMemoryPool`, `kernels.cu`
+- Want to do inference: read `predict`

@@ -9,10 +9,11 @@ Tài liệu này không thay thế JavaDoc chi tiết theo từng method. Mục 
 Package lõi của framework.
 
 - `Tensor`: tensor, gradient, backward, lifecycle.
-- `Torch`: tensor ops, math ops, reductions, broadcasting, matmul, init helpers.
+- `Torch`: tensor ops, math ops, reductions, broadcasting, matmul, init helpers (~3300 lines).
 - `Functional`: functional losses và utility ops.
 - `CUDAOps`: wrapper JCuda, cuBLAS, cuDNN, PTX kernels.
-- `GpuMemoryPool`: VRAM pool.
+- `GpuMemoryPool`: VRAM pool tự động mở rộng.
+- `GpuMemoryMonitor`: theo dõi VRAM usage thời gian thực.
 - `MemoryScope`: quản lý tensor tạm theo scope.
 - `MixedPrecision`: mixed precision.
 - `Module`: base abstraction cho model/layer.
@@ -29,6 +30,8 @@ Package lõi của framework.
 - `Conv2d`
 - `ConvTranspose2d`
 - `Dropout`
+- `Flatten`
+- `ROIPooling`
 
 ## `com.user.nn.activations`
 
@@ -53,7 +56,7 @@ Package lõi của framework.
 ## `com.user.nn.norm`
 
 - `BatchNorm1d`
-- `BatchNorm2d`
+- `BatchNorm2d` (CPU + GPU, hỗ trợ autograd backward đầy đủ)
 - `LayerNorm`
 - `InstanceNorm`
 - `GroupNorm`
@@ -83,6 +86,7 @@ Package lõi của framework.
 - `BCELoss`
 - `BCEWithLogitsLoss`
 - `CrossEntropyLoss`
+- `FocalLoss` (α/γ cấu hình được, hỗ trợ binary và multi-class)
 - `KLDivLoss`
 - `L1Loss`
 - `CosineSimilarity`
@@ -90,7 +94,7 @@ Package lõi của framework.
 
 ## `com.user.nn.optim`
 
-- `Optim`: `SGD`, `Adam`
+- `Optim`: `SGD` (có momentum), `Adam`
 - `Scheduler`: learning-rate schedulers như `StepLR`
 
 ## `com.user.nn.dataloaders`
@@ -99,6 +103,8 @@ Package lõi của framework.
 - `MnistLoader`
 - `Cifar10Loader`
 - `MovieCommentLoader`
+- `AnimeFaceLoader`
+- `UitVsfcLoader` (phân loại cảm xúc & chủ đề tiếng Việt)
 
 ## `com.user.nn.metrics`
 
@@ -109,23 +115,50 @@ Package lõi của framework.
 - `MetricTracker`
 - `Evaluator`
 
+## `com.user.nn.predict`
+
+- `Predictor`
+- `ImagePredictor`
+- `TextPredictor`
+- `BatchPredictor`
+- `PredictionResult`
+- `PredictionPipeline`
+
 ## `com.user.nn.models`
 
 - `SentimentModel`
-- `models.cv`: `LeNet`, `VGG`, `ResNet`, `ViT`
+- `MultiTaskLSTMModel` (đa nhiệm sentiment + topic)
+- `MultiTaskTransformerModel` (Transformer đa nhiệm)
+- `models.cv`: `LeNet`, `VGG`, `ResNet`, `ViT`, `YOLO`, `SSD`, `RetinaNet`, `FasterRCNN`, `RPN`
 - `models.generative`: `GAN`, `VAE`
 
 ## `com.user.nn.examples`
 
-- `TrainIris`
-- `TrainFashionMNIST`
-- `TrainCifar10`
-- `TrainResNetCifar10`
-- `TrainSentiment`
-- `TrainViTCifar10`
-- `TrainGANMnist`
-- `TrainVAEMnist`
-- `TrainLeNet`
+### Ví dụ huấn luyện
+- `TrainIris` — Phân loại Iris (người mới bắt đầu)
+- `TrainLeNet` — LeNet CNN cổ điển
+- `TrainFashionMNIST` — Fashion-MNIST với CNN + GPU
+- `TrainCifar10` — Phân loại CIFAR-10
+- `TrainResNetCifar10` — ResNet-18 trên CIFAR-10
+- `TrainViTCifar10` — Vision Transformer trên CIFAR-10
+- `TrainSentiment` — Phân tích cảm xúc movie review (LSTM)
+- `TrainUitVsfc` — Phân loại cảm xúc UIT-VSFC tiếng Việt
+- `TrainUitVsfcMultitask` — Đa nhiệm UIT-VSFC (sentiment + topic, LSTM vs Transformer)
+- `TrainGANMnist` — GAN trên MNIST
+- `TrainGANAnime` — GAN trên anime faces
+- `TrainVAEMnist` — VAE trên MNIST
+- `TrainYOLOCoco` — YOLO trên COCO
+- `TrainAllDetectorsCoco` — Tất cả 4 detection models trên COCO
+
+### Benchmark
+- `BenchmarkResNetCifar10`, `BenchmarkSentiment` — JavaTorch
+- `BenchmarkDl4jResNetCifar10`, `BenchmarkDl4jSentiment` — DL4J baseline
+- `BenchmarkMemoryPool` — GPU memory pool
+
+### Demo
+- `PredictDemo` — Demo predict API
+- `ObjectDetectionDemo` — Demo object detection
+- `ProgressAndVisualizationDemo` — Demo progress bar và visualization
 
 ## Gợi ý tra cứu nhanh
 
@@ -133,3 +166,4 @@ Package lõi của framework.
 - Muốn dựng model mới: đọc `layers`, `containers`, `norm`, `pooling`
 - Muốn train trên dữ liệu thật: đọc `dataloaders`, `optim`, `metrics`, `examples`
 - Muốn tăng tốc: đọc `CUDAOps`, `BlasOps`, `GpuMemoryPool`, `kernels.cu`
+- Muốn inference: đọc `predict`

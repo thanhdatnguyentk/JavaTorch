@@ -113,5 +113,32 @@ tasks.register<JavaExec>("exampleUitVsfc") {
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("com.user.nn.examples.TrainUitVsfc")
     jvmArgs("--add-modules=jdk.incubator.vector")
-    maxHeapSize = "4g"
+    System.getProperty("forceEpochs")?.let { systemProperty("forceEpochs", it) }
+    maxHeapSize = "6g"
 }
+
+// Register tasks for all models in run_all.ps1
+val trainTasks = mapOf(
+    "runTrainIris" to "TrainIris",
+    "runTrainLeNet" to "TrainLeNet",
+    "runTrainFashionMNIST" to "TrainFashionMNIST",
+    "runTrainCifar10" to "TrainCifar10",
+    "runTrainResNet" to "TrainResNetCifar10",
+    "runTrainViTCifar10" to "TrainViTCifar10",
+    "runTrainSentiment" to "TrainSentiment",
+    "runTrainUitVsfcMultitask" to "TrainUitVsfcMultitask",
+    "runDashboardE2E" to "DashboardE2ETest"
+)
+
+trainTasks.forEach { (taskName, className) ->
+    tasks.register<JavaExec>(taskName) {
+        group = "application"
+        description = "Run $className example"
+        classpath = sourceSets["main"].runtimeClasspath
+        mainClass.set("com.user.nn.examples.$className")
+        jvmArgs("--add-modules=jdk.incubator.vector")
+        System.getProperty("forceEpochs")?.let { systemProperty("forceEpochs", it) }
+        maxHeapSize = "6g"
+    }
+}
+

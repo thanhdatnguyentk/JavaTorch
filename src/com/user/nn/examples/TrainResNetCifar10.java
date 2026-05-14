@@ -20,7 +20,7 @@ import java.util.*;
 public class TrainResNetCifar10 {
 
     public static void main(String[] args) throws Exception {
-        MixedPrecision.enable(); // Enable FP16 (Tensor Cores)
+        // MixedPrecision.enable(); // Enable FP16 (Tensor Cores) - Disabled to prevent FP16 gradient underflow
 
         System.out.println("Preparing CIFAR-10 data...");
         Cifar10Loader.prepareData();
@@ -49,21 +49,14 @@ public class TrainResNetCifar10 {
         
         System.out.println("Total parameters: " + model.countParameters());
 
-        // Kaiming initialization (simplified)
+        // ResNet parameters are initialized correctly by default.
         for (Parameter p : model.parameters()) {
-            Tensor t = p.getTensor();
-            if (t.dim() >= 2) {
-                float scale = (float) Math.sqrt(2.0 / t.numel());
-                Random rng = new Random();
-                for (int i = 0; i < t.data.length; i++) {
-                    t.data[i] = (float) (rng.nextGaussian() * scale);
-                }
-            }
-            t.requires_grad = true;
+            p.getTensor().requires_grad = true;
         }
 
-        float lr = 0.001f;
-        int epochs = SmokeTest.getEpochs(2); 
+        float lr = 0.01f; // Higher LR for BatchNorm-based ResNet (was 0.001 — caused stagnation)
+        float minLr = 0.0001f; // Cosine annealing minimum
+        int epochs = SmokeTest.getEpochs(20); 
         int batchSize = 64; // Reduced batch size for ResNet-18 on 3050 (4GB-8GB VRAM)
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), lr);
 
@@ -102,6 +95,10 @@ public class TrainResNetCifar10 {
         } catch(Exception e) {}
 
         for (int epoch = 0; epoch < epochs; epoch++) {
+            // Cosine annealing LR schedule: lr decays from lr_max to lr_min
+            float cosLr = minLr + 0.5f * (lr - minLr) * (1f + (float) Math.cos(Math.PI * epoch / epochs));
+            optimizer.setLearningRate(cosLr);
+
             float epochLoss = 0f;
             int numBatches = 0;
             accMetric.reset();
@@ -202,12 +199,13 @@ public class TrainResNetCifar10 {
                 }
             }
 
-            System.out.printf("Epoch %d/%d  avg_loss=%.4f  train_acc=%.4f  test_acc=%.4f  time=%dms%n",
-                    epoch + 1, epochs, avgLoss, trainAcc, testAcc, (endTime - startTime));
+            System.out.printf("Epoch %d/%d  lr=%.6f  avg_loss=%.4f  train_acc=%.4f  test_acc=%.4f  time=%dms%n",
+                    epoch + 1, epochs, cosLr, avgLoss, trainAcc, testAcc, (endTime - startTime));
 
             // Rich dashboard broadcast
             Map<String, Float> metrics = new HashMap<>();
             metrics.put("train_loss", avgLoss);
+            metrics.put("loss", avgLoss);
             metrics.put("train_acc", trainAcc);
             metrics.put("test_acc", testAcc);
             history.record(epoch, metrics);

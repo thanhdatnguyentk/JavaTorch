@@ -12,20 +12,23 @@ import java.util.HashMap;
 
 public class MultiTaskLSTMModel extends Module {
     public Embedding embedding;
-    public LSTM lstm;
+    public LSTM lstm1;
+    public LSTM lstm2;
     public Dropout dropout;
     public Linear sentimentHead;
     public Linear topicHead;
 
     public MultiTaskLSTMModel(int vocabSize, int embedDim, int hiddenDim, int sentimentClasses, int topicClasses) {
         this.embedding = new Embedding(vocabSize, embedDim);
-        this.lstm = new LSTM(embedDim, hiddenDim, true, true);
-        this.dropout = new Dropout(0.2f);
+        this.lstm1 = new LSTM(embedDim, hiddenDim, true, true);
+        this.lstm2 = new LSTM(hiddenDim, hiddenDim, true, true);
+        this.dropout = new Dropout(0.3f);
         this.sentimentHead = new Linear(hiddenDim, sentimentClasses, true);
         this.topicHead = new Linear(hiddenDim, topicClasses, true);
 
         addModule("embedding", embedding);
-        addModule("lstm", lstm);
+        addModule("lstm1", lstm1);
+        addModule("lstm2", lstm2);
         addModule("dropout", dropout);
         addModule("sentimentHead", sentimentHead);
         addModule("topicHead", topicHead);
@@ -33,11 +36,12 @@ public class MultiTaskLSTMModel extends Module {
 
     private Tensor pooledFeatures(Tensor x) {
         Tensor embed = embedding.forward(x);
-        Tensor lstmOut = lstm.forward(embed);
+        Tensor lstm1Out = lstm1.forward(embed);
+        Tensor lstmOut = lstm2.forward(lstm1Out);
 
         int batch = x.shape[0];
         int seqLen = x.shape[1];
-        int hiddenDim = lstm.cell.hiddenSize;
+        int hiddenDim = lstm2.cell.hiddenSize;
 
         Tensor lastHidden = Torch.narrow(lstmOut, 1, seqLen - 1, 1);
         lastHidden = Torch.reshape(lastHidden, batch, hiddenDim);
@@ -62,14 +66,18 @@ public class MultiTaskLSTMModel extends Module {
             // Compute L2 norm across the embedding dimension (dim 2)
             // norm = sqrt(sum(x^2))
             Tensor squared = Torch.mul(embed, embed);
-            Tensor sum = Torch.sum(squared, 2); // [batch, seq_len]
+            int batch = embed.shape[0];
+            int seqLen = embed.shape[1];
+            int embedDim = embed.shape[2];
+            Tensor squared2d = Torch.reshape(squared, batch * seqLen, embedDim);
+            Tensor sum2d = Torch.sum(squared2d, 1);
+            Tensor sum = Torch.reshape(sum2d, batch, seqLen); // [batch, seq_len]
             Tensor norms = Torch.sqrt(sum);
 
             if (norms.isGPU()) norms.toCPU();
 
             Map<String, Float> weights = new HashMap<>();
             // For now, we take the first sample in the batch
-            int seqLen = x.shape[1];
             for (int j = 0; j < seqLen; j++) {
                 float tokenId = x.data[j];
                 if (tokenId == 0) continue; // Skip padding if any

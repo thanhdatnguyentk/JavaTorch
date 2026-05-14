@@ -67,10 +67,16 @@ public class Optim {
                 if (t.grad == null)
                     continue;
 
-                if (t.isGPU() && t.grad.isGPU()) {
+                if (t.isGPU()) {
+                    if (!t.grad.isGPU()) t.grad.toGPU();
                     if (momentum > 0) {
                         Tensor vel = v.get(p);
-                        vel.toGPU();
+                        if (!vel.isGPU()) {
+                            // Bypass MemoryScope to ensure velocity is allocated permanently via cudaMalloc
+                            MemoryScope prev = MemoryScope.suspend();
+                            vel.toGPU();
+                            MemoryScope.resume(prev);
+                        }
                         // v = momentum * v + grad
                         CUDAOps.mul(vel, momentum, vel);
                         CUDAOps.add(vel, t.grad, vel);
@@ -165,9 +171,16 @@ public class Optim {
                 Tensor mi = this.m[i];
                 Tensor vi = this.v[i];
 
-                if (t.isGPU() && t.grad.isGPU()) {
-                    mi.toGPU();
-                    vi.toGPU();
+                // If weight is on GPU, move gradient to GPU and use GPU path
+                if (t.isGPU()) {
+                    if (!t.grad.isGPU()) t.grad.toGPU();
+                    if (!mi.isGPU() || !vi.isGPU()) {
+                        // Bypass MemoryScope to ensure momentums are allocated permanently via cudaMalloc
+                        MemoryScope prev = MemoryScope.suspend();
+                        mi.toGPU();
+                        vi.toGPU();
+                        MemoryScope.resume(prev);
+                    }
                     CUDAOps.adamStep(t, t.grad, mi, vi, beta1, beta2, lr, eps, stepCount);
                 } else {
                     t.toCPU();

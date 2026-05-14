@@ -1,0 +1,42 @@
+> Task :core:compileJava UP-TO-DATE
+> Task :core:compileKernelsPtx UP-TO-DATE
+> Task :core:ensureKernelsPtx NO-SOURCE
+> Task :core:processResources UP-TO-DATE
+> Task :core:classes UP-TO-DATE
+> Task :core:jar UP-TO-DATE
+> Task :examples:compileJava NO-SOURCE
+> Task :examples:ensureKernelsPtx NO-SOURCE
+> Task :examples:processResources NO-SOURCE
+> Task :examples:classes UP-TO-DATE
+
+> Task :examples:run
+[MixedPrecision] Disabled — using standard FP32 compute.
+Loading UIT-VSFC dataset from: examples/data/uit-vsfc
+Train=11426 Dev=1583 Test=3166
+Sentiment classes=3, Topic classes=4
+Config | model=lstm device=gpu epochs=1 batchSize=32 maxLen=64 alpha=1.000 beta=1.000 seed=42 selection=weighted runId=uit_vsfc_lstm_20260512_025228_gpu
+Training controls | lr=0.001000 minLr=0.000100 schedule=none warmupEpochs=0 earlyStopPatience=0 minDelta=0.000000
+Vocabulary size: 2488
+[GpuMemoryPool] Model params: 715,527. Base Memory: 10 MB. Allocating: 512 MB
+[GpuMemoryPool] Initialized with 512 MB
+[CUDAOps] Loaded PTX kernels from: D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\examples\..\bin\kernels.ptx
+[CUDAOps] Resolving PTX function symbols...
+[CUDAOps] PTX function resolution complete.
+[CUDAOps] Creating CUDA streams...
+[CUDAOps] Binding streams to cuBLAS/cuDNN handles...
+[CUDAOps] CUDA initialization complete.
+Model moved to GPU
+
+> Task :examples:run FAILED
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show
+> Task :examples:run FAILED
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.10.2/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+5 actionable tasks: 1 executed, 4 up-to-date

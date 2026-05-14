@@ -6,7 +6,7 @@
 ![Build](https://img.shields.io/badge/Build-Gradle%20Multi--Module-blue)
 ![CUDA](https://img.shields.io/badge/GPU-JCuda%20%2B%20cuDNN-green)
 ![CPU](https://img.shields.io/badge/CPU-Vector%20API%20%2B%20OpenBLAS-purple)
-![Tests](https://img.shields.io/badge/Tests-45%20registered-success)
+![Tests](https://img.shields.io/badge/Tests-50%20files%20·%20118%2B%20methods-success)
 
 This is a Java machine learning framework inspired by PyTorch. It is designed for three goals at once: learning how deep learning frameworks work internally, training models directly in Java, and progressively scaling from CPU execution to GPU execution through JCuda, cuBLAS, and cuDNN.
 
@@ -18,7 +18,7 @@ If you only want the shortest path to a working setup, run these three commands:
 
 ```powershell
 gradle wrapper
-.\gradlew.bat :core:test
+.\gradlew.bat :tests:test
 .\gradlew.bat :core:build
 ```
 
@@ -62,9 +62,9 @@ flowchart LR
   - **NLP**: Multi-task telemetry with sentiment/topic distribution, token importance (attention) highlights, and text generation streams.
   - **System Monitor**: Glassmorphism gauges for GPU VRAM (System, Pool, Runtime), CPU utilization, and pipeline stage latency tracking.
 - **Training Control**: Integrated pause, resume, and real-time inference playground directly from the web interface.
-- End-to-end examples for Iris, Fashion-MNIST, CIFAR-10, Sentiment Analysis, ViT, GAN, VAE, and YOLO — all with integrated rich dashboard telemetry.
-- **100% JUnit 5 Migration**: Over 50 legacy test runners have been migrated to structured JUnit 5 tests. The suite now executes 174+ tests successfully via Gradle.
-- 45+ registered test classes currently passing in the Gradle test runner.
+- End-to-end examples for Iris, Fashion-MNIST, CIFAR-10, Sentiment Analysis, UIT-VSFC (single & multi-task), ViT, GAN (MNIST & Anime), VAE, and YOLO — all with integrated rich dashboard telemetry.
+- **100% JUnit 5 Migration**: All test runners have been migrated to structured JUnit 5 tests. The suite executes 118+ test methods across 50 test files via Gradle.
+- 50 test files currently passing in the Gradle test runner.
 
 ## Prediction / Inference
 
@@ -100,12 +100,12 @@ The numbers below were collected from the current repository state using the bui
 | Task | Backend | Size | Latest measured result |
 |---|---|---|---|
 | Large CPU matmul | OpenBLAS | `256 x 256` | `0.58 ms / matmul` |
-| Vectorized CPU matmul | Java Vector API | benchmark suite | `19.10 ms / matmul` |
-| Regression suite | Gradle Runner | 50+ test classes | full pass (174+ tests) |
+| Vectorized CPU matmul | Java Vector API | `512 x 512` | `2.60 ms / matmul` |
+| Regression suite | Gradle Runner | 50 test files | full pass (118+ test methods) |
 
 ## End-to-End Benchmark (Accuracy + Performance)
 
-The repository now includes first-pass benchmark runners for:
+The repository includes benchmark runners for:
 
 - `resnet_cifar10` (ResNet-18 on CIFAR-10)
 - `sentiment_rtpolarity` (LSTM sentiment on RT-Polarity)
@@ -137,7 +137,7 @@ Notes:
 
 ## UIT-VSFC Multi-Task Benchmark
 
-The UIT-VSFC multi-task runner now exports benchmark-compatible artifacts for both heads (sentiment/topic) and supports LSTM vs Transformer comparisons under the same split policy.
+The UIT-VSFC multi-task runner exports benchmark-compatible artifacts for both heads (sentiment/topic) and supports LSTM vs Transformer comparisons under the same split policy.
 
 Dataset folder format expected by the loader:
 
@@ -265,6 +265,8 @@ Recommended run command:
 - `TUTORIAL.vn.md`: Vietnamese tutorial
 - `API_REFERENCE.md`: package-level API map in English
 - `API_REFERENCE.vn.md`: package-level API map in Vietnamese
+- `ARCHITECTURE.md`: testing and automation architecture
+- `CLAUDE.md`: development standards and coding guide
 
 ## Build and Release Notes
 
@@ -282,13 +284,13 @@ Recommended run command:
 .\gradlew.bat "-PmainClass=com.user.nn.examples.TrainFashionMNIST" :examples:run --no-daemon
 ```
 
-- **Latest full verification (2026-05-07)**:
+- **Latest full verification (2026-05-11)**:
 
 ```powershell
-.\gradlew.bat cleanTest test -PincludeGPU=true --continue
+.\gradlew.bat :tests:cleanTest :tests:test
 ```
 
-Result: `BUILD SUCCESSFUL` (174+ tests passed)
+Result: `BUILD SUCCESSFUL` (50 test files, 118+ test methods passed)
 
 - Legacy PowerShell runner (`run-tests.ps1`) has been fully deprecated in favor of the Gradle `:tests` module.
 
@@ -306,5 +308,4 @@ powershell -ExecutionPolicy Bypass -File scripts\ci-test.ps1 -Mode full -Example
 
 ---
 
-Documentation updated for the current codebase state on 2026-05-07.
-
+Documentation updated for the current codebase state on 2026-05-11.

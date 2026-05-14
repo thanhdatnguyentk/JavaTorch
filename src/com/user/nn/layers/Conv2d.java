@@ -77,7 +77,7 @@ public class Conv2d extends Module {
         Tensor bt = (this.bias != null) ? this.bias.getTensor() : null;
 
         final Tensor finalX = x;
-        System.out.println("[DEBUG] Conv2d forward: x.isGPU=" + finalX.isGPU() + " wt.isGPU=" + wt.isGPU());
+        // Debug removed
         if (finalX.isGPU()) {
             Tensor out = new Tensor(batch, outChannels, outH, outW);
             out.toGPU();
@@ -94,7 +94,7 @@ public class Conv2d extends Module {
                     public void apply(Tensor gradOutput) {
                         if (!gradOutput.isGPU()) gradOutput.toGPU();
                         if (wt.requires_grad) {
-                            System.out.println("[DEBUG] Conv2d GPU backward: computing weight grad");
+                            // Debug removed
                             Tensor dw = new Tensor(wt.shape).toGPU();
                             CUDAOps.conv2dBackwardFilter(finalX, gradOutput, dw,
                                 inChannels, inH, inW, kernelH, kernelW,

@@ -288,7 +288,7 @@ public class Torch {
             return out;
         }
 
-        a.toCPU();
+        a.syncToHost();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = a.data[i] + scalar;
@@ -318,7 +318,7 @@ public class Torch {
             }
             return out;
         }
-        a.toCPU();
+        a.syncToHost();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = a.data[i] * scalar;
@@ -355,7 +355,7 @@ public class Torch {
         if (same) return a.clone();
 
         // One-time generic transpose using the coordinate logic
-        a.toCPU();
+        a.syncToHost();
         int[] outShape = new int[ndOrigin];
         for (int i = 0; i < ndOrigin; i++) outShape[i] = a.shape[dims[i]];
         
@@ -390,7 +390,7 @@ public class Torch {
 
 
     public static Tensor sub(float scalar, Tensor a) {
-        a.toCPU();
+        a.syncToHost();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = scalar - a.data[i];
@@ -441,8 +441,8 @@ public class Torch {
             return out;
         }
 
-        a.toCPU();
-        b.toCPU();
+        a.syncToHost();
+        b.syncToHost();
         // full broadcasting support for shapes with compatible dims
         int[] ash = a.shape.clone();
         int[] bsh = b.shape.clone();
@@ -493,7 +493,7 @@ public class Torch {
         if (java.util.Arrays.equals(grad.shape, targetShape))
             return grad;
         boolean wasGPU = grad.isGPU();
-        grad.toCPU();
+        grad.syncToHost();
         Tensor out = new Tensor(targetShape);
         int gn = grad.shape.length, tn = targetShape.length;
         int nout = Math.max(gn, tn);
@@ -615,7 +615,7 @@ public class Torch {
             return out;
         }
 
-        x.toCPU();
+        x.syncToHost();
         final int[] maxIndices = new int[out.numel()];
 
         for (int b = 0; b < batch; b++) {
@@ -687,7 +687,7 @@ public class Torch {
             return out;
         }
 
-        x.toCPU();
+        x.syncToHost();
         final float[] counts = new float[out.numel()];
 
         for (int b = 0; b < batch; b++) {
@@ -780,7 +780,7 @@ public class Torch {
             }
         }
 
-        x.toCPU();
+        x.syncToHost();
         final int[] counts = new int[out.numel()];
         for (int b = 0; b < batch; b++) {
             for (int c = 0; c < inC; c++) {
@@ -811,7 +811,7 @@ public class Torch {
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(x) {
                 public void apply(Tensor outGrad) {
-                    outGrad.toCPU();
+                    outGrad.syncToHost();
                     Tensor gx = new Tensor(x.shape);
                     for (int b = 0; b < batch; b++) {
                         for (int c = 0; c < inC; c++) {
@@ -922,7 +922,7 @@ public class Torch {
                     float scale = outGrad.data[0] / a.numel();
                     Tensor ga = new Tensor(a.shape);
                     if (a.isGPU()) ga.toGPU();
-                    ga.toCPU();
+                    ga.syncToHost();
                     for (int i = 0; i < ga.data.length; i++)
                         ga.data[i] = scale;
                     if (a.isGPU()) ga.toGPU();
@@ -937,7 +937,7 @@ public class Torch {
         if (dim < 0) dim += input.shape.length;
         final int fDim = dim;
         boolean wasGPU = input.isGPU();
-        input.toCPU();
+        input.syncToHost();
         int[] outShape = new int[input.shape.length - 1];
         int k = 0;
         for (int i = 0; i < input.shape.length; i++)
@@ -967,7 +967,7 @@ public class Torch {
                 public void apply(Tensor outGrad) {
                     Tensor grad = new Tensor(input.shape);
                     if (wasGPU) grad.toGPU();
-                    grad.toCPU(); outGrad.toCPU();
+                    grad.syncToHost(); outGrad.syncToHost();
                     
                     int outerSize = 1;
                     for (int i = 0; i < fDim; i++) outerSize *= input.shape[i];
@@ -1103,7 +1103,7 @@ public class Torch {
             out = new Tensor(outShape).toGPU();
             CUDAOps.transpose(a, out);
         } else {
-            a.toCPU();
+            a.syncToHost();
             out = new Tensor(outShape);
             int[] aStrides = computeStrides(a.shape);
             int[] outStrides = computeStrides(outShape);
@@ -1208,7 +1208,7 @@ public class Torch {
         // CPU Path — OpenBLAS (large) or SIMD (small)
         Tensor out = new Tensor(m, n);
         if (BlasOps.isAvailable() && (long) m * n * k > 4096) {
-            a.toCPU(); b.toCPU();
+            a.syncToHost(); b.syncToHost();
             BlasOps.sgemm(a.data, b.data, out.data, m, n, k);
         } else {
             Tensor bt = transpose(b);
@@ -1377,7 +1377,7 @@ public class Torch {
             CUDAOps.concat(tensors, res, dim);
         } else {
             // CPU fallback
-            for (Tensor t : tensors) t.toCPU();
+            for (Tensor t : tensors) t.syncToHost();
             int workDim = dim;
             if (workDim < 0)
                 workDim += tensors.get(0).shape.length;
@@ -1493,9 +1493,9 @@ public class Torch {
         if (cond.numel() != x.numel() || x.numel() != y.numel())
             throw new IllegalArgumentException("where: shapes must match elementwise");
         boolean anyGPU = cond.isGPU() || x.isGPU() || y.isGPU();
-        cond.toCPU();
-        x.toCPU();
-        y.toCPU();
+        cond.syncToHost();
+        x.syncToHost();
+        y.syncToHost();
         Tensor out = new Tensor(x.shape);
         for (int i = 0; i < x.data.length; i++)
             out.data[i] = (cond.data[i] != 0f) ? x.data[i] : y.data[i];
@@ -1512,8 +1512,8 @@ public class Torch {
             if (i != dim && input.shape[i] != index.shape[i])
                 throw new IllegalArgumentException("gather: shapes must match except at dim");
         boolean anyGPU = input.isGPU() || index.isGPU();
-        input.toCPU();
-        index.toCPU();
+        input.syncToHost();
+        index.syncToHost();
         int nd = input.shape.length;
         int[] inStr = computeStrides(input.shape);
         int[] idxStr = computeStrides(index.shape);
@@ -1546,9 +1546,9 @@ public class Torch {
         if (input.shape.length != index.shape.length || !java.util.Arrays.equals(index.shape, src.shape))
             throw new IllegalArgumentException("scatter: shapes mismatch");
         boolean anyGPU = input.isGPU() || index.isGPU() || src.isGPU();
-        input.toCPU();
-        index.toCPU();
-        src.toCPU();
+        input.syncToHost();
+        index.syncToHost();
+        src.syncToHost();
         int nd = input.shape.length;
         int[] inStr = computeStrides(input.shape);
         int[] idxStr = computeStrides(index.shape);
@@ -1840,7 +1840,7 @@ public class Torch {
 
     // unary math helpers
     public static Tensor sin(Tensor a) {
-        a.toCPU();
+        a.syncToHost();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) Math.sin(a.data[i]);
@@ -1849,7 +1849,7 @@ public class Torch {
     }
 
     public static Tensor cos(Tensor a) {
-        a.toCPU();
+        a.syncToHost();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) Math.cos(a.data[i]);
@@ -1858,7 +1858,7 @@ public class Torch {
     }
 
     public static Tensor tan(Tensor a) {
-        a.toCPU();
+        a.syncToHost();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) Math.tan(a.data[i]);
@@ -1867,7 +1867,7 @@ public class Torch {
     }
 
     public static Tensor exp(Tensor a) {
-        a.toCPU();
+        a.syncToHost();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) Math.exp(a.data[i]);
@@ -1876,7 +1876,7 @@ public class Torch {
     }
 
     public static Tensor log(Tensor a) {
-        a.toCPU();
+        a.syncToHost();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) Math.log(a.data[i]);
@@ -1885,7 +1885,7 @@ public class Torch {
     }
 
     public static Tensor ceil(Tensor a) {
-        a.toCPU();
+        a.syncToHost();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) Math.ceil(a.data[i]);
@@ -1894,7 +1894,7 @@ public class Torch {
     }
 
     public static Tensor floor(Tensor a) {
-        a.toCPU();
+        a.syncToHost();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) Math.floor(a.data[i]);
@@ -1903,7 +1903,7 @@ public class Torch {
     }
 
     public static Tensor round(Tensor a) {
-        a.toCPU();
+        a.syncToHost();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) Math.round(a.data[i]);
@@ -1986,7 +1986,7 @@ public class Torch {
             }
             return out;
         }
-        a.toCPU();
+        a.syncToHost();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) Math.pow(a.data[i], exp);
@@ -2021,7 +2021,7 @@ public class Torch {
             }
             return out;
         }
-        a.toCPU();
+        a.syncToHost();
         Tensor out = new Tensor(a.shape);
         for (int i = 0; i < a.data.length; i++)
             out.data[i] = (float) Math.sqrt(Math.max(0.0, a.data[i]));
@@ -2030,8 +2030,8 @@ public class Torch {
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(a) {
                 public void apply(Tensor outGrad) {
-                    a.toCPU();
-                    outGrad.toCPU();
+                    a.syncToHost();
+                    outGrad.syncToHost();
                     Tensor ga = new Tensor(a.shape);
                     for (int j = 0; j < ga.data.length; j++)
                         ga.data[j] = (float) (outGrad.data[j] * 0.5f / (Math.sqrt(Math.max(0.0, a.data[j])) + 1e-8f));
@@ -2064,7 +2064,7 @@ public class Torch {
 
     public static Tensor softmax(Tensor a, int dim) {
         boolean wasGPU = a.isGPU();
-        a.toCPU();
+        a.syncToHost();
         if (dim < 0)
             dim += a.shape.length;
         int nd = a.shape.length;
@@ -2108,7 +2108,7 @@ public class Torch {
             out.grad_fn = new Tensor.GradFn(a) {
                 public void apply(Tensor outGrad) {
                     Tensor ga = new Tensor(a.shape);
-                    outGrad.toCPU(); out.toCPU();
+                    outGrad.syncToHost(); out.syncToHost();
                     for (int i = 0; i < fOuterSize; i++) {
                         for (int k = 0; k < fInnerSize; k++) {
                             float dot = 0;
@@ -2132,7 +2132,7 @@ public class Torch {
 
     public static Tensor log_softmax(Tensor a, int dim) {
         boolean wasGPU = a.isGPU();
-        a.toCPU();
+        a.syncToHost();
         if (dim < 0)
             dim += a.shape.length;
         int nd = a.shape.length;
@@ -2176,7 +2176,7 @@ public class Torch {
             out.grad_fn = new Tensor.GradFn(a) {
                 public void apply(Tensor outGrad) {
                     Tensor ga = new Tensor(a.shape);
-                    outGrad.toCPU(); out.toCPU();
+                    outGrad.syncToHost(); out.syncToHost();
                     for (int i = 0; i < fOuterSize; i++) {
                         for (int k = 0; k < fInnerSize; k++) {
                             float sumOutGrad = 0;
@@ -2458,6 +2458,9 @@ public class Torch {
         if (!training || p == 0f)
             return a;
 
+        boolean wasGPU = a.isGPU();
+        a.syncToHost();
+
         Tensor out = new Tensor(a.shape);
         float scale = 1f / (1f - p);
         final float[] mask = new float[a.data.length];
@@ -2472,14 +2475,18 @@ public class Torch {
             }
         }
 
+        if (wasGPU) out.toGPU();
+
         if (is_grad_enabled() && a.requires_grad) {
             out.requires_grad = true;
             out.grad_fn = new Tensor.GradFn(a) {
                 public void apply(Tensor outGrad) {
+                    outGrad.syncToHost();
                     Tensor ga = new Tensor(a.shape);
                     for (int i = 0; i < ga.data.length; i++) {
                         ga.data[i] = outGrad.data[i] * mask[i] * scale;
                     }
+                    if (wasGPU) ga.toGPU();
                     a.backwardStep(ga);
                 }
             };
@@ -3077,7 +3084,7 @@ public class Torch {
             out = new Tensor(outShape).toGPU();
             CUDAOps.narrow(a, out, dim, start, length);
         } else {
-            a.toCPU();
+            a.syncToHost();
             out = new Tensor(outShape);
 
             int outerSize = 1;
@@ -3107,8 +3114,8 @@ public class Torch {
                     if (fWasGPU) grad.toGPU();
                     // Backward of narrow is basically scatter/fill.
                     // For now, use CPU to be safe as it's complex.
-                    grad.toCPU();
-                    outGrad.toCPU();
+                    grad.syncToHost();
+                    outGrad.syncToHost();
                     
                     int outerSize = 1;
                     for (int i = 0; i < fDim; i++)
@@ -3149,8 +3156,8 @@ public class Torch {
             out.toGPU();
             CUDAOps.embeddingForward(weight, indices, out);
         } else {
-            weight.toCPU();
-            indices.toCPU();
+            weight.syncToHost();
+            indices.syncToHost();
             for (int i = 0; i < n; i++) {
                 int idx = (int) indices.data[i];
                 System.arraycopy(weight.data, idx * d, out.data, i * d, d);
@@ -3169,7 +3176,7 @@ public class Torch {
                         if (!outGrad.isGPU()) outGrad.toGPU();
                         CUDAOps.embeddingBackward(gw, indices, outGrad);
                     } else {
-                        outGrad.toCPU();
+                        outGrad.syncToHost();
                         for (int i = 0; i < n; i++) {
                             int idx = (int) indices.data[i];
                             for (int j = 0; j < d; j++) {
@@ -3226,7 +3233,7 @@ public class Torch {
 
             /** Fill tensor with uniform random in [a, b). */
             public static void uniform_(Tensor t, float a, float b) {
-                t.toCPU();
+                t.syncToHost();
                 float range = b - a;
                 for (int i = 0; i < t.data.length; i++)
                     t.data[i] = a + globalR.nextFloat() * range;
@@ -3235,7 +3242,7 @@ public class Torch {
 
             /** Fill tensor with normal(mean, std). */
             public static void normal_(Tensor t, float mean, float std) {
-                t.toCPU();
+                t.syncToHost();
                 for (int i = 0; i < t.data.length; i++)
                     t.data[i] = mean + (float) nextGaussian(globalR) * std;
                 t.markDirtyOnCPU();
@@ -3243,21 +3250,21 @@ public class Torch {
 
             /** Fill with zeros. */
             public static void zeros_(Tensor t) {
-                t.toCPU();
+                t.syncToHost();
                 java.util.Arrays.fill(t.data, 0f);
                 t.markDirtyOnCPU();
             }
 
             /** Fill with ones. */
             public static void ones_(Tensor t) {
-                t.toCPU();
+                t.syncToHost();
                 java.util.Arrays.fill(t.data, 1f);
                 t.markDirtyOnCPU();
             }
 
             /** Fill with constant value. */
             public static void constant_(Tensor t, float val) {
-                t.toCPU();
+                t.syncToHost();
                 java.util.Arrays.fill(t.data, val);
                 t.markDirtyOnCPU();
             }

@@ -50,6 +50,9 @@ public class Tensor implements AutoCloseable {
     // Version counter for in-place mutation detection
     private int _version = 0;
 
+    // Reference counter for safe memory management
+    private final java.util.concurrent.atomic.AtomicInteger refCount = new java.util.concurrent.atomic.AtomicInteger(1);
+
     public int version() { return _version; }
 
     void incrementVersion() { _version++; }
@@ -97,15 +100,18 @@ public class Tensor implements AutoCloseable {
         return n;
     }
 
-    public Tensor reshape(int... newShape) {
-        this.toCPU();
-        int totalNumel = numel();
-        int[] ns = newShape.clone();
-        int minusOneIdx = -1;
+    public Tensor reshape(int... ns) {
+        boolean wasGPU = this.isGPU();
+        if (wasGPU) {
+            this.toCPU(); // MUST sync data from GPU before cloning!
+        }
+        
+        int totalNumel = this.numel();
         int product = 1;
+        int minusOneIdx = -1;
         for (int i = 0; i < ns.length; i++) {
             if (ns[i] == -1) {
-                if (minusOneIdx != -1) throw new IllegalArgumentException("reshape: multiple -1");
+                if (minusOneIdx != -1) throw new IllegalArgumentException("reshape: only one -1 allowed");
                 minusOneIdx = i;
             } else {
                 product *= ns[i];
@@ -120,9 +126,15 @@ public class Tensor implements AutoCloseable {
         for (int s : ns) n *= s;
         if (n != totalNumel)
             throw new IllegalArgumentException("reshape: incompatible shape, expected " + totalNumel + " got " + n);
-        boolean wasGPU = this.isGPU();
-        this.toCPU();
+            
         Tensor result = new Tensor(this.data, ns);
+        
+        // Ensure reshaped tensors are tracked by MemoryScope
+        MemoryScope scope = MemoryScope.current();
+        if (scope != null) {
+            scope.track(result);
+        }
+        
         if (wasGPU) result.toGPU();
         if (Torch.is_grad_enabled() && this.requires_grad) {
             result.requires_grad = true;
@@ -514,6 +526,16 @@ public class Tensor implements AutoCloseable {
         return this;
     }
 
+    public Tensor syncToHost() {
+        if (onHost) return this;
+        if (deviceData != null) {
+            CUDAOps.syncComputeStream();
+            cudaMemcpy(Pointer.to(data), deviceData, (long) numel() * Sizeof.FLOAT, cudaMemcpyDeviceToHost);
+            onHost = true;
+        }
+        return this;
+    }
+
     public Pointer getDevicePointer() {
         if (!CUDAOps.isAvailable()) {
             throw new IllegalStateException("CUDA not available: no device pointer present");
@@ -535,8 +557,26 @@ public class Tensor implements AutoCloseable {
         device = Device.CPU;
     }
 
+    /**
+     * Increment the reference count of this tensor.
+     * Use this when a tensor is shared across multiple layers (e.g. skip connections).
+     */
+    public Tensor retain() {
+        refCount.incrementAndGet();
+        return this;
+    }
+
     @Override
     public void close() {
+        int count = refCount.decrementAndGet();
+        if (count > 0) {
+            return; // Still in use
+        }
+        if (count < 0) {
+            refCount.set(0); // Prevent underflow
+            return; // Already closed
+        }
+        
         if (deviceData != null) {
             // Only cudaFree if NOT managed by the memory pool
             if (!poolManaged) {

@@ -610,9 +610,9 @@ public class TrainUitVsfcMultitask {
 
     private static Module createModel(String modelType, int vocabSize, int maxLen, int sentimentClasses, int topicClasses) {
         if ("lstm".equals(modelType)) {
-            return new MultiTaskLSTMModel(vocabSize, 128, 256, sentimentClasses, topicClasses);
+            return new MultiTaskLSTMModel(vocabSize, 256, 512, sentimentClasses, topicClasses);
         }
-        return new MultiTaskTransformerModel(vocabSize, 128, maxLen, 2, 4, 256, sentimentClasses, topicClasses, 0.1f);
+        return new MultiTaskTransformerModel(vocabSize, 256, maxLen, 4, 8, 512, sentimentClasses, topicClasses, 0.15f);
     }
 
     private static Tensor[] forwardBoth(Module model, Tensor x) {

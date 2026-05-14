@@ -51,13 +51,16 @@ public class ResNet extends Module {
 
         @Override
         public Tensor forward(Tensor x) {
-            Tensor identity = x;
+            Tensor identity = x.retain();
             if (downsample != null) {
-                identity = downsample.forward(x);
+                Tensor oldIdentity = identity;
+                identity = downsample.forward(x).retain();
+                oldIdentity.close();
             }
             Tensor out = layers.forward(x);
-            out = Torch.add(out, identity);
-            return Torch.relu(out);
+            Tensor added = Torch.add(out, identity);
+            identity.close(); // Release borrowed reference
+            return Torch.relu(added);
         }
     }
 

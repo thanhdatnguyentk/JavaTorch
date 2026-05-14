@@ -72,7 +72,6 @@ public class DashboardServer {
         app = Javalin.create(config -> {
             config.plugins.enableCors(cors -> cors.add(it -> it.anyHost()));
             config.staticFiles.add(staticFileConfig -> {
-                // Use external path for development to allow instant UI updates without rebuild
                 String devPath = "core/src/main/resources/public";
                 if (new File(devPath).exists()) {
                     staticFileConfig.directory = devPath;
@@ -87,6 +86,35 @@ public class DashboardServer {
 
         setupRoutes();
         System.out.println("[DashboardServer] Started at http://localhost:" + port + " [Task: " + currentTaskType + "]");
+        
+        Thread mainThread = Thread.currentThread();
+        Thread monitor = new Thread(() -> {
+            try {
+                mainThread.join(); // Block until main thread completes or throws exception
+            } catch (InterruptedException e) {}
+            
+            System.out.println("[DashboardServer] Main thread terminated. Stopping server to allow JVM exit.");
+            try { Thread.sleep(1000); } catch(Exception e) {} // Flush buffers
+            stop();
+        });
+        monitor.setDaemon(true);
+        monitor.start();
+        
+        if (System.getProperty("forceEpochs") != null) {
+            Thread autoKiller = new Thread(() -> {
+                while(true) {
+                    try { Thread.sleep(2000); } catch(Exception e) {}
+                    if (totalEpochs > 0 && currentEpoch >= totalEpochs) {
+                        try { Thread.sleep(15000); } catch(Exception e) {} // Allow time for post-training prediction
+                        System.out.println("[DashboardServer] Auto-terminating JVM for automated batch script.");
+                        System.exit(0);
+                    }
+                }
+            });
+            autoKiller.setDaemon(true);
+            autoKiller.start();
+        }
+
         return this;
     }
     

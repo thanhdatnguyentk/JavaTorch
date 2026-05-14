@@ -122,12 +122,12 @@ public class Predictor {
             long inferenceMs = System.currentTimeMillis() - startMs;
 
             if (verbose) {
-                System.out.printf("[Predictor] Inference time: %dms%n", inferenceMs);
+                // Debug removed
             }
 
             // Chuyển về CPU để xử lý kết quả
             logits.toCPU();
-            System.out.println("DEBUG Predictor predict logits: " + java.util.Arrays.toString(logits.data));
+            // Debug removed
 
             // Xử lý kết quả cho từng sample trong batch
             int batch = logits.shape[0];
@@ -169,8 +169,7 @@ public class Predictor {
             long inferenceMs = System.currentTimeMillis() - startMs;
 
             if (verbose) {
-                System.out.printf("[Predictor] Batch inference time: %dms (batch=%d)%n", 
-                    inferenceMs, logits.shape[0]);
+                // Debug removed
             }
 
             logits.toCPU();
@@ -206,7 +205,7 @@ public class Predictor {
             Tensor logits = model.forward(input);
             logits.toCPU();
             
-            System.out.println("DEBUG logits: " + java.util.Arrays.toString(logits.data));
+            // Debug removed
 
             int numClasses = logits.shape[1];
             return argmax(logits.data, 0, numClasses);

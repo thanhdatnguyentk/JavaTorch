@@ -6,7 +6,7 @@
 ![Build](https://img.shields.io/badge/Build-Gradle%20Multi--Module-blue)
 ![CUDA](https://img.shields.io/badge/GPU-JCuda%20%2B%20cuDNN-green)
 ![CPU](https://img.shields.io/badge/CPU-Vector%20API%20%2B%20OpenBLAS-purple)
-![Tests](https://img.shields.io/badge/Tests-45%20registered-success)
+![Tests](https://img.shields.io/badge/Tests-50%20files%20·%20118%2B%20methods-success)
 
 Framework hoc may viet bang Java, lay cam hung tu PyTorch, phuc vu dong thoi 3 muc tieu: hoc cach deep learning hoat dong o muc framework, huan luyen mo hinh truc tiep trong Java, va mo rong dan tu CPU sang GPU bang JCuda, cuBLAS va cuDNN.
 
@@ -18,7 +18,7 @@ Neu ban chi muon bat dau that nhanh, chay dung 3 lenh nay:
 
 ```powershell
 gradle wrapper
-.\gradlew.bat :core:test
+.\gradlew.bat :tests:test
 .\gradlew.bat :core:build
 ```
 
@@ -57,14 +57,13 @@ flowchart LR
 - **Neural Dashboard (Phiên bản cao cấp)**: Dashboard web hiệu năng cao được xây dựng với Vue 3, Tailwind CSS và WebSocket. Giao diện tối chuyên nghiệp (Neural Overlay) với hiệu ứng kính mờ (glassmorphism).
 - **Giao diện chuyên biệt thời gian thực**:
   - **Phân loại (Classification)**: Lưới dự đoán trực tiếp với thanh độ tin cậy và bản đồ nhiệt ma trận nhầm lẫn (Confusion Matrix).
-  - **Phát hiện đối tượng (Detection)**: Hiển thị bounding box thời gian thực trên khung hình, bảng xếp hạng IOU/mAP và biểu đồ phân tích loss (box/cls/obj).
-  - **GAN / Generative**: Thư viện mẫu ảnh sinh ra trực tiếp với khả năng xem lại lịch sử (Time-lapse) để theo dõi tiến trình của Generator.
-  - **NLP**: Telemetry đa nhiệm với biểu đồ phân phối cảm xúc/chủ đề, đánh dấu trọng số token (Attention) và dòng văn bản đang sinh ra.
-  - **Giám sát hệ thống (System Monitor)**: Các đồng hồ đo (gauges) theo phong cách hiện đại cho GPU VRAM (System, Pool, Runtime), CPU utilization và độ trễ các giai đoạn pipeline.
-- **Điều khiển huấn luyện**: Tích hợp nút tạm dừng (Pause), tiếp tục (Resume) và sân chơi thử nghiệm inference trực tiếp từ giao diện web.
-- Các ví dụ End-to-end cho Iris, Fashion-MNIST, CIFAR-10, Sentiment Analysis, ViT, GAN, VAE và YOLO — tất cả đều tích hợp telemetry dashboard phong phú.
-- **100% JUnit 5 Migration**: Hơn 50 legacy test runners đã được di chuyển hoàn toàn sang cấu trúc JUnit 5. Hệ thống hiện thực thi thành công 174+ bài test thông qua Gradle.
-- Hơn 45 test class hiện đang pass toàn bộ trên Gradle test runner.
+  - **Phát hiện đối tượng (Detection)**: Hiển thị bounding box thời gian thực trên khung hình, bảng xếp hạng IOU/mAP và biểu đồ phân tích loss.
+  - **GAN / Generative**: Thư viện mẫu ảnh sinh ra trực tiếp với khả năng xem lại lịch sử (Time-lapse).
+  - **NLP**: Telemetry đa nhiệm với biểu đồ phân phối cảm xúc/chủ đề, đánh dấu trọng số token (Attention).
+  - **Giám sát hệ thống (System Monitor)**: Đồng hồ đo GPU VRAM, CPU utilization và độ trễ pipeline.
+- **Điều khiển huấn luyện**: Tích hợp nút tạm dừng, tiếp tục và sân chơi inference trực tiếp từ giao diện web.
+- Các ví dụ End-to-end cho Iris, Fashion-MNIST, CIFAR-10, Sentiment Analysis, UIT-VSFC (đơn nhiệm & đa nhiệm), ViT, GAN (MNIST & Anime), VAE và YOLO — tất cả tích hợp dashboard.
+- **100% JUnit 5 Migration**: Tất cả test đã chuyển sang JUnit 5. Hệ thống thực thi 118+ test methods trên 50 test files qua Gradle.
 
 
 ## Prediction / Inference
@@ -101,8 +100,8 @@ Cac so duoi day la ket qua do tren chinh repo hien tai bang benchmark san co. Da
 | Tac vu | Duong chay | Kich thuoc | Ket qua do gan nhat |
 |---|---|---|---|
 | Matmul CPU lon | OpenBLAS | `256 x 256` | `0.58 ms / matmul` |
-| Matmul CPU vectorized | Java Vector API | benchmark suite | `19.10 ms / matmul` |
-| Regression suite | Gradle Runner | 50+ test class | pass toan bo (174+ tests) |
+| Matmul CPU vectorized | Java Vector API | `512 x 512` | `2.60 ms / matmul` |
+| Regression suite | Gradle Runner | 50 test files | pass toan bo (118+ test methods) |
 
 ## Cong nghe chinh
 
@@ -127,18 +126,6 @@ Cac so duoi day la ket qua do tren chinh repo hien tai bang benchmark san co. Da
 - NVIDIA GPU + CUDA driver neu muon dung duong GPU.
 - CUDA toolkit neu muon build lai `kernels.cu` thanh `bin/kernels.ptx`.
 
-### Dependency hien co trong repo
-
-Thu muc `lib/` hien da chua cac JAR cho:
-
-- JCuda
-- JCublas
-- JCudnn
-- JavaCPP
-- OpenBLAS
-
-Trong phan lon truong hop, classpath `"bin;lib/*"` la du.
-
 ## Quick Start chi tiet
 
 ### 1. Sinh Gradle Wrapper (1 lan duy nhat)
@@ -147,56 +134,28 @@ Trong phan lon truong hop, classpath `"bin;lib/*"` la du.
 gradle wrapper
 ```
 
-Neu ban da co wrapper day du (`gradle/wrapper/*`) thi bo qua buoc nay.
-
 ### 2. Build va test module core
-
-Windows:
 
 ```powershell
 .\gradlew.bat :core:clean :core:test :core:build
 ```
 
-macOS/Linux:
-
-```bash
-./gradlew :core:clean :core:test :core:build
-```
-
-### 3. Build toan bo multi-module
-
-Windows:
+### 3. Chay toan bo Test Suite
 
 ```powershell
-.\gradlew.bat clean build
+.\gradlew.bat :tests:cleanTest :tests:test
 ```
 
-macOS/Linux:
-
-```bash
-./gradlew clean build
-```
-
-### 4. Chạy toàn bộ Test Suite (Thay thế legacy runner)
-
-Toàn bộ test đã được di chuyển sang JUnit 5 và chạy qua Gradle:
+Bao gom GPU tests:
 
 ```powershell
-.\gradlew.bat cleanTest test -PincludeGPU=true
+.\gradlew.bat :tests:test -PincludeGPU=true
 ```
 
-### 5. Script kiem tra CI/CD tu dong
-
-- Chay nhanh (build + test + smoke test mot so example):
+### 4. Script kiem tra CI/CD tu dong
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\ci-test.ps1 -Mode quick
-```
-
-- Chay day du (smoke test toan bo example tim tim thay):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\ci-test.ps1 -Mode full -ExampleTimeoutSec 60
 ```
 
 ## Lo trinh nen chay vi du
@@ -204,12 +163,15 @@ powershell -ExecutionPolicy Bypass -File scripts\ci-test.ps1 -Mode full -Example
 | Vi du | Muc tieu | Khi nao nen chay |
 |---|---|---|
 | `TrainIris` | Classification nho, de doc code | Bat dau o day |
-| `TrainFashionMNIST` | Dataloader, mini-batch, MLP, GPU training | Sau Iris |
+| `TrainFashionMNIST` | Dataloader, mini-batch, CNN, GPU training | Sau Iris |
 | `TrainSentiment` | NLP pipeline voi `Embedding` va LSTM | Khi muon xem text workflow |
+| `TrainUitVsfc` | Vietnamese sentiment classification | Khi can NLP tieng Viet |
+| `TrainUitVsfcMultitask` | Multi-task (sentiment + topic), LSTM vs Transformer | So sanh kien truc |
 | `TrainCifar10` | CNN tren du lieu anh that | Khi muon benchmark GPU |
 | `TrainResNetCifar10` | Residual architecture | Sau khi quen CNN |
 | `TrainViTCifar10` | Vision Transformer | Khi tim hieu attention |
-| `TrainGANMnist` | Generative experiment | Khi muon mo rong nghien cuu |
+| `TrainGANMnist` | GAN experiment | Khi muon thu generative |
+| `TrainGANAnime` | GAN tren anime faces | Khi muon GAN thuc te |
 | `TrainVAEMnist` | Variational autoencoder | Khi muon thu latent models |
 | `TrainLeNet` | CNN co dien gon nhe | Khi can debug nhanh |
 | `PredictDemo` | Demo thu vien predict day du | Khi muon hoc predict API |
@@ -219,49 +181,36 @@ powershell -ExecutionPolicy Bypass -File scripts\ci-test.ps1 -Mode full -Example
 ```text
 src/com/user/nn/
   core/           Tensor, Torch, Functional, CUDAOps, GpuMemoryPool, MixedPrecision
-  layers/         Linear, Conv, Embedding, Dropout, Bilinear
-  activations/    ReLU, Sigmoid, Tanh, GELU, Softplus, Softmax, ...
+  layers/         Linear, Conv, Embedding, Dropout, Bilinear, ROIPooling
+  activations/    ReLU, Sigmoid, Tanh, GELU, SiLU, Softplus, Softmax, ...
   containers/     Sequential, ModuleList, ModuleDict, Flatten
-  norm/           BatchNorm, LayerNorm, InstanceNorm, GroupNorm
+  norm/           BatchNorm1d, BatchNorm2d, LayerNorm, InstanceNorm, GroupNorm
   pooling/        MaxPool, AvgPool, AdaptiveAvgPool, ZeroPad
   attention/      MultiheadAttention, TransformerEncoderLayer
   rnn/            RNN, LSTM, GRU va cell tuong ung
-  losses/         BCE, CrossEntropy, KLDiv, cosine, pairwise distance
-  optim/          SGD, Adam, scheduler
-  dataloaders/    Dataset, DataLoader, loader cho MNIST/CIFAR/Sentiment
+  losses/         BCE, CrossEntropy, FocalLoss, KLDiv, cosine, pairwise distance
+  optim/          SGD, Adam, StepLR scheduler
+  dataloaders/    Dataset, DataLoader, loader cho MNIST/CIFAR/Sentiment/UIT-VSFC/AnimeFace
   predict/        Predictor, ImagePredictor, TextPredictor, BatchPredictor, PredictionPipeline
-  models/         Model hoan chinh cho NLP, CV va generative
-  examples/       Chuong trinh train end-to-end voi predict demo
+  models/         SentimentModel, MultiTask (LSTM/Transformer), CV, Generative
+  examples/       28 chuong trinh train/benchmark/demo
 
 tests/
-  java/com/user/nn/   Toan bo test Java
-  build.gradle.kts    Cấu hình test suite
+  java/com/user/nn/   50 test files (100% JUnit 5)
+  build.gradle.kts    Cau hinh test suite
 ```
 
-## Kien truc van hanh
+## Trang thai phat hanh
 
-### Tensor va autograd
+- Build mac dinh da chuyen sang Gradle multi-module (`:core`, `:examples`, `:tests`).
+- Da sinh day du Gradle Wrapper.
+- **Xác minh đầy đủ mới nhất (2026-05-11)**:
 
-`Tensor` la loi cua framework. Moi tensor giu shape, du lieu CPU, con tro GPU, `requires_grad`, gradient tich luy, `grad_fn` va version counter de phat hien in-place mutation pha graph.
+```powershell
+.\gradlew.bat :tests:cleanTest :tests:test
+```
 
-### Device-aware execution
-
-Framework dispatch theo thiet bi:
-
-- tensor o CPU thi dung CPU path
-- tensor o GPU thi uu tien GPU path
-- phep toan lon tren CPU co the dung OpenBLAS
-- phep toan GPU dung cuBLAS, cuDNN hoac PTX kernel tuy bien
-- neu GPU khong kha dung thi fallback ve CPU khi co the
-
-### Memory management
-
-Repo hien co 3 tang quan ly bo nho quan trong:
-
-- `AutoCloseable` tren `Tensor`
-- `Cleaner` thay cho `finalize()` cho GPU memory safety net
-- `MemoryScope` + `GpuMemoryPool` de giam overhead VRAM trong training loop
-- `GpuMemoryPool` tu dong mo rong khi nhu cau VRAM thuc te vuot qua kich thuoc pool ban dau, loai bo hoan toan tat nghen do `cudaMalloc`/`cudaFree` fallback
+Kết quả: `BUILD SUCCESSFUL` (50 test files, 118+ test methods passed)
 
 ## Tai lieu di kem
 
@@ -269,35 +218,9 @@ Repo hien co 3 tang quan ly bo nho quan trong:
 - `TUTORIAL.md`: tutorial tieng Anh
 - `API_REFERENCE.vn.md`: package reference tieng Viet
 - `API_REFERENCE.md`: package reference tieng Anh
+- `ARCHITECTURE.md`: kien truc testing & automation
+- `CLAUDE.md`: coding standards va development guide
 
-## Trang thai phat hanh
+---
 
-- Build mac dinh da chuyen sang Gradle multi-module (`:core`, `:examples`, `:tests`).
-- Da sinh day du Gradle Wrapper (`gradlew`, `gradlew.bat`, `gradle/wrapper/*`).
-- Lenh kiem tra release da xac nhan:
-
-```powershell
-.\gradlew.bat :core:clean :core:test :core:classes --no-daemon
-```
-
-- Cach chay cac example thong nhat va de nhat qua Gradle:
-
-```powershell
-.\gradlew.bat "-PmainClass=com.user.nn.examples.TrainFashionMNIST" :examples:run --no-daemon
-```
-
-- **Xác minh đầy đủ mới nhất (2026-05-07)**:
-
-```powershell
-.\gradlew.bat cleanTest test -PincludeGPU=true --continue
-```
-
-Kết quả: `BUILD SUCCESSFUL` (174+ tests passed)
-
-## Ghi chu thuc te
-
-- Mot so vi du tu tai du lieu neu thieu, mot so khac dung du lieu da co san trong `data/`.
-- Luong build mac dinh da chuyen sang Gradle va ho tro da nen tang.
-- Neu chay `java -cp` thu cong tren Windows, classpath dung dau `;`.
-- Neu sua `src/com/user/nn/core/kernels.cu`, ban can build lai PTX tuong ung.
-
+Documentation updated for the current codebase state on 2026-05-11.

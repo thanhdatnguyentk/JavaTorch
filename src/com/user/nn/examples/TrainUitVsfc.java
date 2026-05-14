@@ -66,9 +66,9 @@ public class TrainUitVsfc {
         // 4. Model Setup
         com.user.nn.core.Module model;
         if ("transformer".equals(modelType)) {
-            model = new MultiTaskTransformerModel(vocab.size(), 128, maxLen, 2, 4, 256, sentimentLabels.size(), topicLabels.size(), 0.1f);
+            model = new MultiTaskTransformerModel(vocab.size(), 256, maxLen, 4, 8, 512, sentimentLabels.size(), topicLabels.size(), 0.15f);
         } else {
-            model = new MultiTaskLSTMModel(vocab.size(), 128, 256, sentimentLabels.size(), topicLabels.size());
+            model = new MultiTaskLSTMModel(vocab.size(), 256, 512, sentimentLabels.size(), topicLabels.size());
         }
 
         for (Parameter p : model.parameters()) {

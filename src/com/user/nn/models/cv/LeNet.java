@@ -24,35 +24,37 @@ import com.user.nn.pooling.*;
  */
 public class LeNet extends Sequential {
     public LeNet() {
-        // C1: Conv2d (in=1, out=6, kH=5, kW=5, inH=28, inW=28, stride=1, pad=2, bias=true)
-        add(new Conv2d(1, 6, 5, 5, 28, 28, 1, 2, true));
-        add(new Tanh());
+        // C1: Conv2d (inChannels=1, outChannels=32, kernelH=5, kernelW=5, strideH=1, strideW=1, padH=2, padW=2, biasFlag=true)
+        add(new Conv2d(1, 32, 5, 5, 1, 1, 2, 2, true));
+        add(new ReLU());
         
-        // S2: Pool2d (poolH=2, poolW=2, strH=2, strW=2, padH=0, padW=0, channels=6, inH=28, inW=28)
-        add(new MaxPool2d(2, 2, 2, 2, 0, 0, 6, 28, 28));
+        // S2: Pool2d (kernelH=2, kernelW=2, strideH=2, strideW=2, padH=0, padW=0, inC=32, inH=28, inW=28)
+        add(new MaxPool2d(2, 2, 2, 2, 0, 0, 32, 28, 28));
 
-        // C3: Conv2d (in=6, out=16, kH=5, kW=5, inH=14, inW=14, stride=1, pad=0, bias=true)
-        add(new Conv2d(6, 16, 5, 5, 14, 14, 1, 0, true));
-        add(new Tanh());
+        // C3: Conv2d (inChannels=32, outChannels=64, kernelH=5, kernelW=5, strideH=1, strideW=1, padH=0, padW=0, biasFlag=true)
+        add(new Conv2d(32, 64, 5, 5, 1, 1, 0, 0, true));
+        add(new ReLU());
         
-        // S4: Pool2d (poolH=2, poolW=2, strH=2, strW=2, padH=0, padW=0, channels=16, inH=10, inW=10)
-        add(new MaxPool2d(2, 2, 2, 2, 0, 0, 16, 10, 10));
+        // S4: Pool2d (kernelH=2, kernelW=2, strideH=2, strideW=2, padH=0, padW=0, inC=64, inH=10, inW=10)
+        add(new MaxPool2d(2, 2, 2, 2, 0, 0, 64, 10, 10));
 
-        // Flatten features = 16 * 5 * 5 = 400
-        int flattenSize = 400;
+        // Flatten features = 64 * 5 * 5 = 1600
+        int flattenSize = 1600;
 
-        // Flatten to (batch, 16*5*5)
+        // Flatten to (batch, 1600)
         add(new com.user.nn.containers.Flatten());
 
-        // C5: Linear (400 -> 120)
-        add(new Linear(flattenSize, 120, true));
-        add(new Tanh());
+        // C5: Linear (1600 -> 256)
+        add(new Linear(flattenSize, 256, true));
+        add(new ReLU());
+        add(new Dropout(0.2f));
 
-        // F6: Linear (120 -> 84)
-        add(new Linear(120, 84, true));
-        add(new Tanh());
+        // F6: Linear (256 -> 128)
+        add(new Linear(256, 128, true));
+        add(new ReLU());
+        add(new Dropout(0.2f));
 
-        // OUTPUT: Linear (84 -> 10)
-        add(new Linear(84, 10, true));
+        // OUTPUT: Linear (128 -> 10)
+        add(new Linear(128, 10, true));
     }
 }

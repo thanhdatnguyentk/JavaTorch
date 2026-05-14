@@ -28,9 +28,7 @@ public class TrainLeNet {
     static final String DATA_DIR = "data/mnist/";
 
     public static void main(String[] args) throws Exception {
-        MixedPrecision.enable(); // Enable Tensor Cores automatically if supported
-
-        // --- Download data ---
+        // MixedPrecision.enable(); // Enable Tensor Cores automatically if supported
         File dir = new File(DATA_DIR);
         if (!dir.exists()) dir.mkdirs();
 
@@ -52,17 +50,7 @@ public class TrainLeNet {
         // --- Build model ---
         LeNet model = new LeNet();
 
-        // Initialize parameters
-        long seed = 42L;
-        for (Parameter p : model.parameters()) {
-            Tensor t = p.getTensor();
-            float scale = (float) Math.sqrt(2.0 / t.numel());
-            Random rng = new Random(seed++);
-            for (int i = 0; i < t.data.length; i++) {
-                t.data[i] = (float) (rng.nextGaussian() * scale);
-            }
-            t.requires_grad = true;
-        }
+        // Parameters initialized correctly by default.
 
         // --- Optimizer ---
         float lr = 0.001f;
@@ -132,6 +120,7 @@ public class TrainLeNet {
                     Tensor loss = Functional.cross_entropy_tensor(logits, batchLabels);
 
                     loss.backward();
+
                     optimizer.step();
 
                     epochLoss += loss.data[0];

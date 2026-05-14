@@ -53,8 +53,14 @@ Lý do nên dùng cách này trước:
 ### Chạy Test Suite
 
 ```powershell
-.\gradlew.bat cleanTest test -PincludeGPU=true
+# Chỉ CPU tests (mặc định, GPU tests bị bỏ qua)
+.\gradlew.bat :tests:test
+
+# Bao gồm GPU tests
+.\gradlew.bat :tests:test -PincludeGPU=true
 ```
+
+Kết quả mong đợi: `BUILD SUCCESSFUL` (50 test files, 118+ test methods).
 
 ## 4. Chạy ví dụ đầu tiên: Iris
 
@@ -126,7 +132,19 @@ Ví dụ này kết nối toàn bộ NLP stack trong repo.
 
 Nếu bạn muốn hiểu `Embedding` và backward path trên GPU, đây là ví dụ quan trọng nên đọc.
 
-## 7. Chạy ví dụ Transformer/Vision Transformer
+## 7. Chạy ví dụ UIT-VSFC (NLP tiếng Việt)
+
+```powershell
+# Đơn nhiệm: phân loại cảm xúc
+.\gradlew.bat :examples:exampleUitVsfc --no-daemon
+
+# Đa nhiệm: cảm xúc + chủ đề (LSTM vs Transformer)
+.\gradlew.bat "-PmainClass=com.user.nn.examples.TrainUitVsfcMultitask" :examples:run --no-daemon
+```
+
+Ví dụ đa nhiệm hỗ trợ LSTM và Transformer, xuất CSV benchmark, và có thể chạy qua benchmark matrix scripts.
+
+## 8. Chạy ví dụ Transformer/Vision Transformer
 
 ### Vision Transformer trên CIFAR-10
 
@@ -143,7 +161,17 @@ Ví dụ này minh họa:
 - evaluate theo epoch
 - lưu model sau train
 
-## 8. Mô hình lập trình cốt lõi của framework
+## 9. Chạy ví dụ GAN
+
+```powershell
+# GAN trên MNIST
+.\gradlew.bat "-PmainClass=com.user.nn.examples.TrainGANMnist" :examples:run --no-daemon
+
+# GAN trên Anime Faces (nên dùng GPU)
+.\gradlew.bat "-PmainClass=com.user.nn.examples.TrainGANAnime" :examples:run --args "data/anime_faces 30 64 -1" --no-daemon
+```
+
+## 10. Mô hình lập trình cốt lõi của framework
 
 Framework này xoay quanh 5 khối chính.
 
@@ -196,7 +224,7 @@ Optim.Adam optimizer = new Optim.Adam(model.parameters(), 0.001f);
 
 Framework có `Data.Dataset` và `Data.DataLoader` để bạn xây pipeline mini-batch mà không cần thư viện ngoài.
 
-## 9. Viết model đầu tiên của bạn
+## 11. Viết model đầu tiên của bạn
 
 Ví dụ dưới đây là một classifier nhỏ để bạn thấy toàn bộ loop làm việc.
 
@@ -250,7 +278,7 @@ public class MiniClassifier {
 4. `backward()` chạy autograd.
 5. `step()` cập nhật tham số.
 
-## 10. Dùng GPU đúng cách
+## 12. Dùng GPU đúng cách
 
 ### Chuyển model và tensor lên GPU
 
@@ -298,7 +326,7 @@ Khi chạy GPU, framework dùng `GpuMemoryPool` để pre-allocate VRAM, tránh 
 
 Bạn không cần cấu hình gì thêm — hệ thống tự đo peak demand và resize pool với biên an toàn 10% (giới hạn 90% tổng VRAM). Sau khi mở rộng, tất cả các step tiếp theo chạy tốc độ tối đa với 0 fallback allocation.
 
-## 11. Weight initialization
+## 13. Weight initialization
 
 Repo hiện đã có API kiểu PyTorch trong `Torch.nn.init`.
 
@@ -315,7 +343,7 @@ Torch.nn.init.kaiming_uniform_(tensor);
 
 Điều này phù hợp khi bạn viết layer mới hoặc muốn kiểm soát hội tụ tốt hơn so với random fill đơn giản.
 
-## 12. In-place operations và lưu ý quan trọng
+## 14. In-place operations và lưu ý quan trọng
 
 Framework hiện hỗ trợ các phép in-place như:
 
@@ -332,18 +360,23 @@ Nhưng cần nhớ:
 - framework có version counter để phát hiện trường hợp này
 - nếu backward báo tensor bị sửa in-place, đó thường là lỗi logic thật, không nên lờ đi
 
-## 13. Chạy test khi bạn sửa code
+## 15. Chạy test khi bạn sửa code
 
 ### Toàn bộ suite
 
 ```powershell
-.\gradlew.bat cleanTest test -PincludeGPU=true
+.\gradlew.bat :tests:cleanTest :tests:test
+```
+
+### Bao gồm GPU tests
+
+```powershell
+.\gradlew.bat :tests:test -PincludeGPU=true
 ```
 
 ### Một test riêng lẻ
 
 ```powershell
-.\gradlew.bat :tests:test --tests "com.user.nn.TestInPlaceOps"
 .\gradlew.bat :tests:test --tests "com.user.nn.TestInPlaceOps"
 ```
 
@@ -359,7 +392,7 @@ Nhưng cần nhớ:
 - `TestInPlaceOps`
 - `TestBlasOps`
 
-## 14. Nếu muốn thêm một op mới
+## 16. Nếu muốn thêm một op mới
 
 Quy trình khuyến nghị:
 
@@ -369,7 +402,7 @@ Quy trình khuyến nghị:
 4. Nếu cần kernel riêng, thêm vào `src/com/user/nn/core/kernels.cu` rồi build lại PTX.
 5. Viết test hồi quy.
 
-## 15. Các lỗi thường gặp
+## 17. Các lỗi thường gặp
 
 ### Lỗi `jdk.incubator.vector`
 
@@ -398,19 +431,46 @@ Cách xử lý:
 - tránh dùng in-place trong đoạn đang cần gradient nếu chưa chắc logic
 - hoặc clone tensor trước khi sửa
 
-## 16. Lộ trình học repo này hiệu quả nhất
+## 18. Tất cả ví dụ hiện có
+
+| Ví dụ | Mô tả |
+|-------|--------|
+| `TrainIris` | Phân loại Iris (người mới) |
+| `TrainLeNet` | LeNet CNN cổ điển |
+| `TrainFashionMNIST` | Fashion-MNIST với CNN + GPU |
+| `TrainCifar10` | Phân loại CIFAR-10 |
+| `TrainResNetCifar10` | ResNet-18 trên CIFAR-10 |
+| `TrainViTCifar10` | Vision Transformer trên CIFAR-10 |
+| `TrainSentiment` | Phân tích cảm xúc movie review (LSTM) |
+| `TrainUitVsfc` | UIT-VSFC sentiment tiếng Việt |
+| `TrainUitVsfcMultitask` | Đa nhiệm sentiment + topic |
+| `TrainGANMnist` | GAN trên MNIST |
+| `TrainGANAnime` | GAN trên anime faces |
+| `TrainVAEMnist` | VAE trên MNIST |
+| `TrainYOLOCoco` | YOLO trên COCO |
+| `TrainAllDetectorsCoco` | Tất cả 4 detection models |
+| `PredictDemo` | Demo predict API đầy đủ |
+
+Tất cả chạy qua:
+
+```powershell
+.\gradlew.bat "-PmainClass=com.user.nn.examples.<ClassName>" :examples:run --no-daemon
+```
+
+## 19. Lộ trình học repo này hiệu quả nhất
 
 1. `TrainIris`
 2. `TrainFashionMNIST`
 3. `TestAutogradSimple`
 4. `TestAutogradMatmul`
 5. `TrainSentiment`
-6. `TrainViTCifar10`
-7. `CUDAOps.java` và `kernels.cu`
+6. `TrainUitVsfcMultitask`
+7. `TrainViTCifar10`
+8. `CUDAOps.java` và `kernels.cu`
 
 Nếu đi theo thứ tự này, bạn sẽ hiểu từ API mức cao xuống kernel mức thấp mà không bị ngợp quá sớm.
 
-## 17. Kết luận
+## 20. Kết luận
 
 Repo này phù hợp cho 3 kiểu mục tiêu:
 
@@ -421,6 +481,6 @@ Repo này phù hợp cho 3 kiểu mục tiêu:
 Khi cần bắt đầu nhanh, hãy quay lại đúng 2 lệnh này:
 
 ```powershell
-.\gradlew.bat cleanTest test -PincludeGPU=true
+.\gradlew.bat :tests:cleanTest :tests:test
 .\gradlew.bat "-PmainClass=com.user.nn.examples.TrainIris" :examples:run --no-daemon
 ```

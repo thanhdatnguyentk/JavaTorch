@@ -1,0 +1,5 @@
+task runResNet(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.user.nn.examples.TrainResNetCifar10'
+    jvmArgs = ['--add-modules', 'jdk.incubator.vector']
+}

@@ -45,8 +45,14 @@ On macOS/Linux:
 ### Run the Test Suite
 
 ```powershell
-.\gradlew.bat cleanTest test -PincludeGPU=true
+# CPU-only tests (default, GPU tests excluded)
+.\gradlew.bat :tests:test
+
+# Including GPU tests
+.\gradlew.bat :tests:test -PincludeGPU=true
 ```
+
+Expected result: `BUILD SUCCESSFUL` (50 test files, 118+ test methods).
 
 ## 4. First example: Iris
 
@@ -72,7 +78,19 @@ This example shows realistic mini-batch training with `Dataset`, `DataLoader`, `
 
 This is the main NLP walkthrough in the repository and uses `Vocabulary`, `BasicTokenizer`, `Embedding`, and `LSTM`.
 
-## 7. Vision Transformer example
+## 7. UIT-VSFC Vietnamese NLP example
+
+```powershell
+# Single-task: sentiment classification
+.\gradlew.bat :examples:exampleUitVsfc --no-daemon
+
+# Multi-task: sentiment + topic classification (LSTM vs Transformer)
+.\gradlew.bat "-PmainClass=com.user.nn.examples.TrainUitVsfcMultitask" :examples:run --no-daemon
+```
+
+The multi-task example supports LSTM and Transformer architectures, exports benchmark-compatible CSV artifacts, and can be orchestrated via the benchmark matrix scripts.
+
+## 8. Vision Transformer example
 
 ```powershell
 .\gradlew.bat "-PmainClass=com.user.nn.examples.TrainViTCifar10" :examples:run --no-daemon
@@ -80,7 +98,17 @@ This is the main NLP walkthrough in the repository and uses `Vocabulary`, `Basic
 
 This example demonstrates patch embedding, attention, encoder blocks, scheduling, evaluation, and model saving.
 
-## 8. Core programming model
+## 9. GAN examples
+
+```powershell
+# GAN on MNIST
+.\gradlew.bat "-PmainClass=com.user.nn.examples.TrainGANMnist" :examples:run --no-daemon
+
+# GAN on Anime Faces (GPU recommended)
+.\gradlew.bat "-PmainClass=com.user.nn.examples.TrainGANAnime" :examples:run --args "data/anime_faces 30 64 -1" --no-daemon
+```
+
+## 10. Core programming model
 
 ### Tensor
 
@@ -112,7 +140,7 @@ model.add(new Linear(16, 3, true));
 Optim.Adam optimizer = new Optim.Adam(model.parameters(), 0.001f);
 ```
 
-## 9. Your first model
+## 11. Your first model
 
 ```java
 import com.user.nn.core.*;
@@ -152,7 +180,7 @@ public class MiniClassifier {
 }
 ```
 
-## 10. GPU usage
+## 12. GPU usage
 
 ```java
 model.toGPU();
@@ -174,7 +202,7 @@ for (Tensor[] batch : loader) {
 }
 ```
 
-## 11. Weight initialization
+## 13. Weight initialization
 
 ```java
 Torch.nn.init.zeros_(tensor);
@@ -185,7 +213,7 @@ Torch.nn.init.xavier_uniform_(tensor);
 Torch.nn.init.kaiming_uniform_(tensor);
 ```
 
-## 12. In-place operations
+## 14. In-place operations
 
 The framework supports:
 
@@ -198,7 +226,7 @@ The framework supports:
 
 Version tracking is used to detect invalid graph mutations caused by in-place updates.
 
-## 13. GPU Memory Pool Auto-Expand
+## 15. GPU Memory Pool Auto-Expand
 
 When running on GPU, the framework uses a `GpuMemoryPool` to pre-allocate VRAM and avoid slow per-tensor `cudaMalloc` calls. If your model and batch size require more VRAM than the initial pool size, the pool **automatically expands** at the end of the first training step:
 
@@ -207,3 +235,50 @@ When running on GPU, the framework uses a `GpuMemoryPool` to pre-allocate VRAM a
 ```
 
 You do not need to configure pool sizes manually. The system tracks peak demand and resizes the pool with a 10% safety margin (capped at 90% of total VRAM). After expansion, all subsequent steps run at full speed with zero fallback allocations.
+
+## 16. Prediction / Inference
+
+After training, use the `predict` package for model inference:
+
+```java
+// Image classification
+ImagePredictor predictor = ImagePredictor.forCifar10(model);
+PredictionResult result = predictor.predictFromPixels(imageData);
+
+// Text sentiment
+TextPredictor tp = TextPredictor.forSentiment(model, vocab, maxLen);
+System.out.println(tp.predictSentiment("Great movie!")); // → POSITIVE (0.92)
+
+// Fluent pipeline
+PredictionPipeline.create(model)
+    .loadWeights("model.bin")
+    .labels(CIFAR10_LABELS)
+    .topK(5)
+    .predict(input);
+```
+
+## 17. All available examples
+
+| Example | Description |
+|---------|-------------|
+| `TrainIris` | Iris classification (beginner) |
+| `TrainLeNet` | Classic LeNet CNN |
+| `TrainFashionMNIST` | Fashion-MNIST with CNN + GPU |
+| `TrainCifar10` | CIFAR-10 classification |
+| `TrainResNetCifar10` | ResNet-18 on CIFAR-10 |
+| `TrainViTCifar10` | Vision Transformer on CIFAR-10 |
+| `TrainSentiment` | Movie review sentiment (LSTM) |
+| `TrainUitVsfc` | UIT-VSFC Vietnamese sentiment |
+| `TrainUitVsfcMultitask` | Multi-task sentiment + topic |
+| `TrainGANMnist` | GAN on MNIST |
+| `TrainGANAnime` | GAN on anime faces |
+| `TrainVAEMnist` | VAE on MNIST |
+| `TrainYOLOCoco` | YOLO on COCO |
+| `TrainAllDetectorsCoco` | All 4 detection models |
+| `PredictDemo` | Full predict API demo |
+
+All examples can be run via:
+
+```powershell
+.\gradlew.bat "-PmainClass=com.user.nn.examples.<ClassName>" :examples:run --no-daemon
+```

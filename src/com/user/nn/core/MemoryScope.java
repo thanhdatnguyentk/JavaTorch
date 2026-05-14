@@ -57,4 +57,23 @@ public class MemoryScope implements AutoCloseable {
         currentScope.set(parent);
         if (firstException != null) throw firstException;
     }
+
+    /**
+     * Temporarily suspends the current MemoryScope (e.g. to allocate permanent GPU memory).
+     * @return The currently active MemoryScope (to be passed to resume).
+     */
+    public static MemoryScope suspend() {
+        MemoryScope scope = currentScope.get();
+        currentScope.remove();
+        return scope;
+    }
+
+    /**
+     * Resumes a previously suspended MemoryScope.
+     */
+    public static void resume(MemoryScope scope) {
+        if (scope != null) {
+            currentScope.set(scope);
+        }
+    }
 }

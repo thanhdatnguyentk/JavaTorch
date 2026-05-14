@@ -121,6 +121,41 @@ public class TrainGANMnist {
         dashboard.setTaskType("gan");
         dashboard.setModelInfo("GAN-MNIST", epochs);
 
+        // Register GAN latent space explorer handler for the dashboard
+        final int ld = latentDim;
+        dashboard.registerHandler("gan_latent", (fileName, fileStream, text) -> {
+            try {
+                // Parse z-vector from JSON array string, e.g. "[0.5, -0.3, 1.2, 0.0]"
+                float[] z = new float[ld];
+                if (text != null && !text.isEmpty()) {
+                    String cleaned = text.replaceAll("[\\[\\]\\s]", "");
+                    String[] parts = cleaned.split(",");
+                    for (int i = 0; i < Math.min(parts.length, ld); i++) {
+                        try { z[i] = Float.parseFloat(parts[i].trim()); } catch (NumberFormatException nfe) {}
+                    }
+                    // Fill remaining dims with small random noise for variety
+                    for (int i = parts.length; i < ld; i++) {
+                        z[i] = (float) (rand.nextGaussian() * 0.5);
+                    }
+                } else {
+                    for (int i = 0; i < ld; i++) z[i] = (float) rand.nextGaussian();
+                }
+
+                G.eval();
+                try (MemoryScope latentScope = new MemoryScope()) {
+                    Tensor zTensor = Torch.tensor(z, 1, ld).toGPU();
+                    Tensor fakeImg = G.forward(zTensor);
+                    fakeImg.toCPU();
+                    float[] pixels = new float[784];
+                    System.arraycopy(fakeImg.data, 0, pixels, 0, 784);
+                    String base64 = DashboardIntegrationHelper.encodeGeneratorOutput(pixels, 1, 28, 28);
+                    return java.util.Map.of("image", base64);
+                }
+            } catch (Exception e) {
+                return java.util.Map.of("error", e.getMessage());
+            }
+        });
+
         System.out.println("Starting Training Loop...");
         for (int epoch = 1; epoch <= epochs; epoch++) {
             long startTime = System.currentTimeMillis();

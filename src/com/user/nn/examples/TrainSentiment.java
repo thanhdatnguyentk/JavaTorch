@@ -16,7 +16,7 @@ import java.util.*;
 
 public class TrainSentiment {
     public static void main(String[] args) throws Exception {
-        MixedPrecision.enable(); // Opt-in to Tensor Cores (FP16)
+        // MixedPrecision.enable(); // Opt-in to Tensor Cores (FP16) - Disabled to prevent FP16 gradient underflow
         
         System.out.println("Loading Movie Review dataset...");
         List<MovieCommentLoader.Entry> allData = MovieCommentLoader.load();
@@ -40,8 +40,8 @@ public class TrainSentiment {
         int batchSize = 16;
         
         int vocabSize = vocab.size();
-        int embedDim = 32;
-        int hiddenDim = 64;
+        int embedDim = 128;
+        int hiddenDim = 256;
         int outputDim = 2;
         
         SentimentModel model = new SentimentModel(vocabSize, embedDim, hiddenDim, outputDim);

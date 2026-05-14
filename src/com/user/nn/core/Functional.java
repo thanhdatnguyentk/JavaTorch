@@ -45,7 +45,23 @@ public class Functional {
     }
 
     public static Tensor cross_entropy_tensor(Tensor logits, int[] targets) {
-        logits.toCPU();
+        // Read logits data into local array WITHOUT mutating the tensor's device state.
+        // Calling logits.toCPU() would set device=CPU, breaking gradient propagation
+        // through the autograd graph for all upstream GPU operations.
+        boolean wasGPU = logits.isGPU();
+        float[] logitsData;
+        if (wasGPU) {
+            logitsData = new float[logits.data.length];
+            CUDAOps.syncComputeStream();
+            jcuda.runtime.JCuda.cudaMemcpy(
+                jcuda.Pointer.to(logitsData),
+                logits.getDevicePointer(),
+                (long) logits.numel() * jcuda.Sizeof.FLOAT,
+                jcuda.runtime.cudaMemcpyKind.cudaMemcpyDeviceToHost
+            );
+        } else {
+            logitsData = logits.data;
+        }
         int batch = logits.shape[0];
         int classes = logits.shape[1];
         Tensor out = new Tensor(1);
@@ -54,11 +70,11 @@ public class Functional {
         for (int i = 0; i < batch; i++) {
             float max = Float.NEGATIVE_INFINITY;
             for (int j = 0; j < classes; j++)
-                if (logits.data[i * classes + j] > max)
-                    max = logits.data[i * classes + j];
+                if (logitsData[i * classes + j] > max)
+                    max = logitsData[i * classes + j];
             double sum = 0.0;
             for (int j = 0; j < classes; j++) {
-                double e = Math.exp(logits.data[i * classes + j] - max);
+                double e = Math.exp(logitsData[i * classes + j] - max);
                 soft[i][j] = (float) e;
                 sum += e;
             }
@@ -80,6 +96,8 @@ public class Functional {
                             g.data[i * classes + j] = (soft[i][j] - one) * scale;
                         }
                     }
+                    // Move gradient to same device as logits
+                    if (wasGPU) g.toGPU();
                     logits.backwardStep(g);
                 }
             };
@@ -88,13 +106,26 @@ public class Functional {
     }
 
     public static Tensor nll_loss(Tensor logProbs, int[] targets) {
-        logProbs.toCPU();
+        boolean wasGPU = logProbs.isGPU();
+        float[] lpData;
+        if (wasGPU) {
+            lpData = new float[logProbs.data.length];
+            CUDAOps.syncComputeStream();
+            jcuda.runtime.JCuda.cudaMemcpy(
+                jcuda.Pointer.to(lpData),
+                logProbs.getDevicePointer(),
+                (long) logProbs.numel() * jcuda.Sizeof.FLOAT,
+                jcuda.runtime.cudaMemcpyKind.cudaMemcpyDeviceToHost
+            );
+        } else {
+            lpData = logProbs.data;
+        }
         int batch = logProbs.shape[0];
         int classes = logProbs.shape[1];
         Tensor out = new Tensor(1);
         float total = 0f;
         for (int i = 0; i < batch; i++) {
-            total += -logProbs.data[i * classes + targets[i]];
+            total += -lpData[i * classes + targets[i]];
         }
         out.data[0] = total / batch;
         if (logProbs.requires_grad) {
@@ -106,6 +137,7 @@ public class Functional {
                     for (int i = 0; i < batch; i++) {
                         g.data[i * classes + targets[i]] = -scale;
                     }
+                    if (wasGPU) g.toGPU();
                     logProbs.backwardStep(g);
                 }
             };

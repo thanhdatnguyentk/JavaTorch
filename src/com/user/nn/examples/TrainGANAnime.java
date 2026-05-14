@@ -179,10 +179,41 @@ public class TrainGANAnime {
         weights_init(G);
         weights_init(D);
         
-        try {
-            // Setup a dummy predictor handler for Gan if we want to test live, 
-            // but for now just live metrics is enough.
-        } catch(Exception e) {}
+        // Register GAN latent space explorer handler for the dashboard
+        final int ld = latentDim;
+        final boolean gpuAvail = useGpu;
+        dashboard.registerHandler("gan_latent", (fileName, fileStream, text) -> {
+            try {
+                float[] z = new float[ld];
+                java.util.Random rng = new java.util.Random();
+                if (text != null && !text.isEmpty()) {
+                    String cleaned = text.replaceAll("[\\[\\]\\s]", "");
+                    String[] parts = cleaned.split(",");
+                    for (int i = 0; i < Math.min(parts.length, ld); i++) {
+                        try { z[i] = Float.parseFloat(parts[i].trim()); } catch (NumberFormatException nfe) {}
+                    }
+                    for (int i = parts.length; i < ld; i++) {
+                        z[i] = (float) (rng.nextGaussian() * 0.5);
+                    }
+                } else {
+                    for (int i = 0; i < ld; i++) z[i] = (float) rng.nextGaussian();
+                }
+
+                G.eval();
+                try (MemoryScope latentScope = new MemoryScope()) {
+                    Tensor zTensor = Torch.tensor(z, 1, ld);
+                    if (gpuAvail) zTensor.toGPU();
+                    Tensor fakeImg = G.forward(zTensor);
+                    fakeImg.toCPU();
+                    float[] pixels = new float[IMAGE_DIM];
+                    System.arraycopy(fakeImg.data, 0, pixels, 0, IMAGE_DIM);
+                    String base64 = DashboardIntegrationHelper.encodeGeneratorOutput(pixels, CHANNELS, IMAGE_SIZE, IMAGE_SIZE);
+                    return java.util.Map.of("image", base64);
+                }
+            } catch (Exception e) {
+                return java.util.Map.of("error", e.getMessage());
+            }
+        });
 
         for (int epoch = 1; epoch <= epochs; epoch++) {
             long start = System.currentTimeMillis();

@@ -102,6 +102,7 @@ public class CUDAOps {
 
                 // Initialize Driver API for custom kernels
                 JCudaDriver.setExceptionsEnabled(true);
+                jcuda.runtime.JCuda.setExceptionsEnabled(true);
                 cuInit(0);
 
                 try {
@@ -1468,12 +1469,14 @@ public class CUDAOps {
         int n = a.shape[1];
         Pointer pAlpha = Pointer.to(new float[]{1.0f});
         Pointer pBeta = Pointer.to(new float[]{0.0f});
-        // sgeam: C = alpha * A' + beta * B'
-        // To get C = A', we set beta = 0.
+        // a is row-major [m, n], so in col-major it's N x M.
+        // out is row-major [n, m], so in col-major it's M x N.
+        // C = alpha * A^T + beta * B
+        // C is M x N. A is N x M.
         jcuda.jcublas.JCublas2.cublasSgeam(cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, 
-                                           n, m, pAlpha, a.getDevicePointer(), m, 
-                                           pBeta, new Pointer(), n, 
-                                           out.getDevicePointer(), n);
+                                           m, n, pAlpha, a.getDevicePointer(), n, 
+                                           pBeta, new Pointer(), m, 
+                                           out.getDevicePointer(), m);
         out.markDirtyOnGPU();
     }
 

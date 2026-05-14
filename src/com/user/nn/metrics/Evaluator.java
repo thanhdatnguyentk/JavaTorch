@@ -19,20 +19,40 @@ public class Evaluator {
         model.eval();
         metric.reset();
         
+        // Detect if model is on GPU by checking its first parameter
+        boolean modelOnGPU = false;
+        for (var p : model.parameters()) {
+            if (p.getTensor().isGPU()) { modelOnGPU = true; break; }
+        }
+        final boolean useGPU = modelOnGPU;
+
         // Disable autograd tracking during evaluation for speed and memory efficiency
         boolean prevGrad = Torch.is_grad_enabled();
         Torch.set_grad_enabled(false);
 
         try {
             for (Tensor[] batch : loader) {
-                try (MemoryScope scope = new MemoryScope()) {
+                if (useGPU) {
+                    try (MemoryScope scope = new MemoryScope()) {
+                        Tensor xBatch = batch[0];
+                        Tensor yBatch = batch[1];
+                        scope.track(xBatch);
+                        scope.track(yBatch);
+                        xBatch.toGPU();
+
+                        int bs = xBatch.shape[0];
+                        int[] batchLabels = new int[bs];
+                        for (int i = 0; i < bs; i++) {
+                            batchLabels[i] = (int) yBatch.data[i];
+                        }
+
+                        Tensor logits = model.forward(xBatch);
+                        metric.update(logits, batchLabels);
+                    }
+                } else {
+                    // CPU path: no MemoryScope needed
                     Tensor xBatch = batch[0];
                     Tensor yBatch = batch[1];
-                    
-                    scope.track(xBatch);
-                    scope.track(yBatch);
-
-                    xBatch.toGPU();
 
                     int bs = xBatch.shape[0];
                     int[] batchLabels = new int[bs];

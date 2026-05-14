@@ -26,7 +26,7 @@ import jcuda.runtime.JCuda;
 public class TrainCifar10 {
 
     public static void main(String[] args) throws Exception {
-        MixedPrecision.enable(); // Opt-in to Tensor Cores (FP16)
+        // MixedPrecision.enable(); // Opt-in to Tensor Cores (FP16) - Disabled to prevent FP16 gradient underflow
 
 
         System.out.println("Preparing CIFAR-10 data...");
@@ -51,35 +51,34 @@ public class TrainCifar10 {
 
         NN lib = new NN();
         Sequential model = new Sequential();
-        model.add(new Conv2d(3, 16, 3, 3, 32, 32, 1, 1, true));
+        // Layer 1: 3 -> 32 channels, 32x32
+        model.add(new Conv2d(3, 32, 3, 3, 1, 1, 1, 1, true));
         model.add(new ReLU());
-        model.add(new MaxPool2d(2, 2, 2, 2, 0, 0, 16, 32, 32));
-        model.add(new Conv2d(16, 32, 3, 3, 16, 16, 1, 1, true));
-        model.add(new ReLU());
-        model.add(new MaxPool2d(2, 2, 2, 2, 0, 0, 32, 16, 16));
+        model.add(new MaxPool2d(2, 2, 2, 2, 0, 0, 32, 32, 32));
 
-        // Flatten conv output to (batch, 32*8*8)
+        // Layer 2: 32 -> 64 channels, 16x16
+        model.add(new Conv2d(32, 64, 3, 3, 1, 1, 1, 1, true));
+        model.add(new ReLU());
+        model.add(new MaxPool2d(2, 2, 2, 2, 0, 0, 64, 16, 16));
+
+        // Layer 3: 64 -> 128 channels, 8x8
+        model.add(new Conv2d(64, 128, 3, 3, 1, 1, 1, 1, true));
+        model.add(new ReLU());
+        model.add(new MaxPool2d(2, 2, 2, 2, 0, 0, 128, 8, 8));
+
+        // Flatten: 128 * 4 * 4 = 2048
         model.add(new com.user.nn.containers.Flatten());
-        int flattenSize = 32 * 8 * 8; 
-        model.add(new Linear(flattenSize, 128, true));
+        int flattenSize = 2048; 
+        model.add(new Linear(flattenSize, 256, true));
         model.add(new ReLU());
-        model.add(new Dropout(0.3f));
-        model.add(new Linear(128, 10, true));
+        model.add(new Dropout(0.4f));
+        model.add(new Linear(256, 10, true));
 
-        long seed = 123L;
-        for (Parameter p : model.parameters()) {
-            Tensor t = p.getTensor();
-            float scale = (float) Math.sqrt(2.0 / t.numel());
-            Random rng = new Random(seed++);
-            for (int i = 0; i < t.data.length; i++) {
-                t.data[i] = (float) (rng.nextGaussian() * scale);
-            }
-            t.requires_grad = true;
-        }
+        // Parameters are initialized correctly by default using Kaiming Uniform.
 
-        float lr = 0.001f;
-        int epochs = SmokeTest.getEpochs(100); 
-        int batchSize = 128;
+        float lr = 0.0001f;
+        int epochs = SmokeTest.getEpochs(50); 
+        int batchSize = 64;
         Optim.Adam optimizer = new Optim.Adam(model.parameters(), lr);
 
         // Initialize GPU Memory Pool based on model size
@@ -96,7 +95,9 @@ public class TrainCifar10 {
             public int len() { return N; }
             @Override
             public Tensor[] get(int index) {
-                Tensor x = Torch.tensor(trainImages[index], 3, 32, 32);
+                // Use the already-normalized data from Cifar10Loader directly
+                float[] raw = trainImages[index];
+                Tensor x = Torch.tensor(raw, 3, 32, 32);
                 Tensor y = Torch.tensor(new float[] { trainLabels[index] }, 1);
                 return new Tensor[] { x, y };
             }
@@ -228,6 +229,7 @@ public class TrainCifar10 {
             try {
                 Map<String, Float> metrics = new HashMap<>();
                 metrics.put("loss", avgLoss);
+                metrics.put("train_loss", avgLoss);
                 metrics.put("train_acc", trainAcc);
                 metrics.put("test_acc", testAcc);
                 history.record(epoch + 1, metrics);
