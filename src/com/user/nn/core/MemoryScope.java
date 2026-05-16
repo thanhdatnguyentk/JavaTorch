@@ -55,7 +55,10 @@ public class MemoryScope implements AutoCloseable {
         }
         
         currentScope.set(parent);
-        if (firstException != null) throw firstException;
+        if (firstException != null) {
+            // Log but don't crash — GPU cleanup errors shouldn't kill training
+            System.err.println("[MemoryScope] Warning during tensor cleanup: " + firstException.getMessage());
+        }
     }
 
     /**

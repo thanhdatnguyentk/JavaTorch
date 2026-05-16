@@ -3,9 +3,9 @@ $ErrorActionPreference = "Stop"
 $models = @(
     # "runTrainFashionMNIST",
     # "runTrainCifar10",
-    "runTrainResNet",
-    "runTrainViTCifar10",
-    "runTrainSentiment",
+    # "runTrainResNet",
+    # "runTrainViTCifar10",
+    # "runTrainSentiment",
     "exampleUitVsfc",
     "runTrainUitVsfcMultitask"
 )

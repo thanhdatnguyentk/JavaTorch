@@ -69,23 +69,38 @@ public class DashboardServer {
 
         ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         
-        app = Javalin.create(config -> {
-            config.plugins.enableCors(cors -> cors.add(it -> it.anyHost()));
-            config.staticFiles.add(staticFileConfig -> {
-                String devPath = "core/src/main/resources/public";
-                if (new File(devPath).exists()) {
-                    staticFileConfig.directory = devPath;
-                    staticFileConfig.location = Location.EXTERNAL;
-                } else {
-                    staticFileConfig.directory = "public";
-                    staticFileConfig.location = Location.CLASSPATH;
+        // Try the requested port, then up to 10 alternatives if it's in use
+        int actualPort = port;
+        for (int attempt = 0; attempt <= 10; attempt++) {
+            try {
+                app = Javalin.create(config -> {
+                    config.plugins.enableCors(cors -> cors.add(it -> it.anyHost()));
+                    config.staticFiles.add(staticFileConfig -> {
+                        String devPath = "core/src/main/resources/public";
+                        if (new File(devPath).exists()) {
+                            staticFileConfig.directory = devPath;
+                            staticFileConfig.location = Location.EXTERNAL;
+                        } else {
+                            staticFileConfig.directory = "public";
+                            staticFileConfig.location = Location.CLASSPATH;
+                        }
+                    });
+                    config.jsonMapper(new io.javalin.json.JavalinJackson(mapper));
+                }).start(actualPort);
+                break;
+            } catch (io.javalin.util.JavalinBindException e) {
+                if (attempt == 10) {
+                    System.err.println("[DashboardServer] Could not find a free port after 10 attempts. Dashboard disabled.");
+                    app = null;
+                    return this;
                 }
-            });
-            config.jsonMapper(new io.javalin.json.JavalinJackson(mapper));
-        }).start(port);
+                actualPort = port + attempt + 1;
+                System.out.println("[DashboardServer] Port " + (actualPort - 1) + " in use, trying " + actualPort + "...");
+            }
+        }
 
         setupRoutes();
-        System.out.println("[DashboardServer] Started at http://localhost:" + port + " [Task: " + currentTaskType + "]");
+        System.out.println("[DashboardServer] Started at http://localhost:" + actualPort + " [Task: " + currentTaskType + "]");
         
         Thread mainThread = Thread.currentThread();
         Thread monitor = new Thread(() -> {

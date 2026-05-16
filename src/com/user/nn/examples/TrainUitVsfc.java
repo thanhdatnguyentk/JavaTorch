@@ -26,8 +26,8 @@ public class TrainUitVsfc {
         String modelType = "lstm"; // "lstm" or "transformer"
         String device = "gpu";     // "cpu" or "gpu"
         int epochs = SmokeTest.getEpochs(100);
-        int batchSize = 64;
-        int maxLen = 64;
+        int batchSize = 32;
+        int maxLen = 48;
         float lr = 0.002f;
         int patience = 5;
 
@@ -68,7 +68,7 @@ public class TrainUitVsfc {
         if ("transformer".equals(modelType)) {
             model = new MultiTaskTransformerModel(vocab.size(), 256, maxLen, 4, 8, 512, sentimentLabels.size(), topicLabels.size(), 0.15f);
         } else {
-            model = new MultiTaskLSTMModel(vocab.size(), 256, 512, sentimentLabels.size(), topicLabels.size());
+            model = new MultiTaskLSTMModel(vocab.size(), 256, 256, sentimentLabels.size(), topicLabels.size());
         }
 
         for (Parameter p : model.parameters()) {
@@ -76,7 +76,7 @@ public class TrainUitVsfc {
         }
 
         if ("gpu".equals(device)) {
-            GpuMemoryPool.autoInit(model);
+            GpuMemoryPool.autoInit(model, 40.0f);
             model.toGPU();
             System.out.println("Model moved to GPU.");
         }

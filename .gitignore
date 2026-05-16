@@ -3,7 +3,7 @@ tests\tmp
 data
 bin/
 lib/
-*.log
+
 train.log
 *.bin
 

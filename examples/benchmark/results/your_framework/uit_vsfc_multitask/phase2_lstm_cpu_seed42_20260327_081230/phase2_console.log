@@ -1,0 +1,34 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.10.2/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :core:compileJava UP-TO-DATE
+> Task :core:ensureKernelsPtx NO-SOURCE
+> Task :core:processResources NO-SOURCE
+> Task :core:classes UP-TO-DATE
+> Task :core:jar UP-TO-DATE
+> Task :examples:compileJava NO-SOURCE
+> Task :examples:ensureKernelsPtx NO-SOURCE
+> Task :examples:processResources NO-SOURCE
+> Task :examples:classes UP-TO-DATE
+
+> Task :examples:run
+[MixedPrecision] Disabled � using standard FP32 compute.
+Loading UIT-VSFC dataset from: examples/data/uit-vsfc
+Train=11426 Dev=1583 Test=3166
+Sentiment classes=3, Topic classes=4
+Config | model=lstm device=cpu epochs=1 batchSize=256 maxLen=48 alpha=1.000 beta=1.000 seed=42 selection=weighted runId=phase2_lstm_cpu_seed42_20260327_081230
+Training controls | lr=0.001000 minLr=0.000100 schedule=none warmupEpochs=0 earlyStopPatience=0 minDelta=0.000000
+Vocabulary size: 2488
+Epoch 1/1 | lr=0.001000 | train_loss=1.7367 (sent=0.8552 topic=0.8815) | train_sent_acc=47.98% | train_topic_acc=70.70% | dev_sent_macro_f1=0.2054 | dev_topic_macro_f1=0.2105 | dev_joint=0.2558 | objective=0.2080 | epoch_time=113.059s
+Loaded best checkpoint from: D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\examples\benchmark\results\your_framework\uit_vsfc_multitask\phase2_lstm_cpu_seed42_20260327_081230\best_model.bin
+Best epoch=1 | Dev sent_macro_f1=0.2054 topic_macro_f1=0.2105 joint=0.2558
+Test | sent_acc=44.50% topic_acc=72.33% sent_macro_f1=0.2053 topic_macro_f1=0.2099 joint=0.2498
+Inference | p50=920.3303 ms p95=1206.3583 ms throughput=264.84 samples/s
+Inference breakdown | e2e_p50=920.6368 ms e2e_p95=1206.6380 ms e2e_throughput=264.78 samples/s | batch=0.1996 tensor=0.0094 h2d=0.0000 forward=936.0481 ms
+Saved final model to: D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\examples\benchmark\results\your_framework\uit_vsfc_multitask\phase2_lstm_cpu_seed42_20260327_081230\uit_vsfc_lstm_multitask.bin
+Benchmark artifacts: D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\examples\benchmark\results\your_framework\uit_vsfc_multitask\phase2_lstm_cpu_seed42_20260327_081230
+
+BUILD SUCCESSFUL in 2m 44s
+3 actionable tasks: 1 executed, 2 up-to-date
+
+WARNING: Using incubator modules: jdk.incubator.vector
+

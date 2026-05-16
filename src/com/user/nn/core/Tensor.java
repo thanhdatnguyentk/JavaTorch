@@ -41,7 +41,11 @@ public class Tensor implements AutoCloseable {
         @Override
         public void run() {
             if (deviceData != null && !poolManaged) {
-                cudaFree(deviceData);
+                try {
+                    cudaFree(deviceData);
+                } catch (Exception e) {
+                    // Best-effort cleanup — pointer may already be invalid
+                }
             }
             deviceData = null;
         }
@@ -152,6 +156,12 @@ public class Tensor implements AutoCloseable {
     }
 
     public Tensor clone() {
+        if (this.isGPU() && CUDAOps.isAvailable()) {
+            Tensor result = new Tensor(this.shape);
+            result.toGPU();
+            cudaMemcpy(result.getDevicePointer(), this.getDevicePointer(), (long) numel() * jcuda.Sizeof.FLOAT, cudaMemcpyDeviceToDevice);
+            return result;
+        }
         this.toCPU(); // Ensure data is up-to-date
         return new Tensor(this.data, this.shape);
     }
@@ -201,9 +211,9 @@ public class Tensor implements AutoCloseable {
     // accumulate gradient (elementwise add)
     public void accumulateGrad(Tensor g) {
         if (this.grad == null) {
-            this.grad = g;
+            this.grad = g.clone();
         } else {
-            this.grad = Torch.add(this.grad, g);
+            this.grad.add_(g);
         }
     }
 
@@ -489,9 +499,18 @@ public class Tensor implements AutoCloseable {
                     poolManaged = true;
                 } else {
                     fallbackAllocations++;
-                    deviceData = new Pointer();
-                    cudaMalloc(deviceData, (long) numel() * Sizeof.FLOAT);
-                    poolManaged = false;
+                    Pointer fallback = new Pointer();
+                    try {
+                        cudaMalloc(fallback, (long) numel() * Sizeof.FLOAT);
+                        deviceData = fallback;
+                        poolManaged = false;
+                    } catch (Exception e) {
+                        // GPU fully out of VRAM — stay on CPU for this tensor
+                        deviceData = null;
+                        onHost = true;
+                        device = Device.CPU;
+                        return this;
+                    }
                 }
             } else {
                 deviceData = new Pointer();
@@ -580,7 +599,12 @@ public class Tensor implements AutoCloseable {
         if (deviceData != null) {
             // Only cudaFree if NOT managed by the memory pool
             if (!poolManaged) {
-                cudaFree(deviceData);
+                try {
+                    cudaFree(deviceData);
+                } catch (Exception e) {
+                    // Pointer may be invalid (e.g. from a failed cudaMalloc or pool realloc)
+                    // Swallow to prevent cascade failures in MemoryScope.close()
+                }
             }
             deviceData = null;
             onDevice = false;

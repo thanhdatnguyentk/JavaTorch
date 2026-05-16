@@ -114,7 +114,7 @@ tasks.register<JavaExec>("exampleUitVsfc") {
     mainClass.set("com.user.nn.examples.TrainUitVsfc")
     jvmArgs("--add-modules=jdk.incubator.vector")
     System.getProperty("forceEpochs")?.let { systemProperty("forceEpochs", it) }
-    maxHeapSize = "6g"
+    maxHeapSize = "10g"
 }
 
 // Register tasks for all models in run_all.ps1

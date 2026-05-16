@@ -1,0 +1,43 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.10.2/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :core:compileJava UP-TO-DATE
+> Task :core:ensureKernelsPtx NO-SOURCE
+> Task :core:processResources NO-SOURCE
+> Task :core:classes UP-TO-DATE
+> Task :core:jar UP-TO-DATE
+> Task :examples:compileJava NO-SOURCE
+> Task :examples:ensureKernelsPtx NO-SOURCE
+> Task :examples:processResources NO-SOURCE
+> Task :examples:classes UP-TO-DATE
+
+> Task :examples:run
+[MixedPrecision] Disabled � using standard FP32 compute.
+Loading UIT-VSFC dataset from: examples/data/uit-vsfc
+Train=11426 Dev=1583 Test=3166
+Sentiment classes=3, Topic classes=4
+Config | model=lstm device=gpu epochs=1 batchSize=256 maxLen=48 alpha=1.000 beta=1.000 seed=42 selection=weighted runId=phase2_lstm_gpu_seed42_20260327_080623
+Training controls | lr=0.001000 minLr=0.000100 schedule=none warmupEpochs=0 earlyStopPatience=0 minDelta=0.000000
+Vocabulary size: 2488
+[GpuMemoryPool] Model params: 715,527. Base Memory: 10 MB. Allocating: 512 MB
+[GpuMemoryPool] Initialized with 512 MB
+[CUDAOps] Loaded PTX kernels from: D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\examples\..\bin\kernels.ptx
+[CUDAOps] Resolving PTX function symbols...
+[CUDAOps] PTX function resolution complete.
+[CUDAOps] Creating CUDA streams...
+[CUDAOps] Binding streams to cuBLAS/cuDNN handles...
+[CUDAOps] CUDA initialization complete.
+Model moved to GPU
+Epoch 1/1 | lr=0.001000 | train_loss=1.7367 (sent=0.8552 topic=0.8815) | train_sent_acc=47.98% | train_topic_acc=70.70% | dev_sent_macro_f1=0.2054 | dev_topic_macro_f1=0.2105 | dev_joint=0.2558 | objective=0.2080 | epoch_time=119.077s
+Loaded best checkpoint from: D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\examples\benchmark\results\your_framework\uit_vsfc_multitask\phase2_lstm_gpu_seed42_20260327_080623\best_model.bin
+Best epoch=1 | Dev sent_macro_f1=0.2054 topic_macro_f1=0.2105 joint=0.2558
+Test | sent_acc=44.50% topic_acc=72.33% sent_macro_f1=0.2053 topic_macro_f1=0.2099 joint=0.2498
+Inference | p50=888.3046 ms p95=1067.5991 ms throughput=283.23 samples/s
+Inference breakdown | e2e_p50=889.4295 ms e2e_p95=1068.9128 ms e2e_throughput=282.88 samples/s | batch=0.1924 tensor=0.0138 h2d=0.8808 forward=875.2618 ms
+Saved final model to: D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\examples\benchmark\results\your_framework\uit_vsfc_multitask\phase2_lstm_gpu_seed42_20260327_080623\uit_vsfc_lstm_multitask.bin
+Benchmark artifacts: D:\My\University\Nam3\HK2\Java\Machine_learning\framework\ML_framework\examples\benchmark\results\your_framework\uit_vsfc_multitask\phase2_lstm_gpu_seed42_20260327_080623
+
+BUILD SUCCESSFUL in 2m 50s
+3 actionable tasks: 1 executed, 2 up-to-date
+
+WARNING: Using incubator modules: jdk.incubator.vector
+
