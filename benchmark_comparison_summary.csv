@@ -1,0 +1,30 @@
+Timestamp,Framework,Model,Device,E2E_Time_Seconds,Peak_RAM_MB,Peak_VRAM_MB
+2026-05-19 19:56:23,DL4J,Sentiment (RT-Polarity),gpu,165.86,2219.54,0
+2026-05-19 20:08:52,JavaTorch,Sentiment (RT-Polarity),gpu,745.47,2022.93,0
+2026-05-19 20:17:25,DL4J,ResNet-18 (CIFAR-10),gpu,508.3,6168.83,0
+2026-05-19 20:21:38,JavaTorch,ResNet-18 (CIFAR-10),gpu,249.96,4682.2,0
+2026-05-20 07:50:42,JavaTorch,LeNet (FashionMNIST),gpu,893.8,5264.08,0
+2026-05-20 08:20:18,JavaTorch,CNN (CIFAR-10),gpu,1772.75,4284.71,0
+2026-05-20 08:36:42,JavaTorch,ResNet-18 (CIFAR-10),gpu,982.02,5044.13,0
+2026-05-20 10:20:11,JavaTorch,ViT (CIFAR-10),gpu,6206.95,7036.89,0
+2026-05-20 10:40:58,JavaTorch,Sentiment (RT-Polarity),gpu,1244.0,4494.78,0
+2026-05-20 12:16:30,JavaTorch,UIT-VSFC (Multitask LSTM),gpu,5729.67,8293.23,0
+2026-05-21 23:44:18,PyTorch,Sentiment (RT-Polarity),gpu,11.7,700.56,0
+2026-05-21 23:45:26,PyTorch,Sentiment (RT-Polarity),gpu,8.49,701.65,0
+2026-05-21 23:48:31,PyTorch,Sentiment (RT-Polarity),gpu,8.06,701.35,0
+2026-05-21 23:49:36,PyTorch,ResNet-18 (CIFAR-10),gpu,62.92,986.75,0
+2026-05-21 23:50:15,PyTorch,LeNet (FashionMNIST),gpu,36.84,813.57,0
+2026-05-21 23:56:09,PyTorch,ViT (CIFAR-10),gpu,351.33,922.86,0
+2026-05-21 23:56:48,PyTorch,Sentiment (RT-Polarity),gpu,7.68,701.24,0
+2026-05-21 23:57:52,PyTorch,ResNet-18 (CIFAR-10),gpu,61.83,986.53,0
+2026-05-21 23:58:09,PyTorch,LeNet (FashionMNIST),gpu,14.05,809.4,0
+2026-05-22 00:04:02,PyTorch,ViT (CIFAR-10),gpu,351.39,1380.5,0
+2026-05-22 00:04:18,PyTorch,Iris (MLP),gpu,12.96,1139.12,0
+2026-05-22 00:04:23,PyTorch,Sentiment (RT-Polarity),gpu,25.04,1340.17,0
+2026-05-22 00:08:03,PyTorch,LeNet (MNIST),gpu,223.73,1017.64,0
+2026-05-22 00:12:45,PyTorch,ResNet-18 (CIFAR-10),gpu,499.42,1810.11,0
+2026-05-22 00:14:13,PyTorch,LeNet (FashionMNIST),gpu,85.4,817.41,0
+2026-05-22 00:20:00,PyTorch,ViT (CIFAR-10),gpu,344.59,922.13,0
+2026-05-22 00:20:14,PyTorch,Iris (MLP),gpu,11.69,437.8,0
+2026-05-22 00:22:49,PyTorch,LeNet (MNIST),gpu,152.82,818.17,0
+2026-05-22 00:54:43,PyTorch,UIT-VSFC (Multitask LSTM),gpu,46.57,726.32,0

@@ -89,7 +89,7 @@ def main():
     parser.add_argument("--batchSize", type=int, default=32)
     parser.add_argument("--maxLen", type=int, default=64)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--dataDir", type=str, default="../data/uit-vsfc")
+    parser.add_argument("--dataDir", type=str, default="../examples/data/uit-vsfc")
     parser.add_argument("--outputDir", type=str, default="benchmark/results")
     args = parser.parse_args()
 
@@ -100,9 +100,18 @@ def main():
     device = torch.device("cuda" if args.device == "gpu" and torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    train_data = load_uit_vsfc_data(args.dataDir, "train")
-    dev_data = load_uit_vsfc_data(args.dataDir, "dev")
-    test_data = load_uit_vsfc_data(args.dataDir, "test")
+    data_dir = args.dataDir
+    # Fallback to alternative paths if not found
+    if not os.path.exists(os.path.join(data_dir, "train", "sents.txt")):
+        alternatives = ["../data/uit-vsfc", "examples/data/uit-vsfc", "data/uit-vsfc"]
+        for alt in alternatives:
+            if os.path.exists(os.path.join(alt, "train", "sents.txt")):
+                data_dir = alt
+                break
+
+    train_data = load_uit_vsfc_data(data_dir, "train")
+    dev_data = load_uit_vsfc_data(data_dir, "dev")
+    test_data = load_uit_vsfc_data(data_dir, "test")
     
     if not train_data:
         print("UIT-VSFC data not found. Skipping...")
