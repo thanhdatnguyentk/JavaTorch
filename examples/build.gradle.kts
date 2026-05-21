@@ -61,6 +61,10 @@ tasks.register<JavaExec>("trainAllDetectors") {
     maxHeapSize = "8g"
 }
 
+// ─── Benchmark Tasks ─────────────────────────────────────────────────
+// All benchmark tasks forward Gradle project property `benchArgs` as program args.
+// Usage: ./gradlew :examples:benchmarkResNet -PbenchArgs="--device gpu --epochs 2"
+
 tasks.register<JavaExec>("benchmarkResNet") {
     group = "benchmark"
     description = "Run benchmark for ResNet18 on CIFAR-10"
@@ -68,6 +72,10 @@ tasks.register<JavaExec>("benchmarkResNet") {
     mainClass.set("com.user.nn.examples.BenchmarkResNetCifar10")
     jvmArgs("--add-modules=jdk.incubator.vector")
     maxHeapSize = "6g"
+    val benchArgs = findProperty("benchArgs") as String?
+    if (benchArgs != null) {
+        args(benchArgs.split(" "))
+    }
 }
 
 tasks.register<JavaExec>("benchmarkSentiment") {
@@ -77,6 +85,10 @@ tasks.register<JavaExec>("benchmarkSentiment") {
     mainClass.set("com.user.nn.examples.BenchmarkSentiment")
     jvmArgs("--add-modules=jdk.incubator.vector")
     maxHeapSize = "6g"
+    val benchArgs = findProperty("benchArgs") as String?
+    if (benchArgs != null) {
+        args(benchArgs.split(" "))
+    }
 }
 
 tasks.register<JavaExec>("benchmarkDl4jResNet") {
@@ -84,8 +96,15 @@ tasks.register<JavaExec>("benchmarkDl4jResNet") {
     description = "Run DL4J benchmark for ResNet18 on CIFAR-10"
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("com.user.nn.examples.BenchmarkDl4jResNetCifar10")
-    jvmArgs("--add-modules=jdk.incubator.vector")
+    jvmArgs("--add-modules=jdk.incubator.vector",
+        "--add-opens=java.base/java.nio=ALL-UNNAMED",
+        "--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED",
+        "--add-opens=java.base/java.lang=ALL-UNNAMED")
     maxHeapSize = "6g"
+    val benchArgs = findProperty("benchArgs") as String?
+    if (benchArgs != null) {
+        args(benchArgs.split(" "))
+    }
 }
 
 tasks.register<JavaExec>("benchmarkDl4jSentiment") {
@@ -93,8 +112,15 @@ tasks.register<JavaExec>("benchmarkDl4jSentiment") {
     description = "Run DL4J benchmark for LSTM sentiment on RT-Polarity"
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("com.user.nn.examples.BenchmarkDl4jSentiment")
-    jvmArgs("--add-modules=jdk.incubator.vector")
+    jvmArgs("--add-modules=jdk.incubator.vector",
+        "--add-opens=java.base/java.nio=ALL-UNNAMED",
+        "--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED",
+        "--add-opens=java.base/java.lang=ALL-UNNAMED")
     maxHeapSize = "6g"
+    val benchArgs = findProperty("benchArgs") as String?
+    if (benchArgs != null) {
+        args(benchArgs.split(" "))
+    }
 }
 
 tasks.register<JavaExec>("benchmarkMemoryPool") {

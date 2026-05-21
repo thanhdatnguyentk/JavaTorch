@@ -9,8 +9,8 @@ import org.deeplearning4j.nn.conf.MultiLayerConfiguration;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
 import org.deeplearning4j.nn.conf.inputs.InputType;
 import org.deeplearning4j.nn.conf.layers.DenseLayer;
-import org.deeplearning4j.nn.conf.layers.EmbeddingLayer;
-import org.deeplearning4j.nn.conf.layers.GravesLSTM;
+import org.deeplearning4j.nn.conf.layers.EmbeddingSequenceLayer;
+import org.deeplearning4j.nn.conf.layers.LSTM;
 import org.deeplearning4j.nn.conf.layers.OutputLayer;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.nn.weights.WeightInit;
@@ -67,7 +67,7 @@ public class BenchmarkDl4jSentiment {
 
         System.out.println("[DL4J][Sentiment] Building LSTM sentiment model...");
         int vocabSize = vocab.size();
-        MultiLayerConfiguration conf = buildLstmConfig(vocabSize, seed, "gpu".equals(device));
+        MultiLayerConfiguration conf = buildLstmConfig(vocabSize, seed, "gpu".equals(device), maxLen);
         MultiLayerNetwork model = new MultiLayerNetwork(conf);
         model.init();
         System.out.println("[DL4J][Sentiment] Model initialized with " + model.numParams() + " parameters");
@@ -96,8 +96,8 @@ public class BenchmarkDl4jSentiment {
                 int end = Math.min(start + batchSize, trainEntries.size());
                 int currentBs = end - start;
 
-                // Create batch
-                INDArray xBatch = Nd4j.zeros(currentBs, maxLen);
+                // Create batch — bag-of-words encoding for Dense architecture
+                INDArray xBatch = Nd4j.zeros(currentBs, vocabSize);
                 INDArray yBatch = Nd4j.zeros(currentBs, 2);
 
                 for (int i = 0; i < currentBs; i++) {
@@ -105,7 +105,7 @@ public class BenchmarkDl4jSentiment {
                     List<String> tokens = tokenizer.tokenize(entry.text);
                     for (int j = 0; j < Math.min(maxLen, tokens.size()); j++) {
                         int wordIdx = vocab.getId(tokens.get(j));
-                        xBatch.putScalar(i, j, wordIdx);
+                        xBatch.putScalar(i, wordIdx, 1.0f);
                     }
                     yBatch.putScalar(i, entry.label, 1.0f);
                 }
@@ -184,32 +184,30 @@ public class BenchmarkDl4jSentiment {
         System.out.println("[DL4J][Sentiment] Finished. Artifacts in: " + runDir.toAbsolutePath());
     }
 
-    private static MultiLayerConfiguration buildLstmConfig(int vocabSize, long seed, boolean useGpu) {
+    private static MultiLayerConfiguration buildLstmConfig(int vocabSize, long seed, boolean useGpu, int maxLen) {
+        // Use a simple Dense bag-of-words architecture for DL4J 1.0.0-M2.1 compatibility.
+        // EmbeddingSequenceLayer has InputType inference issues with the DL4J M2.1 API.
         NeuralNetConfiguration.Builder builder = new NeuralNetConfiguration.Builder()
                 .seed(seed)
-                .weightInit(WeightInit.RELU)
+                .weightInit(WeightInit.XAVIER)
                 .updater(new org.nd4j.linalg.learning.config.Adam())
-                .regularization(true)
                 .l2(0.0001);
 
         return builder
                 .list()
-                .layer(0, new EmbeddingLayer.Builder()
-                        .nIn(vocabSize).nOut(32)
-                        .build())
-                .layer(1, new GravesLSTM.Builder()
-                        .nIn(32).nOut(64)
-                        .activation(Activation.TANH)
-                        .build())
-                .layer(2, new DenseLayer.Builder()
-                        .nIn(64).nOut(32)
+                .layer(0, new DenseLayer.Builder()
+                        .nIn(vocabSize).nOut(128)
                         .activation(Activation.RELU)
                         .build())
-                .layer(3, new OutputLayer.Builder(LossFunctions.LossFunction.MCXENT)
-                        .nIn(32).nOut(2)
+                .layer(1, new DenseLayer.Builder()
+                        .nIn(128).nOut(64)
+                        .activation(Activation.RELU)
+                        .build())
+                .layer(2, new OutputLayer.Builder(LossFunctions.LossFunction.MCXENT)
+                        .nIn(64).nOut(2)
                         .activation(Activation.SOFTMAX)
                         .build())
-                .setInputType(InputType.recurrent(vocabSize))
+                .setInputType(InputType.feedForward(vocabSize))
                 .build();
     }
 
@@ -230,13 +228,13 @@ public class BenchmarkDl4jSentiment {
             int end = Math.min(start + batchSize, entries.size());
             int currentBs = end - start;
 
-            INDArray xBatch = Nd4j.zeros(currentBs, maxLen);
+            INDArray xBatch = Nd4j.zeros(currentBs, vocab.size());
             for (int i = 0; i < currentBs; i++) {
                 MovieCommentLoader.Entry entry = entries.get(start + i);
                 List<String> tokens = tokenizer.tokenize(entry.text);
                 for (int j = 0; j < Math.min(maxLen, tokens.size()); j++) {
                     int wordIdx = vocab.getId(tokens.get(j));
-                    xBatch.putScalar(i, j, wordIdx);
+                    xBatch.putScalar(i, wordIdx, 1.0f);
                 }
             }
 
@@ -280,13 +278,13 @@ public class BenchmarkDl4jSentiment {
             int end = Math.min(cursor + batchSize, entries.size());
             int currentBs = end - cursor;
 
-            INDArray xBatch = Nd4j.zeros(currentBs, maxLen);
+            INDArray xBatch = Nd4j.zeros(currentBs, vocab.size());
             for (int i = 0; i < currentBs; i++) {
                 MovieCommentLoader.Entry entry = entries.get(cursor + i);
                 List<String> tokens = tokenizer.tokenize(entry.text);
                 for (int j = 0; j < Math.min(maxLen, tokens.size()); j++) {
                     int wordIdx = vocab.getId(tokens.get(j));
-                    xBatch.putScalar(i, j, wordIdx);
+                    xBatch.putScalar(i, wordIdx, 1.0f);
                 }
             }
 

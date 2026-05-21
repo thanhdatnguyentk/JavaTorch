@@ -89,15 +89,15 @@ public class BenchmarkDl4jResNetCifar10 {
                 int end = Math.min(i + batchSize, trainImages.length);
                 int currentBatchSize = end - i;
 
-                INDArray xBatch = Nd4j.zeros(currentBatchSize, 3, 32, 32);
+                float[] flatBatch = new float[currentBatchSize * 3 * 32 * 32];
                 INDArray yBatch = Nd4j.zeros(currentBatchSize, 10);
 
                 for (int j = 0; j < currentBatchSize; j++) {
                     float[] img = trainImages[i + j];
-                    INDArray imgTensor = Nd4j.create(img).reshape(3, 1024);
-                    xBatch.putRow(j, imgTensor);
+                    System.arraycopy(img, 0, flatBatch, j * 3 * 32 * 32, 3 * 32 * 32);
                     yBatch.putScalar(j, trainLabels[i + j], 1.0f);
                 }
+                INDArray xBatch = Nd4j.create(flatBatch, new int[]{currentBatchSize, 3, 32, 32}, 'c');
 
                 DataSet ds = new DataSet(xBatch, yBatch);
                 double loss = model.score(ds);
@@ -177,7 +177,6 @@ public class BenchmarkDl4jResNetCifar10 {
                 .weightInit(WeightInit.RELU)
                 .activation(Activation.RELU)
                 .updater(new org.nd4j.linalg.learning.config.Adam())
-                .regularization(true)
                 .l2(0.0001)
                 .convolutionMode(org.deeplearning4j.nn.conf.ConvolutionMode.Same)
                 .list()
@@ -229,11 +228,12 @@ public class BenchmarkDl4jResNetCifar10 {
             int end = Math.min(i + batchSize, testImages.length);
             int currentBatchSize = end - i;
 
-            INDArray xBatch = Nd4j.zeros(currentBatchSize, 3, 32, 32);
+            float[] flatBatch = new float[currentBatchSize * 3 * 32 * 32];
             for (int j = 0; j < currentBatchSize; j++) {
                 float[] img = testImages[i + j];
-                xBatch.putRow(j, Nd4j.create(img).reshape(3, 1024));
+                System.arraycopy(img, 0, flatBatch, j * 3 * 32 * 32, 3 * 32 * 32);
             }
+            INDArray xBatch = Nd4j.create(flatBatch, new int[]{currentBatchSize, 3, 32, 32}, 'c');
 
             INDArray predictions = model.output(xBatch);
             for (int j = 0; j < currentBatchSize; j++) {
@@ -275,11 +275,12 @@ public class BenchmarkDl4jResNetCifar10 {
             int end = Math.min(i + batchSize, testImages.length);
             int currentBatchSize = end - i;
 
-            INDArray xBatch = Nd4j.zeros(currentBatchSize, 3, 32, 32);
+            float[] flatBatch = new float[currentBatchSize * 3 * 32 * 32];
             for (int j = 0; j < currentBatchSize; j++) {
                 float[] img = testImages[i + j];
-                xBatch.putRow(j, Nd4j.create(img).reshape(3, 1024));
+                System.arraycopy(img, 0, flatBatch, j * 3 * 32 * 32, 3 * 32 * 32);
             }
+            INDArray xBatch = Nd4j.create(flatBatch, new int[]{currentBatchSize, 3, 32, 32}, 'c');
 
             long t0 = System.nanoTime();
             model.output(xBatch);

@@ -41,10 +41,10 @@ dependencies {
     runtimeOnly("org.jcuda:jcudnn-natives:${property("jcudaVersion")}:$jcudaClassifier")
     
     // DeepLearning4J dependencies (Phase 2 baseline)
-    // Using stable 0.9.1 version with CPU backend for broader compatibility
-    implementation("org.deeplearning4j:deeplearning4j-core:0.9.1")
-    implementation("org.nd4j:nd4j-native:0.9.1")
-    runtimeOnly("org.nd4j:nd4j-native-platform:0.9.1")
+    // Upgraded to 1.0.0-M2.1 for JDK 21 compatibility (0.9.1 has UnsatisfiedLinkError)
+    implementation("org.deeplearning4j:deeplearning4j-core:1.0.0-M2.1")
+    implementation("org.nd4j:nd4j-native:1.0.0-M2.1")
+    runtimeOnly("org.nd4j:nd4j-native-platform:1.0.0-M2.1")
     implementation("commons-io:commons-io:2.13.0")
     
     // Visualization dependencies
